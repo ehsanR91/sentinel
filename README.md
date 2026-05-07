@@ -1,4 +1,4 @@
-# SentinelCore
+# SentinelCore - OpenSource Ubuntu/Debian Server Control Panel
 
 SentinelCore is a self-hosted Linux security and operations dashboard for hardened VPS and Docker hosts.
 

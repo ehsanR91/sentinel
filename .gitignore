@@ -11,7 +11,10 @@ Thumbs.db
 
 # --- Logs ---
 *.log
-logs/
+/logs/
+
+# Allow nested source directories named logs/ to remain tracked
+!frontend/src/views/logs/
 
 # --- Secrets / Env ---
 .env
