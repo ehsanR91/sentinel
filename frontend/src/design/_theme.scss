@@ -1,0 +1,91 @@
+// ─── CSS Custom Properties — Theme System ──────────────────────────────────────
+// Applied via data-theme attribute on <html>
+
+:root,
+[data-theme="dark"] {
+  --sc-bg-body: #0a0e1a;
+  --sc-bg-card: #0f1629;
+  --sc-bg-sidebar: #080c18;
+  --sc-bg-topbar: #0f1629;
+  --sc-bg-secondary: #141c2f;
+  --sc-glass-bg: rgba(15, 22, 41, 0.72);
+  --sc-glass-bg-2: rgba(20, 28, 47, 0.58);
+  --sc-glass-border: rgba(255, 255, 255, 0.10);
+  --sc-glass-blur: 14px;
+  --sc-border: #1e2d4a;
+  --sc-border-light: #243656;
+  --sc-text: #c9d8f0;
+  --sc-text-muted: #5a7499;
+  --sc-text-secondary: #8aa4c8;
+  --sc-heading: #e2ecff;
+  --sc-green: #22d67c;
+  --sc-red: #f04040;
+  --sc-amber: #f5a623;
+  --sc-blue: #4a9eff;
+  --sc-purple: #a78bfa;
+  --sc-cyan: #22d3ee;
+  --sc-shadow: rgba(0, 0, 0, 0.4);
+  --sc-shadow-lg: rgba(0, 0, 0, 0.6);
+  
+  // Primary color (alias for blue)
+  --sc-primary: var(--sc-blue);
+  
+  // Primary subtle background
+  --sc-bg-primary-subtle: rgba(74, 158, 255, 0.1);
+  
+  // Service tile backgrounds
+  --sc-bg-active-tile: rgba(34, 214, 124, 0.08);
+  --sc-bg-inactive-tile: rgba(240, 64, 64, 0.08);
+  --sc-bg-warning-tile: rgba(245, 166, 35, 0.08);
+  
+  // Transitions
+  --transition-base: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-fast: all 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --transition-slow: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  
+  // Fonts
+  --font-family-monospace: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+[data-theme="light"] {
+  --sc-bg-body: #f0f4f8;
+  --sc-bg-card: #ffffff;
+  --sc-bg-sidebar: #ffffff;
+  --sc-bg-topbar: #ffffff;
+  --sc-bg-secondary: #f5f8fc;
+  --sc-glass-bg: rgba(255, 255, 255, 0.72);
+  --sc-glass-bg-2: rgba(245, 248, 252, 0.62);
+  --sc-glass-border: rgba(15, 23, 42, 0.10);
+  --sc-glass-blur: 14px;
+  --sc-border: #d0d8e4;
+  --sc-border-light: #b8c5d5;
+  --sc-text: #1a2035;
+  --sc-text-muted: #637389;
+  --sc-text-secondary: #374151;
+  --sc-heading: #0f172a;
+  --sc-green: #16a34a;
+  --sc-red: #dc2626;
+  --sc-amber: #d97706;
+  --sc-blue: #2563eb;
+  --sc-purple: #7c3aed;
+  --sc-cyan: #0891b2;
+  --sc-shadow: rgba(0, 0, 0, 0.12);
+  --sc-shadow-lg: rgba(0, 0, 0, 0.2);
+  
+  // Primary color (alias for blue)
+  --sc-primary: var(--sc-blue);
+  
+  // Primary subtle background (lighter for light theme)
+  --sc-bg-primary-subtle: rgba(37, 99, 235, 0.1);
+  
+  // Service tile backgrounds (lighter for light theme)
+  --sc-bg-active-tile: rgba(22, 163, 74, 0.12);
+  --sc-bg-inactive-tile: rgba(220, 38, 38, 0.12);
+  --sc-bg-warning-tile: rgba(217, 119, 6, 0.12);
+  
+  // Transitions
+  --transition-base: all 0.2s ease;
+  
+  // Fonts
+  --font-family-monospace: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}

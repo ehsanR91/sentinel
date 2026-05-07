@@ -1,0 +1,7 @@
+{
+  "title": "SentinelCore",
+  "description": "Self-hosted Linux security, monitoring, intrusion detection, and operations platform.",
+  "version": "1.0.0",
+  "author": "github.com/ehsanR91",
+  "pollIntervalMs": 30000
+}

@@ -1,0 +1,122 @@
+// ─── Auth pages ───────────────────────────────────────────────────────────────
+
+.auth-wrapper {
+  min-height: 100vh;
+  background: $sc-bg-body;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  position: relative;
+  overflow: hidden;
+
+  // Background grid effect
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba($sc-border, 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgba($sc-border, 0.3) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+  }
+
+  // Glow effect
+  &::after {
+    content: '';
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 400px; height: 400px;
+    background: radial-gradient(ellipse, rgba($sc-blue, 0.08), transparent 70%);
+    pointer-events: none;
+  }
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: $sc-bg-card;
+  border: 1px solid $sc-border;
+  border-radius: 12px;
+  padding: 2.5rem;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  position: relative;
+  z-index: 1;
+
+  .auth-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+
+    .logo-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, $sc-blue, $sc-purple);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem; color: #fff;
+    }
+
+    .logo-name {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: $sc-text;
+      letter-spacing: -0.01em;
+      span { color: $sc-blue; }
+    }
+  }
+
+  .auth-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: $sc-text;
+    margin-bottom: 0.25rem;
+    text-align: center;
+  }
+
+  .auth-subtitle {
+    font-size: 0.8125rem;
+    color: $sc-text-muted;
+    text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .btn-login {
+    width: 100%;
+    background: $sc-blue;
+    border-color: $sc-blue;
+    color: #fff;
+    font-weight: 600;
+    padding: 0.625rem;
+    border-radius: 6px;
+    transition: $transition-base;
+
+    &:hover { background: darken($sc-blue, 8%); }
+    &:disabled { opacity: 0.6; cursor: not-allowed; }
+  }
+
+  .auth-footer-note {
+    text-align: center;
+    margin-top: 1.5rem;
+    font-size: 0.75rem;
+    color: $sc-text-muted;
+  }
+}
+
+.input-group-icon {
+  .input-group-text {
+    background: $sc-bg-secondary;
+    border: 1px solid $sc-border;
+    border-right: none;
+    color: $sc-text-muted;
+  }
+
+  .form-control {
+    border-left: none;
+    &:focus { border-left: none; }
+  }
+}

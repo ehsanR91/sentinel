@@ -1,0 +1,35 @@
+// ─── Footer ───────────────────────────────────────────────────────────────────
+
+footer {
+  height: $footer-height;
+  background: var(--sc-glass-bg);
+  border-top: 1px solid var(--sc-glass-border);
+  backdrop-filter: blur(var(--sc-glass-blur));
+  -webkit-backdrop-filter: blur(var(--sc-glass-blur));
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  font-size: 0.75rem;
+  color: $sc-text-muted;
+  flex-shrink: 0;
+
+  .footer-left { display: flex; align-items: center; gap: 0.5rem; }
+  .footer-right { margin-left: auto; }
+
+  a { color: $sc-text-muted; &:hover { color: $sc-blue; } }
+}
+
+@media (max-width: 992px) {
+  footer {
+    height: auto;
+    min-height: $footer-height;
+    padding: 0.65rem max(0.75rem, env(safe-area-inset-right, 0px)) calc(0.65rem + env(safe-area-inset-bottom, 0px)) max(0.75rem, env(safe-area-inset-left, 0px));
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+
+    .footer-right {
+      width: 100%;
+      margin-left: 0;
+    }
+  }
+}

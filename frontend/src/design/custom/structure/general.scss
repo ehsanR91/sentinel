@@ -1,0 +1,149 @@
+// ─── Layout structure ─────────────────────────────────────────────────────────
+
+// Smooth scroll behavior
+html {
+  scroll-behavior: smooth;
+}
+
+.wrapper {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  overflow: clip;
+}
+
+.page-content {
+  margin-left: $sidebar-width;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  transition: margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--sc-bg-body);
+  
+  .content-page {
+    padding:
+      calc(#{$topbar-height} + 1.2rem + env(safe-area-inset-top, 0px))
+      clamp(0.75rem, 2vw, 1.5rem)
+      calc(1rem + env(safe-area-inset-bottom, 0px));
+    flex: 1;
+    min-width: 0;
+    animation: fadeIn 0.3s ease;
+  }
+}
+
+// Responsive
+@media (max-width: 992px) {
+  .page-content {
+    margin-left: 0;
+
+    .content-page {
+      padding-top: calc(#{$topbar-height} + 0.9rem + env(safe-area-inset-top, 0px));
+      padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+      padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
+      padding-bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));
+    }
+  }
+}
+
+@media (max-width: 576px) {
+  .content-page {
+    .row {
+      --bs-gutter-x: 0.85rem;
+    }
+
+    .card {
+      border-radius: 0.75rem;
+    }
+  }
+}
+
+// Smooth animations
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Page transitions
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.28s ease, transform 0.28s ease, filter 0.28s ease;
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.995);
+  filter: blur(2px);
+}
+
+// Card animations
+.card {
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Fade in animation
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Pulse animation for badges
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.badge {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.app-shell-enter-active,
+.app-shell-leave-active {
+  transition: opacity 0.26s ease, transform 0.26s ease;
+}
+
+.app-shell-enter-from,
+.app-shell-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active,
+  .page-leave-active,
+  .app-shell-enter-active,
+  .app-shell-leave-active,
+  .card,
+  .badge {
+    animation: none !important;
+    transition: none !important;
+  }
+}

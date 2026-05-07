@@ -1,0 +1,332 @@
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
+#sidebar-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: $sidebar-width;
+  background: var(--sc-glass-bg);
+  border-right: 1px solid $sc-border;
+  backdrop-filter: blur(var(--sc-glass-blur));
+  -webkit-backdrop-filter: blur(var(--sc-glass-blur));
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.25s ease;
+}
+
+.sidebar-logo {
+  height: $topbar-height;
+  display: flex;
+  align-items: center;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--sc-glass-border);
+  flex-shrink: 0;
+
+  .logo-text {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    text-decoration: none;
+
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, $sc-blue 0%, $sc-purple 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .logo-name {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: $sc-text;
+      letter-spacing: 0.02em;
+
+      span { color: $sc-blue; }
+    }
+  }
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.75rem 0;
+
+  &::-webkit-scrollbar { width: 3px; }
+  &::-webkit-scrollbar-thumb { background: $sc-border; }
+}
+
+.menu-section-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: $sc-text-muted;
+  padding: 1rem 1.25rem 0.35rem;
+}
+
+.sidebar-nav {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  .nav-item {
+    margin: 1px 0.5rem;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5625rem 0.875rem;
+    border-radius: 6px;
+    color: $sc-text-muted;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: $transition-base;
+    white-space: nowrap;
+    position: relative;
+
+    i {
+      font-size: 1.05rem;
+      width: 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .badge {
+      margin-left: auto;
+      font-size: 0.65rem;
+      padding: 0.15em 0.45em;
+    }
+
+    .arrow {
+      margin-left: auto;
+      font-size: 0.7rem;
+      transition: transform 0.2s;
+    }
+
+    &:hover {
+      background: rgba($sc-blue, 0.08);
+      color: $sc-text;
+    }
+
+    &.active {
+      background: rgba($sc-blue, 0.15);
+      color: $sc-blue;
+      font-weight: 600;
+
+      i { color: $sc-blue; }
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 20%;
+        bottom: 20%;
+        width: 3px;
+        background: $sc-blue;
+        border-radius: 0 2px 2px 0;
+        transform: translateX(-0.875rem);
+      }
+    }
+
+    &.danger-link {
+      &:hover, &.active {
+        background: rgba($sc-red, 0.12);
+        color: $sc-red;
+        i { color: $sc-red; }
+      }
+    }
+  }
+
+  // Sub items
+  .sub-nav {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.25rem 2.375rem;
+    overflow: hidden;
+
+    .nav-link {
+      font-size: 0.78rem;
+      padding: 0.4rem 0.75rem;
+      color: $sc-text-muted;
+
+      &.active {
+        color: $sc-blue;
+        background: transparent;
+
+        &::before { display: none; }
+      }
+    }
+  }
+}
+
+.sidebar-footer {
+  padding: 0.75rem;
+  border-top: 1px solid var(--sc-glass-border);
+  flex-shrink: 0;
+}
+
+.server-info-chip {
+  background: var(--sc-glass-bg-2);
+  border: 1px solid var(--sc-glass-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+
+  .chip-label { color: $sc-text-muted; }
+  .chip-value { color: $sc-green; font-family: $font-family-monospace; }
+}
+
+// Collapse toggle button (original - inside logo area)
+.collapse-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid $sc-border;
+  background: transparent;
+  color: $sc-text-muted;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: $transition-base;
+  
+  &:hover {
+    background: rgba($sc-blue, 0.1);
+    color: $sc-text;
+    border-color: $sc-border-light;
+  }
+  
+  i { font-size: 0.9rem; }
+}
+
+// Collapse button at sidebar edge (new position)
+.collapse-btn-edge {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--sc-border, #1e2d4a);
+  background: var(--sc-glass-bg-2, rgba(20, 28, 47, 0.58));
+  color: var(--sc-text-muted, #5a7499);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  z-index: 11;
+  
+  &:hover {
+    background: var(--sc-blue, #4a9eff);
+    color: #fff;
+    border-color: var(--sc-blue, #4a9eff);
+    transform: translateY(-50%) scale(1.1);
+  }
+  
+  i { font-size: 0.75rem; }
+}
+
+// Collapsed state
+#sidebar-menu.collapsed {
+  width: $sidebar-collapsed;
+
+  .logo-name { display: none; }
+  .nav-label  { display: none; }
+  .badge      { display: none; }
+  .arrow      { display: none; }
+  .menu-section-title { padding: 0.5rem 0; text-align: center; }
+  .section-divider {
+    display: block;
+    height: 1px;
+    background: $sc-border;
+    margin: 0 0.75rem;
+  }
+
+  .sidebar-logo {
+    justify-content: center;
+    padding: 0 0.5rem;
+    .logo-text { gap: 0; }
+  }
+
+  .nav-item { margin: 1px 0.35rem; }
+
+  .nav-link {
+    justify-content: center;
+    padding: 0.5625rem 0;
+    gap: 0;
+
+    i { width: 24px; text-align: center; }
+  }
+
+  .sub-nav { display: none !important; }
+
+  .sidebar-footer { padding: 0.5rem; }
+
+  .server-info-chip {
+    &.collapsed {
+      justify-content: center;
+      padding: 0.5rem;
+      gap: 0;
+    }
+  }
+}
+
+// Clearable badge
+.badge-clearable {
+  cursor: pointer;
+  position: relative;
+  
+  &:hover::after {
+    content: '×';
+    position: absolute;
+    right: -8px;
+    top: -8px;
+    background: rgba(255, 255, 255, 0.8);
+    color: #000;
+    border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+  }
+}
+
+.wrapper.sidebar-collapsed {
+  #page-topbar { left: $sidebar-collapsed; }
+  .page-content { margin-left: $sidebar-collapsed; }
+}
+
+@media (max-width: 992px) {
+  #sidebar-menu {
+    transform: translateX(-100%);
+    width: min(86vw, 320px);
+    box-shadow: 18px 0 44px rgba(0, 0, 0, 0.45);
+    &.open { transform: translateX(0); }
+  }
+  .wrapper.sidebar-collapsed #page-topbar { left: 0; }
+  .wrapper.sidebar-collapsed .page-content { margin-left: 0; }
+}

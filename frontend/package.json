@@ -1,0 +1,68 @@
+{
+  "name": "sentinelcore-frontend",
+  "version": "1.0.0",
+  "description": "SentinelCore — Self-hosted Linux security, monitoring, and operations dashboard",
+  "private": true,
+  "scripts": {
+    "serve": "vite",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .js,.vue"
+  },
+  "dependencies": {
+    "apexcharts": "^5.10.6",
+    "axios": "^1.16.0",
+    "bootstrap": "^5.3.3",
+    "core-js": "^3.49.0",
+    "nprogress": "^0.2.0",
+    "qrcode": "^1.5.4",
+    "sweetalert2": "^11.12.0",
+    "v-click-outside": "^3.2.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.1",
+    "vue-sweetalert2": "^5.0.11",
+    "vue3-apexcharts": "^1.11.1",
+    "vuedraggable": "^4.1.0",
+    "vuex": "^4.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "eslint": "^8.57.1",
+    "eslint-plugin-vue": "^9.32.0",
+    "sass": "^1.99.0",
+    "sass-loader": "^14.2.1",
+    "vite": "^5.4.19"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "node": true
+    },
+    "parserOptions": {
+      "ecmaVersion": 2022
+    },
+    "extends": [
+      "plugin:vue/vue3-essential",
+      "eslint:recommended"
+    ],
+    "rules": {
+      "vue/multi-word-component-names": "off",
+      "no-inner-declarations": "off",
+      "vue/no-reserved-component-names": "off",
+      "vue/no-mutating-props": "off",
+      "vue/no-unused-components": "off",
+      "no-unused-vars": "warn",
+      "no-empty": [
+        "error",
+        {
+          "allowEmptyCatch": true
+        }
+      ]
+    }
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions"
+  ]
+}

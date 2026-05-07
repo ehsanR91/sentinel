@@ -1,0 +1,129 @@
+# SentinelCore sudoers configuration
+# =============================================================================
+# ⚠️  DO NOT install this file directly with cp — it contains the placeholder
+#     <USER> which MUST be replaced with the service OS username first.
+#
+# CORRECT INSTALL (auto-detects service user):
+#   SC_USER=$(systemctl show sentinelcore --property=User 2>/dev/null | \
+#             cut -d= -f2 | tr -d '\n'); \
+#   [ -z "$SC_USER" ] && SC_USER="$(whoami)"; \
+#   sudo sed "s/<USER>/$SC_USER/g" deploy/sentinelcore.sudoers | \
+#     sudo tee /etc/sudoers.d/sentinelcore > /dev/null && \
+#   sudo chmod 440 /etc/sudoers.d/sentinelcore && \
+#   sudo visudo -c -f /etc/sudoers.d/sentinelcore && echo "OK"
+#
+# Or use the deploy script which handles this automatically:
+#   sudo bash deploy-sentinel.sh
+#
+# Manual single-step example (replace 'deploy' with your actual user):
+#   sudo sed 's/<USER>/deploy/g' deploy/sentinelcore.sudoers \
+#     | sudo tee /etc/sudoers.d/sentinelcore > /dev/null && \
+#   sudo chmod 440 /etc/sudoers.d/sentinelcore
+# =============================================================================
+
+# --- Package management (apt-get via env wrapper for non-interactive mode) ---
+Cmnd_Alias SC_APT = \
+    /usr/bin/apt-get *, \
+    /usr/bin/env DEBIAN_FRONTEND=noninteractive apt-get *, \
+    /usr/bin/env DEBIAN_FRONTEND=noninteractive /usr/bin/apt-get *
+
+# --- Service management ---
+Cmnd_Alias SC_SYSTEMCTL = \
+    /usr/bin/systemctl *, \
+    /bin/systemctl *
+
+# --- Disk usage inspection ---
+Cmnd_Alias SC_DU = /usr/bin/du *
+
+# --- Config file read/write (scoped to /etc/) ---
+Cmnd_Alias SC_CAT  = /usr/bin/cat /etc/*
+Cmnd_Alias SC_TEE  = /usr/bin/tee /etc/*
+
+# --- Config syntax verification ---
+Cmnd_Alias SC_VERIFY = \
+    /usr/sbin/nginx -t, \
+    /usr/sbin/sshd -t, \
+    /usr/bin/fail2ban-client --test
+
+# --- UFW (used by ban/unban) ---
+Cmnd_Alias SC_UFW = \
+    /usr/sbin/ufw *, \
+    /usr/bin/ufw *
+
+# --- iptables (used by temporary access NAT rules) ---
+Cmnd_Alias SC_IPTABLES = \
+    /usr/sbin/iptables *, \
+    /sbin/iptables *
+
+# --- sysctl (used to enable route_localnet for NAT proxy) ---
+Cmnd_Alias SC_SYSCTL = \
+    /usr/sbin/sysctl -w net.ipv4.conf.all.route_localnet=*, \
+    /usr/sbin/sysctl -w net.ipv4.conf.*.route_localnet=*, \
+    /sbin/sysctl -w net.ipv4.conf.all.route_localnet=*, \
+    /sbin/sysctl -w net.ipv4.conf.*.route_localnet=*, \
+    /bin/sysctl -w net.ipv4.conf.all.route_localnet=*, \
+    /bin/sysctl -w net.ipv4.conf.*.route_localnet=*
+
+# --- File download and extraction ---
+Cmnd_Alias SC_DOWNLOAD = \
+    /usr/bin/curl *, \
+    /usr/bin/wget *, \
+    /usr/bin/dd *, \
+    /bin/dd *
+
+# --- File permissions and copying ---
+Cmnd_Alias SC_FILEOPS = \
+    /bin/chmod *, \
+    /usr/bin/chmod *, \
+    /bin/cp *, \
+    /usr/bin/cp *, \
+    /bin/mkdir *, \
+    /usr/bin/mkdir *, \
+    /bin/rm *, \
+    /usr/bin/rm *, \
+    /bin/tar *, \
+    /usr/bin/tar *, \
+    /usr/bin/wget *, \
+    /bin/ln *, \
+    /usr/bin/ln *
+
+# --- Shell script execution for app installations ---
+Cmnd_Alias SC_SHELL = \
+    /bin/bash *, \
+    /usr/bin/bash *, \
+    /bin/sh *, \
+    /usr/bin/sh *
+
+# --- Additional package managers ---
+Cmnd_Alias SC_PKG_MGRS = \
+    /usr/bin/apt *, \
+    /usr/bin/dnf *, \
+    /usr/bin/yum *, \
+    /usr/bin/pacman *, \
+    /usr/bin/zypper *, \
+    /usr/bin/dpkg *, \
+    /usr/bin/rpm *
+
+# --- GPG and key management ---
+Cmnd_Alias SC_KEYS = \
+    /usr/bin/gpg *, \
+    /usr/bin/gpg2 *, \
+    /usr/bin/pacman-key *, \
+    /usr/bin/rpm --import *
+
+# --- Journal log access ---
+Cmnd_Alias SC_JOURNAL = \
+    /usr/bin/journalctl *
+
+# --- Go language specific operations ---
+Cmnd_Alias SC_GO = \
+    /usr/bin/find *, \
+    /bin/find *, \
+    /usr/bin/rmdir *, \
+    /bin/rmdir *, \
+    /usr/bin/mv *, \
+    /bin/mv *
+
+# Grant the daemon user passwordless access to all of the above.
+# Replace <USER> with the actual OS username.
+<USER> ALL=(root) NOPASSWD: SC_APT, SC_SYSTEMCTL, SC_DU, SC_CAT, SC_TEE, SC_VERIFY, SC_UFW, SC_IPTABLES, SC_SYSCTL, SC_DOWNLOAD, SC_FILEOPS, SC_SHELL, SC_PKG_MGRS, SC_KEYS, SC_JOURNAL, SC_GO
