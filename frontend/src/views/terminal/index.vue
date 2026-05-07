@@ -285,6 +285,37 @@
       </div>
     </div>
 
+    <!-- Clipboard Fallback Modal -->
+    <div v-if="showCopyFallbackModal" class="modal-backdrop-custom" @click.self="closeCopyFallbackModal">
+      <div class="modal-card-custom" style="max-width:520px">
+        <div class="modal-header-custom">
+          <h6 class="mb-0 d-flex align-items-center gap-2">
+            <i class="mdi mdi-content-copy" style="color:#4a9eff;font-size:1.1rem"></i>
+            Copy Selected Terminal Text
+          </h6>
+          <button class="btn btn-sm p-0" style="color:#5a7499" @click="closeCopyFallbackModal">
+            <i class="mdi mdi-close"></i>
+          </button>
+        </div>
+        <div class="modal-body-custom">
+          <p style="font-size:0.82rem;color:#8aa4c8;margin-bottom:1rem">
+            Clipboard access is unavailable in your browser context. Please copy the text below manually and then close this dialog.
+          </p>
+          <textarea
+            class="form-control"
+            style="min-height:180px;font-family:monospace;resize:vertical"
+            readonly
+            :value="fallbackTextareaText"
+          ></textarea>
+          <div class="text-end mt-3">
+            <button class="btn btn-sm" style="background:rgba(74,158,255,0.12);color:#4a9eff;border:1px solid rgba(74,158,255,0.2)" @click="closeCopyFallbackModal">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- 2FA required first modal -->
     <div v-if="show2FARequiredModal" class="modal-backdrop-custom" @click.self="show2FARequiredModal=false">
       <div class="modal-card-custom" style="max-width:460px">
@@ -427,7 +458,11 @@ export default {
       },
       touchStartTime: null,
       touchThreshold: 500, // 500ms for touch-and-hold
-      autoScroll: true
+      autoScroll: true,
+
+      // Clipboard fallback
+      showCopyFallbackModal: false,
+      fallbackTextareaText: ''
     }
   },
 
@@ -678,7 +713,7 @@ export default {
       const port = this.sshPort || '22'
       const portFlag = port !== '22' ? ` -p ${port}` : ''
       const cmd = `ssh -L ${svc.localPort}:localhost:${svc.remotePort}${portFlag} ${user}@${host}`
-      navigator.clipboard.writeText(cmd).catch(() => {})
+      navigator.clipboard?.writeText(cmd).catch(() => {})
       this.copiedTunnel = svc.name
       setTimeout(() => { if (this.copiedTunnel === svc.name) this.copiedTunnel = '' }, 2000)
     },
@@ -736,7 +771,9 @@ export default {
       const inTerminal = !!out && ((anchorNode && out.contains(anchorNode)) || (focusNode && out.contains(focusNode)))
       if (!inTerminal) return
       try {
-        await navigator.clipboard.writeText(text)
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text)
+        }
       } catch (_) {}
     },
 
@@ -752,7 +789,17 @@ export default {
       const inTerminal = !!out && ((anchorNode && out.contains(anchorNode)) || (focusNode && out.contains(focusNode)))
       if (!inTerminal) return
       e.preventDefault()
-      navigator.clipboard.writeText(text).catch(() => {})
+
+      if (!navigator.clipboard?.writeText) {
+        this.fallbackTextareaText = text
+        this.showCopyFallbackModal = true
+        return
+      }
+
+      navigator.clipboard.writeText(text).catch(() => {
+        this.fallbackTextareaText = text
+        this.showCopyFallbackModal = true
+      })
     },
 
     lineClass(line) {
@@ -802,19 +849,25 @@ export default {
     },
 
     async copySelection() {
+      const selection = window.getSelection()
+      const text = selection?.toString?.() || ''
+      if (!text.trim()) return
+
       try {
-        const selection = window.getSelection()
-        if (selection && selection.toString()) {
-          await navigator.clipboard.writeText(selection.toString())
-          this.contextMenu.visible = false
-        }
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
+        await navigator.clipboard.writeText(text)
+        this.contextMenu.visible = false
       } catch (err) {
         console.error('Copy failed:', err)
+        this.fallbackTextareaText = text
+        this.showCopyFallbackModal = true
+        this.contextMenu.visible = false
       }
     },
 
     async pasteText() {
       try {
+        if (!navigator.clipboard?.readText) throw new Error('Clipboard API not available')
         const text = await navigator.clipboard.readText()
         this.currentInput += text
         this.$refs.termInput?.focus()
@@ -822,6 +875,11 @@ export default {
       } catch (err) {
         console.error('Paste failed:', err)
       }
+    },
+
+    closeCopyFallbackModal() {
+      this.showCopyFallbackModal = false
+      this.fallbackTextareaText = ''
     },
 
     runQuickFromMenu(cmd) {

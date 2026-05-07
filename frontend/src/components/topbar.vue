@@ -411,7 +411,7 @@ export default {
       return this.username.slice(0, 2).toUpperCase()
     },
     lockPinSet() {
-      return !!localStorage.getItem('sc_lock_pin_hash')
+      return this.$store.getters['lock/lockPinSet']
     },
     unreadCount() {
       return this.recentAlerts.filter(a => !a.read).length

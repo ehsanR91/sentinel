@@ -160,6 +160,10 @@ export default {
         const { data } = await api.getLockSettings()
         this.lockEnabled = data.enabled || false
         this.lockPinSet = data.pinSet || false
+        this.$store.dispatch('lock/setLockState', {
+          enabled: this.lockEnabled,
+          pinSet: this.lockPinSet
+        })
       } catch (err) {
         if (err.response?.status !== 401) {
           console.error('Failed to load lock settings:', err)

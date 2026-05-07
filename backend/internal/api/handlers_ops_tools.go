@@ -36,8 +36,13 @@ var securityToolCatalog = []securityToolDef{
 		Name:        "clamav",
 		Label:       "ClamAV",
 		Description: "Fresh signature update + malware scan",
-		Command:     "freshclam && clamscan -r /etc --max-filesize=25M --infected --no-summary",
-		Timeout:     45 * time.Minute,
+		Command: `if command -v freshclam >/dev/null 2>&1; then
+  freshclam --quiet 2>&1 || echo "[WARN] freshclam update failed, continuing with current definitions"
+else
+  echo "[WARN] freshclam is not installed, skipping signature update"
+fi
+clamscan -r /etc --max-filesize=25M --infected --no-summary`,
+		Timeout: 45 * time.Minute,
 	},
 	{
 		Name:        "lynis",
@@ -251,6 +256,11 @@ func (h *Handlers) RunSecurityTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !commandExists(toolCommandBinary(tool.Name)) {
+		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("%s is not installed", tool.Label))
+		return
+	}
+
 	toolRunMu.Lock()
 	st := toolRunStore[name]
 	if st.Running {
@@ -266,6 +276,85 @@ func (h *Handlers) RunSecurityTool(w http.ResponseWriter, r *http.Request) {
 
 	go runSecurityToolJob(tool)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "running", "tool": name})
+}
+
+func (h *Handlers) InstallSecurityTool(w http.ResponseWriter, r *http.Request) {
+	if !sudoAvailable() {
+		writeError(w, http.StatusServiceUnavailable, sudoNotConfiguredMsg)
+		return
+	}
+	name := strings.TrimSpace(chi.URLParam(r, "name"))
+	_, ok := getSecurityToolDef(name)
+	if !ok {
+		writeError(w, http.StatusNotFound, "unknown tool")
+		return
+	}
+
+	pkg, ok := getSecurityToolPackage(name)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "installation is not supported for this tool")
+		return
+	}
+
+	if commandExists(toolCommandBinary(name)) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "already_installed"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	var output string
+	var err error
+	switch pkgFamily {
+	case "apt":
+		output, err = runPrivileged(ctx, "apt-get", "-y", "install", pkg)
+	case "dnf", "yum":
+		output, err = runPrivileged(ctx, pkgFamily, "-y", "install", pkg)
+	case "pacman":
+		output, err = runPrivileged(ctx, "pacman", "-S", "--noconfirm", pkg)
+	case "zypper":
+		output, err = runPrivileged(ctx, "zypper", "--non-interactive", "install", pkg)
+	default:
+		writeError(w, http.StatusServiceUnavailable, "unsupported package manager")
+		return
+	}
+
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("package install failed: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "installed", "output": strings.TrimSpace(output)})
+}
+
+func commandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func toolCommandBinary(name string) string {
+	switch name {
+	case "clamav":
+		return "clamscan"
+	default:
+		return name
+	}
+}
+
+func getSecurityToolPackage(name string) (string, bool) {
+	switch name {
+	case "chkrootkit":
+		return "chkrootkit", true
+	case "clamav":
+		return "clamav", true
+	case "rkhunter":
+		return "rkhunter", true
+	case "lynis":
+		return "lynis", true
+	default:
+		return "", false
+	}
 }
 
 func runSecurityToolJob(tool securityToolDef) {

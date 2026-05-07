@@ -605,6 +605,10 @@ export default {
         const { data } = await api.getLockSettings()
         this.lockEnabled = data.enabled || false
         this.lockPinSet = data.pinSet || false
+        this.$store.dispatch('lock/setLockState', {
+          enabled: this.lockEnabled,
+          pinSet: this.lockPinSet
+        })
       } catch (err) {
         console.error('Failed to load lock settings:', err)
       }
@@ -617,6 +621,7 @@ export default {
           const api = (await import('@/services/api')).default
           await api.clearLockPin()
           this.lockPinSet = false
+          this.$store.dispatch('lock/clearLock')
         } catch (err) {
           console.error('Failed to disable lock:', err)
           this.lockEnabled = true // revert toggle on error
@@ -640,6 +645,10 @@ export default {
         await api.saveLockPin(this.newPin, true)
         this.lockEnabled = true
         this.lockPinSet = true
+        this.$store.dispatch('lock/setLockState', {
+          enabled: this.lockEnabled,
+          pinSet: this.lockPinSet
+        })
         this.newPin = ''
         this.confirmPin = ''
         this.$swal({ toast: true, position: 'top-end', icon: 'success', title: 'Lock screen PIN set successfully', showConfirmButton: false, timer: 3000 })
@@ -660,6 +669,7 @@ export default {
         await api.clearLockPin()
         this.lockPinSet = false
         this.lockEnabled = false
+        this.$store.dispatch('lock/clearLock')
         this.$swal({ toast: true, position: 'top-end', icon: 'info', title: 'Lock PIN removed', showConfirmButton: false, timer: 2000 })
       } catch (err) {
         console.error('Failed to clear PIN:', err)

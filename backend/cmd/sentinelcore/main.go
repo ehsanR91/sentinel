@@ -227,6 +227,7 @@ func main() {
 		r.Delete("/api/v1/security/bans/{ip}", h.Unban)
 		r.Post("/api/v1/security/bans/{ip}", h.BanIP)
 		r.Post("/api/v1/security-tools/{name}/run", h.RunSecurityTool)
+		r.Post("/api/v1/security-tools/{name}/install", h.InstallSecurityTool)
 
 		// Firewall mutations
 		r.Post("/api/v1/firewall/rules", h.AddFirewallRule)

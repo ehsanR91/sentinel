@@ -128,9 +128,38 @@ export default {
       const { data } = await api.getSecurityTools()
       this.tools = Array.isArray(data) ? data : []
     },
-    async runTool(tool) {
+    async runTool(tool, installAttempted = false) {
       const api = (await import('@/services/api')).default
-      await api.runSecurityTool(tool.name)
+      try {
+        await api.runSecurityTool(tool.name)
+      } catch (err) {
+        const msg = err.detailedMessage || err.message || 'Failed to start tool'
+        if (!installAttempted && msg.toLowerCase().includes('not installed')) {
+          const confirmed = await this.$swal({
+            icon: 'warning',
+            title: `${tool.label} is not installed`,
+            text: `${tool.label} must be installed before it can run. Install it now?`,
+            showCancelButton: true,
+            confirmButtonText: 'Install',
+            cancelButtonText: 'Cancel'
+          })
+          if (confirmed.isConfirmed) {
+            try {
+              await api.installSecurityTool(tool.name)
+              this.$swal({ toast: true, position: 'top-end', icon: 'success', title: `${tool.label} install started`, showConfirmButton: false, timer: 2500 })
+              await this.loadTools()
+              return this.runTool(tool, true)
+            } catch (installErr) {
+              const installMsg = installErr.detailedMessage || installErr.message || 'Install failed'
+              this.$swal({ icon: 'error', title: `Install failed`, text: installMsg })
+            }
+          }
+        } else {
+          this.$swal({ icon: 'error', title: `Failed to start ${tool.label}`, text: msg })
+        }
+        return
+      }
+
       this.activeTool = tool
       this.activeLogs = { logs: [], running: true }
       this.showLogsModal = true
