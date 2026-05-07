@@ -8,6 +8,57 @@ It combines monitoring, firewall management, alerts, audit logs, user management
 
 ---
 
+## 🚀 Quick Install
+
+SentinelCore is built for Linux servers and VPS hosts.
+Use the deploy script to install and configure the stack safely.
+
+### Server prerequisites
+
+- Debian / Ubuntu:
+
+  ```bash
+  sudo apt update && sudo apt install -y curl git bash
+  ```
+
+- CentOS / RHEL / AlmaLinux / Amazon Linux:
+
+  ```bash
+  sudo yum install -y curl git bash
+  ```
+
+- Fedora:
+
+  ```bash
+  sudo dnf install -y curl git bash
+  ```
+
+### Clone and deploy
+
+```bash
+git clone https://github.com/ehsanR91/sentinel.git
+cd sentinelcore
+sudo bash deploy-sentinel.sh
+```
+
+### One-liner install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ehsanR91/sentinel/main/deploy-sentinel.sh | sudo bash
+```
+
+### Alternative one-liner using tarball
+
+```bash
+curl -fsSL https://github.com/ehsanR91/sentinel/archive/refs/heads/main.tar.gz | tar xz
+cd sentinel-main
+sudo bash deploy-sentinel.sh
+```
+
+> If your server does not have `curl`, substitute `wget -qO-` for `curl -fsSL`.
+
+---
+
 ## What It Does
 
 SentinelCore is designed to replace a pile of separate tools with a single security-first control plane:
@@ -214,12 +265,18 @@ The Settings page shows:
 
 ---
 
-## Deploy Script
+## 📦 Deploy Script
 
 The preferred production path is the interactive deploy script:
 
 ```bash
 sudo bash deploy-sentinel.sh
+```
+
+If you do not already have the repo, you can fetch and execute the installer in one line:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ehsanR91/sentinel/main/deploy-sentinel.sh | sudo bash
 ```
 
 It handles:
