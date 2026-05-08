@@ -112,102 +112,102 @@
             </td>
           </tr>
           <template v-else>
-            <tr
-              v-for="s in filtered"
-              :key="s.name"
-              class="service-row"
-              :class="{ expanded: expandedService === s.name, compact: compactDensity }"
-              @click="toggleExpand(s)"
-            >
-              <td class="service-cell">
-                <span class="status-dot" :class="statusDotClass(s)" aria-hidden="true"></span>
-                <div class="service-meta">
-                  <div class="service-label">{{ s.label }}</div>
-                  <div class="service-id font-mono">{{ s.package || s.name }}</div>
-                </div>
-              </td>
-              <td>
-                <span class="category-chip" :class="categoryClass(s)">{{ categoryLabel(s) }}</span>
-              </td>
-              <td>
-                <span class="status-pill" :class="statusPillClass(s)">{{ statusText(s) }}</span>
-              </td>
-              <td>{{ statusDetail(s) }}</td>
-              <td class="actions-cell">
-                <div class="service-actions">
-                  <button
-                    type="button"
-                    class="service-btn primary"
-                    :disabled="busy[s.name] || isTransitioning(s)"
-                    @click.stop="primaryAction(s)"
-                  >
-                    <i :class="`mdi ${primaryIcon(s)} me-1 ${busy[s.name] ? 'mdi-loading mdi-spin' : ''}`"></i>
-                    {{ primaryLabel(s) }}
-                  </button>
-                  <button
-                    type="button"
-                    class="service-btn secondary"
-                    :disabled="busy[s.name]"
-                    @click.stop="openServiceLogs(s)"
-                  >
-                    <i class="mdi mdi-file-document-box-outline me-1"></i>Logs
-                  </button>
-                  <button
-                    type="button"
-                    class="service-btn overflow"
-                    :disabled="busy[s.name]"
-                    @click.stop="toggleActionMenu(s.name)"
-                  >
-                    <i class="mdi mdi-dots-vertical"></i>
-                  </button>
-                  <div v-if="actionMenuOpen === s.name" class="service-action-menu shadow-sm">
-                    <button class="dropdown-item" @click.stop="openServiceLogs(s)">
-                      <i class="mdi mdi-file-document-box-outline me-1"></i>View logs
-                    </button>
-                    <button class="dropdown-item" @click.stop="openConfigEditor(s)" :disabled="!s.config">
-                      <i class="mdi mdi-file-document-edit me-1"></i>Edit config
-                    </button>
-                    <button class="dropdown-item" @click.stop="showServiceInfo(s)">
-                      <i class="mdi mdi-information-outline me-1"></i>View details
-                    </button>
-                    <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" @click.stop="act(s, s.running ? 'stop' : 'start')" :disabled="busy[s.name] || isTransitioning(s)">
-                      <i :class="`mdi mdi-${s.running ? 'stop' : 'play'} me-1`"></i>{{ s.running ? 'Stop' : 'Start' }}
-                    </button>
-                    <button class="dropdown-item" @click.stop="confirmReinstall(s)" :disabled="busy[s.name]">
-                      <i class="mdi mdi-refresh-circle me-1"></i>Reinstall
-                    </button>
-                    <button class="dropdown-item text-danger" @click.stop="confirmUninstall(s)" :disabled="busy[s.name]">
-                      <i class="mdi mdi-delete-outline me-1"></i>Uninstall
-                    </button>
+            <template v-for="s in filtered" :key="s.name">
+              <tr
+                class="service-row"
+                :class="{ expanded: expandedService === s.name, compact: compactDensity }"
+                @click="toggleExpand(s)"
+              >
+                <td class="service-cell">
+                  <span class="status-dot" :class="statusDotClass(s)" aria-hidden="true"></span>
+                  <div class="service-meta">
+                    <div class="service-label">{{ s.label }}</div>
+                    <div class="service-id font-mono">{{ s.package || s.name }}</div>
                   </div>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="expandedService === s.name" :key="`${s.name}-details`" class="service-details-row">
-              <td colspan="5" class="service-details-cell">
-                <div class="service-details-grid">
-                  <div>
-                    <span class="detail-label">Description</span>
-                    <p class="detail-text">{{ getServiceDescription(s.name) }}</p>
+                </td>
+                <td>
+                  <span class="category-chip" :class="categoryClass(s)">{{ categoryLabel(s) }}</span>
+                </td>
+                <td>
+                  <span class="status-pill" :class="statusPillClass(s)">{{ statusText(s) }}</span>
+                </td>
+                <td>{{ statusDetail(s) }}</td>
+                <td class="actions-cell">
+                  <div class="service-actions">
+                    <button
+                      type="button"
+                      class="service-btn primary"
+                      :disabled="busy[s.name] || isTransitioning(s)"
+                      @click.stop="primaryAction(s)"
+                    >
+                      <i :class="`mdi ${primaryIcon(s)} me-1 ${busy[s.name] ? 'mdi-loading mdi-spin' : ''}`"></i>
+                      {{ primaryLabel(s) }}
+                    </button>
+                    <button
+                      type="button"
+                      class="service-btn secondary"
+                      :disabled="busy[s.name]"
+                      @click.stop="openServiceLogs(s)"
+                    >
+                      <i class="mdi mdi-file-document-box-outline me-1"></i>Logs
+                    </button>
+                    <button
+                      type="button"
+                      class="service-btn overflow"
+                      :disabled="busy[s.name]"
+                      @click.stop="toggleActionMenu(s.name)"
+                    >
+                      <i class="mdi mdi-dots-vertical"></i>
+                    </button>
+                    <div v-if="actionMenuOpen === s.name" class="service-action-menu shadow-sm">
+                      <button class="dropdown-item" @click.stop="openServiceLogs(s)">
+                        <i class="mdi mdi-file-document-box-outline me-1"></i>View logs
+                      </button>
+                      <button class="dropdown-item" @click.stop="openConfigEditor(s)" :disabled="!s.config">
+                        <i class="mdi mdi-file-document-edit me-1"></i>Edit config
+                      </button>
+                      <button class="dropdown-item" @click.stop="showServiceInfo(s)">
+                        <i class="mdi mdi-information-outline me-1"></i>View details
+                      </button>
+                      <div class="dropdown-divider"></div>
+                      <button class="dropdown-item" @click.stop="act(s, s.running ? 'stop' : 'start')" :disabled="busy[s.name] || isTransitioning(s)">
+                        <i :class="`mdi mdi-${s.running ? 'stop' : 'play'} me-1`"></i>{{ s.running ? 'Stop' : 'Start' }}
+                      </button>
+                      <button class="dropdown-item" @click.stop="confirmReinstall(s)" :disabled="busy[s.name]">
+                        <i class="mdi mdi-refresh-circle me-1"></i>Reinstall
+                      </button>
+                      <button class="dropdown-item text-danger" @click.stop="confirmUninstall(s)" :disabled="busy[s.name]">
+                        <i class="mdi mdi-delete-outline me-1"></i>Uninstall
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <span class="detail-label">Config path</span>
-                    <div class="detail-meta font-mono">{{ s.config || 'None' }}</div>
+                </td>
+              </tr>
+              <tr v-if="expandedService === s.name" :key="`${s.name}-details`" class="service-details-row">
+                <td colspan="5" class="service-details-cell">
+                  <div class="service-details-grid">
+                    <div>
+                      <span class="detail-label">Description</span>
+                      <p class="detail-text">{{ getServiceDescription(s.name) }}</p>
+                    </div>
+                    <div>
+                      <span class="detail-label">Config path</span>
+                      <div class="detail-meta font-mono">{{ s.config || 'None' }}</div>
+                    </div>
+                    <div>
+                      <span class="detail-label">Unit name</span>
+                      <div class="detail-meta font-mono">{{ s.unit || s.name }}</div>
+                    </div>
                   </div>
-                  <div>
-                    <span class="detail-label">Unit name</span>
-                    <div class="detail-meta font-mono">{{ s.unit || s.name }}</div>
+                  <div class="service-details-actions">
+                    <button class="service-btn secondary" @click.stop="openConfigEditor(s)" :disabled="!s.config">Edit config</button>
+                    <button class="service-btn secondary" @click.stop="showServiceInfo(s)">Details</button>
+                    <button class="service-btn secondary" @click.stop="openServiceLogs(s)">View logs</button>
+                    <button v-if="s.config" class="service-btn secondary" @click.stop="copyConfigPath(s.config)">Copy path</button>
                   </div>
-                </div>
-                <div class="service-details-actions">
-                  <button class="service-btn secondary" @click.stop="openConfigEditor(s)" :disabled="!s.config">Edit config</button>
-                  <button class="service-btn secondary" @click.stop="showServiceInfo(s)">Details</button>
-                  <button class="service-btn secondary" @click.stop="openServiceLogs(s)">View logs</button>
-                  <button v-if="s.config" class="service-btn secondary" @click.stop="copyConfigPath(s.config)">Copy path</button>
-                </div>
-              </td>
-            </tr>
+                </td>
+              </tr>
+            </template>
           </template>
         </tbody>
       </table>
