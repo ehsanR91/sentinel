@@ -172,7 +172,7 @@ const sidebarSections = [
         id: 'settings',
         label: 'Settings',
         icon: 'mdi mdi-cog-outline',
-        link: '/settings',
+        link: '/settings/general',
         shortcut: 'g',
         keywords: ['preferences', 'configuration', 'config']
       }
@@ -181,11 +181,13 @@ const sidebarSections = [
 ]
 
 const settingsCommandEntries = [
-  { id: 'settings-general', label: 'Settings: General', route: '/settings', group: 'Settings', keywords: ['hostname', 'tls', 'listen address', 'admin email'] },
-  { id: 'settings-security', label: 'Settings: Security', route: '/settings', group: 'Settings', keywords: ['allowlist', 'login attempts', 'hardening'] },
-  { id: 'settings-integrations', label: 'Settings: Integrations', route: '/settings', group: 'Settings', keywords: ['recaptcha', 'ip lookup', 'api key'] },
-  { id: 'settings-2fa', label: 'Settings: Two-Factor Authentication', route: '/settings', group: 'Settings', keywords: ['totp', 'authy', 'google authenticator'] },
-  { id: 'settings-secret-gate', label: 'Settings: Secret Link Gate', route: '/settings', group: 'Settings', keywords: ['gate', 'secret path', 'cookie expiry'] }
+  { id: 'settings-general', label: 'Settings: General', route: '/settings/general', group: 'Settings', keywords: ['hostname', 'theme', 'admin email', 'timezone'] },
+  { id: 'settings-security', label: 'Settings: Security', route: '/settings/security', group: 'Settings', keywords: ['allowlist', 'login attempts', 'hardening'] },
+  { id: 'settings-access-control', label: 'Settings: Access Control', route: '/settings/access-control', group: 'Settings', keywords: ['totp', 'secret path', 'lock screen', 'pin'] },
+  { id: 'settings-notifications', label: 'Settings: Notifications', route: '/settings/notifications', group: 'Settings', keywords: ['smtp', 'mail', 'routing'] },
+  { id: 'settings-integrations', label: 'Settings: Integrations', route: '/settings/integrations', group: 'Settings', keywords: ['recaptcha', 'ip lookup', 'api key'] },
+  { id: 'settings-data-storage', label: 'Settings: Data & Storage', route: '/settings/data-storage', group: 'Settings', keywords: ['database', 'backup', 'prune'] },
+  { id: 'settings-danger-zone', label: 'Settings: Danger Zone', route: '/settings/danger-zone', group: 'Settings', keywords: ['disable 2fa', 'remove pin', 'restart'] }
 ]
 
 function flattenItems(items, section, parent = null) {

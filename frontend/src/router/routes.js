@@ -83,6 +83,10 @@ export default [
       },
       {
         path: 'settings',
+        redirect: '/settings/general'
+      },
+      {
+        path: 'settings/:section',
         name: 'Settings',
         component: () => import('@/views/settings/index.vue'),
         meta: { title: 'Settings', roles: ['admin', 'superadmin'] }
