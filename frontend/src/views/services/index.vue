@@ -55,97 +55,160 @@
     </div>
   </div>
 
-  <div class="card sc-panel-card mb-4">
-    <div class="card-header d-flex align-items-center justify-content-between">
-      <h6><i class="mdi mdi-cog-refresh-outline me-2" style="color:var(--sc-blue)"></i>Managed Services</h6>
-      <input v-model="q" class="form-control form-control-sm" placeholder="Filter services..." style="width:200px" />
+  <div class="card sc-panel-card mb-4 services-table-card">
+    <div class="card-header services-table-header">
+      <div>
+        <h6><i class="mdi mdi-cog-refresh-outline me-2" style="color:var(--sc-blue)"></i>Managed Services</h6>
+        <div class="services-table-note">Browse, monitor and manage all system services from one pane.</div>
+      </div>
+      <div class="services-toolbar">
+        <div class="toolbar-left">
+          <div class="services-search">
+            <i class="mdi mdi-magnify"></i>
+            <input
+              v-model="q"
+              @input="clearExpanded"
+              class="form-control"
+              placeholder="Search services…"
+              type="search"
+            />
+          </div>
+          <button type="button" class="filter-chip" :class="{ active: runningOnly }" @click="runningOnly = !runningOnly">
+            Running only
+          </button>
+          <button type="button" class="filter-chip" :class="{ active: failedOnly }" @click="failedOnly = !failedOnly">
+            With issues
+          </button>
+        </div>
+        <div class="toolbar-right">
+          <button type="button" class="btn btn-sm btn-secondary" @click="toggleDensity">
+            <i class="mdi mdi-view-grid-outline me-1"></i>{{ densityLabel }}
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary" :disabled="loading" @click="loadAll">
+            <i :class="`mdi ${loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'} me-1`"></i>Refresh
+          </button>
+        </div>
+      </div>
     </div>
     <div class="card-body p-0">
-      <table class="table mb-0">
+      <table class="services-table">
         <thead>
           <tr>
-            <th>Service</th>
-            <th>Package</th>
+            <th class="service-col">Service</th>
             <th>Category</th>
             <th>Status</th>
-            <th>Config</th>
-            <th>Actions</th>
+            <th>Uptime</th>
+            <th class="actions-col">Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!filtered.length">
-            <td colspan="6" class="text-center py-4 sc-text-muted">No services match your filter</td>
+          <tr v-if="loading" v-for="n in 6" :key="`skeleton-${n}`" class="service-row skeleton-row">
+            <td colspan="5"><div class="skeleton-row-placeholder"></div></td>
           </tr>
-          <tr v-for="s in filtered" :key="s.name">
-            <td>
-              <div class="d-flex align-items-center gap-2">
-                <span class="status-dot" :class="s.running ? 'online' : (s.installed ? 'warn' : 'offline')"></span>
-                <div>
+          <tr v-else-if="!filtered.length" class="service-row no-data-row">
+            <td colspan="5" class="text-center py-4 sc-text-muted">
+              <div class="no-data-title">No services match your filter</div>
+              <button class="btn btn-sm btn-secondary" @click="clearFilter">Clear filters</button>
+            </td>
+          </tr>
+          <template v-else>
+            <tr
+              v-for="s in filtered"
+              :key="s.name"
+              class="service-row"
+              :class="{ expanded: expandedService === s.name, compact: compactDensity }"
+              @click="toggleExpand(s)"
+            >
+              <td class="service-cell">
+                <span class="status-dot" :class="statusDotClass(s)" aria-hidden="true"></span>
+                <div class="service-meta">
                   <div class="service-label">{{ s.label }}</div>
-                  <div class="service-name font-mono">{{ s.name }}</div>
+                  <div class="service-id font-mono">{{ s.package || s.name }}</div>
                 </div>
-                <button class="btn btn-sm service-info-btn" @click="showServiceInfo(s)">
-                  <i class="mdi mdi-information-outline"></i>
-                </button>
-                <button class="btn btn-sm service-config-btn" @click="openConfigEditor(s)" :title="'Edit config: ' + s.config">
-                  <i class="mdi mdi-file-document-edit"></i>
-                </button>
-              </div>
-            </td>
-            <td class="font-mono sc-text-secondary">{{ s.package }}</td>
-            <td>
-              <span class="badge category-badge" :class="getCategoryClass(s.name)">{{ getCategory(s.name) }}</span>
-            </td>
-            <td>
-              <span class="badge rounded-pill" :class="statusBadge(s)" :title="statusTooltip(s)">{{ statusLabel(s) }}</span>
-            </td>
-            <td class="font-mono sc-text-muted">{{ s.config || '—' }}</td>
-            <td>
-              <div class="d-flex gap-1 flex-wrap align-items-center">
-                <button v-if="!s.installed" class="btn btn-sm btn-install" :disabled="busy[s.name]" @click="installService(s)">
-                  <i class="mdi mdi-package-down me-1"></i>Install
-                </button>
-                <button v-if="s.installed && !s.running && !isGhost(s)" class="btn btn-sm btn-start" :disabled="busy[s.name]" :title="actionTitle(s, 'start')" @click="act(s, 'start')">
-                  Start
-                </button>
-                <button v-if="s.installed && s.running" class="btn btn-sm btn-restart" :disabled="busy[s.name]" :title="actionTitle(s, 'restart')" @click="act(s, 'restart')">
-                  Restart
-                </button>
-                <button v-if="s.installed && s.running" class="btn btn-sm btn-stop" :disabled="busy[s.name]" :title="actionTitle(s, 'stop')" @click="act(s, 'stop')">
-                  Stop
-                </button>
-                <button v-if="s.installed || isGhost(s)" class="btn btn-sm btn-logs" :disabled="busy[s.name]" @click="openServiceLogs(s)">
-                  <i class="mdi mdi-file-document-box-outline me-1"></i>Logs
-                </button>
-                <div v-if="s.installed" class="position-relative">
-                  <button class="btn btn-sm btn-more" :disabled="busy[s.name]" @click.stop="toggleActionMenu(s.name)">
+              </td>
+              <td>
+                <span class="category-chip" :class="categoryClass(s)">{{ categoryLabel(s) }}</span>
+              </td>
+              <td>
+                <span class="status-pill" :class="statusPillClass(s)">{{ statusText(s) }}</span>
+              </td>
+              <td>{{ statusDetail(s) }}</td>
+              <td class="actions-cell">
+                <div class="service-actions">
+                  <button
+                    type="button"
+                    class="service-btn primary"
+                    :disabled="busy[s.name] || isTransitioning(s)"
+                    @click.stop="primaryAction(s)"
+                  >
+                    <i :class="`mdi ${primaryIcon(s)} me-1 ${busy[s.name] ? 'mdi-loading mdi-spin' : ''}`"></i>
+                    {{ primaryLabel(s) }}
+                  </button>
+                  <button
+                    type="button"
+                    class="service-btn secondary"
+                    :disabled="busy[s.name]"
+                    @click.stop="openServiceLogs(s)"
+                  >
+                    <i class="mdi mdi-file-document-box-outline me-1"></i>Logs
+                  </button>
+                  <button
+                    type="button"
+                    class="service-btn overflow"
+                    :disabled="busy[s.name]"
+                    @click.stop="toggleActionMenu(s.name)"
+                  >
                     <i class="mdi mdi-dots-vertical"></i>
                   </button>
                   <div v-if="actionMenuOpen === s.name" class="service-action-menu shadow-sm">
-                    <button class="dropdown-item" @click.stop="act(s, 'restart')" :disabled="busy[s.name]">
-                      <i class="mdi mdi-restart me-1"></i>Restart
+                    <button class="dropdown-item" @click.stop="openServiceLogs(s)">
+                      <i class="mdi mdi-file-document-box-outline me-1"></i>View logs
                     </button>
-                    <button class="dropdown-item" @click.stop="act(s, s.running ? 'stop' : 'start')" :disabled="busy[s.name]">
-                      <i :class="`mdi mdi-${s.running ? 'stop' : 'play'} me-1`"></i>{{ s.running ? 'Stop' : 'Start' }}
+                    <button class="dropdown-item" @click.stop="openConfigEditor(s)" :disabled="!s.config">
+                      <i class="mdi mdi-file-document-edit me-1"></i>Edit config
                     </button>
-                    <button class="dropdown-item" @click.stop="act(s, 'enable')" :disabled="busy[s.name] || s.active_state !== 'inactive'">
-                      <i class="mdi mdi-toggle-switch me-1"></i>Enable
-                    </button>
-                    <button class="dropdown-item" @click.stop="act(s, 'disable')" :disabled="busy[s.name] || s.active_state === 'inactive'">
-                      <i class="mdi mdi-toggle-switch-off me-1"></i>Disable
+                    <button class="dropdown-item" @click.stop="showServiceInfo(s)">
+                      <i class="mdi mdi-information-outline me-1"></i>View details
                     </button>
                     <div class="dropdown-divider"></div>
+                    <button class="dropdown-item" @click.stop="act(s, s.running ? 'stop' : 'start')" :disabled="busy[s.name] || isTransitioning(s)">
+                      <i :class="`mdi mdi-${s.running ? 'stop' : 'play'} me-1`"></i>{{ s.running ? 'Stop' : 'Start' }}
+                    </button>
                     <button class="dropdown-item" @click.stop="confirmReinstall(s)" :disabled="busy[s.name]">
-                      <i class="mdi mdi-refresh-circle me-1"></i>Re-Install
+                      <i class="mdi mdi-refresh-circle me-1"></i>Reinstall
                     </button>
                     <button class="dropdown-item text-danger" @click.stop="confirmUninstall(s)" :disabled="busy[s.name]">
                       <i class="mdi mdi-delete-outline me-1"></i>Uninstall
                     </button>
                   </div>
                 </div>
-              </div>
-            </td>
-          </tr>
+              </td>
+            </tr>
+            <tr v-if="expandedService === s.name" :key="`${s.name}-details`" class="service-details-row">
+              <td colspan="5" class="service-details-cell">
+                <div class="service-details-grid">
+                  <div>
+                    <span class="detail-label">Description</span>
+                    <p class="detail-text">{{ getServiceDescription(s.name) }}</p>
+                  </div>
+                  <div>
+                    <span class="detail-label">Config path</span>
+                    <div class="detail-meta font-mono">{{ s.config || 'None' }}</div>
+                  </div>
+                  <div>
+                    <span class="detail-label">Unit name</span>
+                    <div class="detail-meta font-mono">{{ s.unit || s.name }}</div>
+                  </div>
+                </div>
+                <div class="service-details-actions">
+                  <button class="service-btn secondary" @click.stop="openConfigEditor(s)" :disabled="!s.config">Edit config</button>
+                  <button class="service-btn secondary" @click.stop="showServiceInfo(s)">Details</button>
+                  <button class="service-btn secondary" @click.stop="openServiceLogs(s)">View logs</button>
+                  <button v-if="s.config" class="service-btn secondary" @click.stop="copyConfigPath(s.config)">Copy path</button>
+                </div>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -419,6 +482,10 @@ export default {
       cfg: {},
       showInfoModal: false,
       selectedService: null,
+      expandedService: null,
+      runningOnly: false,
+      failedOnly: false,
+      compactDensity: false,
       // Service installation log window
       showInstallLogWindow: false,
       installingService: '',
@@ -451,13 +518,20 @@ export default {
   },
   computed: {
     filtered() {
-      if (!this.q) return this.services
-      const t = this.q.toLowerCase()
-      return this.services.filter(s =>
-        s.name.toLowerCase().includes(t) ||
-        s.label.toLowerCase().includes(t) ||
-        (s.package || '').toLowerCase().includes(t)
-      )
+      const query = this.q.trim().toLowerCase()
+      return this.services
+        .filter(s => {
+          if (query) {
+            const haystack = `${s.name} ${s.label} ${s.package || ''}`.toLowerCase()
+            if (!haystack.includes(query)) return false
+          }
+          if (this.runningOnly && !s.running) return false
+          if (this.failedOnly && (s.running || !s.installed)) return false
+          return true
+        })
+    },
+    densityLabel() {
+      return this.compactDensity ? 'Compact view' : 'Comfort view'
     },
     installedCount() {
       return this.services.filter(s => s.installed).length
@@ -529,7 +603,94 @@ export default {
       if (label === 'Disabled') return 'The service is installed but currently disabled.'
       if (label === 'Exited') return 'The service is installed but currently not active; it may have stopped or failed.'
       if (label === 'Not Installed') return 'The service package is not installed.'
+      if (label === 'Stale Unit') return 'A systemd unit exists without an installed package. Install the package to reconcile it.'
       return 'The service state is unavailable or inconsistent.'
+    },
+    toggleDensity() {
+      this.compactDensity = !this.compactDensity
+    },
+    clearExpanded() {
+      this.expandedService = null
+    },
+    clearFilter() {
+      this.q = ''
+      this.runningOnly = false
+      this.failedOnly = false
+      this.clearExpanded()
+    },
+    toggleExpand(s) {
+      this.expandedService = this.expandedService === s.name ? null : s.name
+    },
+    statusDotClass(s) {
+      if (this.isGhost(s)) return 'status-ghost'
+      if (!s.installed) return 'status-missing'
+      if (s.running) return 'status-online'
+      if (s.active_state === 'inactive') return 'status-disabled'
+      return 'status-offline'
+    },
+    statusPillClass(s) {
+      if (this.isGhost(s)) return 'pill-ghost'
+      if (!s.installed) return 'pill-warning'
+      if (s.running) return 'pill-online'
+      if (s.active_state === 'inactive') return 'pill-disabled'
+      return 'pill-offline'
+    },
+    categoryLabel(s) {
+      return this.getCategory(s.name)
+    },
+    categoryClass(s) {
+      return `category-${this.getCategory(s.name)}`
+    },
+    statusDetail(s) {
+      if (!s.installed) return 'Install package'
+      if (s.running && Number.isFinite(s.uptime)) {
+        return `Running for ${this.formatDuration(s.uptime)}`
+      }
+      if (s.active_state === 'inactive') return 'Service disabled'
+      if (this.isGhost(s)) return 'Stale unit'
+      return s.active_state ? this.capitalize(s.active_state) : 'Unknown state'
+    },
+    isTransitioning(s) {
+      return ['activating', 'deactivating', 'starting', 'stopping'].includes(s.active_state)
+    },
+    primaryLabel(s) {
+      if (!s.installed) return 'Install'
+      if (s.running) return 'Restart'
+      return 'Start'
+    },
+    primaryIcon(s) {
+      if (!s.installed) return 'mdi-package-down'
+      if (s.running) return 'mdi-restart'
+      return 'mdi-play'
+    },
+    async primaryAction(s) {
+      if (!s.installed) {
+        return this.installService(s)
+      }
+      if (s.running) {
+        return this.act(s, 'restart')
+      }
+      return this.act(s, 'start')
+    },
+    copyConfigPath(path) {
+      if (!navigator.clipboard) return
+      navigator.clipboard.writeText(path).then(() => {
+        this.$swal({ toast: true, position: 'top-end', icon: 'success', title: 'Copied config path', showConfirmButton: false, timer: 1500 })
+      })
+    },
+    formatDuration(seconds) {
+      if (!Number.isFinite(seconds) || seconds < 0) return 'Unknown duration'
+      const days = Math.floor(seconds / 86400)
+      const hours = Math.floor((seconds % 86400) / 3600)
+      const mins = Math.floor((seconds % 3600) / 60)
+      const parts = []
+      if (days) parts.push(`${days}d`)
+      if (hours) parts.push(`${hours}h`)
+      if (mins || !parts.length) parts.push(`${mins}m`)
+      return parts.join(' ')
+    },
+    capitalize(value) {
+      return value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : ''
     },
     prettyKey(key) {
       return key.replaceAll('_', ' ')
@@ -883,6 +1044,278 @@ export default {
 .service-name {
   font-size: 0.68rem;
   color: var(--sc-text-muted, #5a7499);
+}
+
+.services-table-card .card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.services-table-note {
+  margin-top: 0.25rem;
+  color: var(--sc-text-secondary, #8aa4c8);
+  font-size: 0.86rem;
+}
+
+.services-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.toolbar-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.services-search {
+  position: relative;
+  min-width: 240px;
+  width: min(100%, 320px);
+}
+
+.services-search i {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--sc-text-muted, #5a7499);
+}
+
+.services-search input {
+  padding-left: 2.4rem;
+}
+
+.filter-chip {
+  border: 1px solid var(--sc-border, #1e2d4a);
+  background: var(--sc-bg-secondary, #0b1525);
+  color: var(--sc-text, #e2ecff);
+  border-radius: 999px;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.78rem;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.filter-chip.active {
+  background: rgba(74, 158, 255, 0.14);
+  border-color: rgba(74, 158, 255, 0.3);
+  color: #4a9eff;
+}
+
+.toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.services-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.services-table th,
+.services-table td {
+  padding: 1rem 1.25rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--sc-border, #1e2d4a);
+}
+
+.services-table thead {
+  background: rgba(255, 255, 255, 0.03);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.service-cell {
+  min-width: 250px;
+}
+
+.service-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  text-transform: capitalize;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.service-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.service-btn {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 0.55rem 0.95rem;
+  font-size: 0.8rem;
+  color: var(--sc-text, #e2ecff);
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.18s ease, transform 0.15s ease;
+}
+
+.service-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.service-btn.primary {
+  background: rgba(74, 158, 255, 0.14);
+  border-color: rgba(74, 158, 255, 0.28);
+}
+
+.service-btn.secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.service-btn.overflow {
+  min-width: 36px;
+  width: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.service-details-row {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.service-details-cell {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.service-details-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detail-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--sc-text-secondary, #8aa4c8);
+  margin-bottom: 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detail-text {
+  margin: 0;
+  color: var(--sc-text, #e2ecff);
+}
+
+.detail-meta {
+  color: var(--sc-text-muted, #5a7499);
+}
+
+.service-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0.85rem;
+  flex-shrink: 0;
+  background: var(--sc-border, #1e2d4a);
+}
+
+.status-online { background: #22d67c; }
+.status-offline { background: #f5a623; }
+.status-disabled { background: #f5a623; }
+.status-missing { background: #f5a623; }
+.status-ghost { background: #f5a623; border: 1px dashed rgba(245, 166, 35, 0.6); }
+
+.pill-online { background: rgba(34, 214, 124, 0.12); color: #22d67c; }
+.pill-offline { background: rgba(245, 166, 35, 0.12); color: #f5a623; }
+.pill-disabled { background: rgba(245, 166, 35, 0.12); color: #f5a623; }
+.pill-warning { background: rgba(245, 166, 35, 0.12); color: #f5a623; }
+.pill-ghost { background: rgba(245, 166, 35, 0.12); color: #f5a623; border: 1px dashed rgba(245, 166, 35, 0.35); }
+
+.skeleton-row-placeholder {
+  height: 72px;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.06) 100%);
+  border-radius: 16px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .service-details-grid {
+    grid-template-columns: 1fr;
+  }
+  .services-table th,
+  .services-table td {
+    padding: 0.85rem 1rem;
+  }
+}
+
+@media (max-width: 700px) {
+  .services-table thead {
+    display: none;
+  }
+  .service-row,
+  .service-details-row {
+    display: block;
+    border-bottom: 1px solid var(--sc-border, #1e2d4a);
+  }
+  .service-row {
+    padding: 0.75rem 0;
+  }
+  .service-cell,
+  .actions-cell {
+    display: block;
+    width: 100%;
+  }
+  .service-cell {
+    padding-bottom: 0.75rem;
+  }
+  .actions-cell {
+    padding-top: 0.75rem;
+  }
+  .service-actions {
+    justify-content: flex-start;
+  }
+  .service-details-cell {
+    padding: 1rem 0 1.25rem;
+  }
 }
 
 /* Category badges */

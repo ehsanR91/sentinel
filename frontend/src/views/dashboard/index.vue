@@ -292,6 +292,22 @@ import HealthCheck   from '@/components/widgets/health-check.vue'
 import draggable     from 'vuedraggable'
 import { mapGetters } from 'vuex'
 
+function sanitizeSeries(data = []) {
+  return data.map(value => {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : null
+  })
+}
+
+function assertFiniteSeries(series, name) {
+  if (!import.meta.env.DEV) return
+  series.forEach((value, index) => {
+    if (value !== null && !Number.isFinite(value)) {
+      console.error('Non-finite chart value in series', { name, index, value })
+    }
+  })
+}
+
 const DEFAULT_WIDGETS = [
   { id: 'health' },
   { id: 'alerts' },
@@ -391,8 +407,10 @@ export default {
     uptime()    { return fmtUptime(this.snap.uptime) },
 
     cpuChart() {
+      const series = sanitizeSeries(this.cpuHistory)
+      assertFiniteSeries(series, 'cpuHistory')
       return {
-        series: [{ name: 'CPU %', data: [...this.cpuHistory] }],
+        series: [{ name: 'CPU %', data: series }],
         options: {
           ...CHART_OPTS_BASE('#4a9eff'),
           yaxis: { min: 0, max: 100, labels: { style: { colors: '#5a7499', fontSize: '11px' }, formatter: v => `${v}%` } },
@@ -402,10 +420,14 @@ export default {
     },
 
     netChart() {
+      const rxSeries = sanitizeSeries(this.netRxHistory)
+      const txSeries = sanitizeSeries(this.netTxHistory)
+      assertFiniteSeries(rxSeries, 'netRxHistory')
+      assertFiniteSeries(txSeries, 'netTxHistory')
       return {
         series: [
-          { name: 'RX', data: [...this.netRxHistory] },
-          { name: 'TX', data: [...this.netTxHistory] }
+          { name: 'RX', data: rxSeries },
+          { name: 'TX', data: txSeries }
         ],
         options: {
           ...CHART_OPTS_BASE('#22d67c'),

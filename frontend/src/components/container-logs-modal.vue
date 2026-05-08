@@ -177,7 +177,7 @@
 
         <div class="clm-banner" v-if="banner">{{ banner }}</div>
 
-        <div class="clm-viewer" ref="viewer" @scroll="onScroll">
+        <div class="clm-viewer" ref="viewer" @scroll.passive="onScroll">
           <div :style="{ height: topSpacer + 'px' }"></div>
           <div v-for="line in visibleLines" :key="line.key" class="clm-line" :class="{ stderr: line.stream === 'stderr', highlight: line.isMatch }">
             <div class="clm-line-number">{{ line.lineNumber }}</div>

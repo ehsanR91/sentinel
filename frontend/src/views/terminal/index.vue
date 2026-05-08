@@ -53,7 +53,7 @@
           </div>
 
           <!-- Output -->
-          <div ref="termOutput" class="log-terminal" style="height:480px;overflow-y:auto;border-radius:0" @click="focusInput" @scroll="onTerminalScroll" @mouseup="autoCopySelection" @contextmenu.prevent="showContextMenu" @touchstart="handleTouchStart" @touchend="handleTouchEnd">
+          <div ref="termOutput" class="log-terminal" style="height:480px;overflow-y:auto;border-radius:0" @click="focusInput" @scroll.passive="onTerminalScroll" @mouseup="autoCopySelection" @contextmenu.prevent="showContextMenu" @touchstart.passive="handleTouchStart" @touchend="handleTouchEnd">
             <div v-for="(line, i) in termLines" :key="i">
               <span v-if="line.type === 'cmd'" style="user-select:none">
                 <span style="color:#22d67c;font-family:monospace;font-size:0.78rem">{{ sessionUser }}@{{ hostname }}</span>

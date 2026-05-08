@@ -273,6 +273,22 @@
 import PageHeader from '@/components/page-header.vue'
 import { mapGetters } from 'vuex'
 
+function sanitizeSeries(data = []) {
+  return data.map(value => {
+    const num = Number(value)
+    return Number.isFinite(num) ? num : null
+  })
+}
+
+function assertFiniteSeries(series, name) {
+  if (!import.meta.env.DEV) return
+  series.forEach((value, index) => {
+    if (value !== null && !Number.isFinite(value)) {
+      console.error('Non-finite chart value in series', { name, index, value })
+    }
+  })
+}
+
 function fmtBytes (b) {
   if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB'
   if (b >= 1048576)    return (b / 1048576).toFixed(1) + ' MB'
@@ -378,9 +394,13 @@ export default {
     },
 
     timelineSeries() {
+      const cpuSeries = sanitizeSeries(this.cpuHistory)
+      const ramSeries = sanitizeSeries(this.ramHistory)
+      assertFiniteSeries(cpuSeries, 'cpuHistory')
+      assertFiniteSeries(ramSeries, 'ramHistory')
       return [
-        { name: 'CPU %', data: [...this.cpuHistory] },
-        { name: 'RAM %', data: [...this.ramHistory] }
+        { name: 'CPU %', data: cpuSeries },
+        { name: 'RAM %', data: ramSeries }
       ]
     },
 

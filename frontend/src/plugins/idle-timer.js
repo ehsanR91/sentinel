@@ -45,12 +45,17 @@ export default {
       router = opts.router
       api = opts.api
       onIdleCallback = opts.onIdle
-      events.forEach(e => document.addEventListener(e, activityHandler, true))
+      events.forEach(e => {
+        const options = { capture: true, passive: e === 'scroll' || e === 'touchstart' }
+        document.addEventListener(e, activityHandler, options)
+      })
       resetTimers()
     }
 
     function stop() {
-      events.forEach(e => document.removeEventListener(e, activityHandler, true))
+      events.forEach(e => {
+        document.removeEventListener(e, activityHandler, { capture: true })
+      })
       clearTimeout(idleTimer)
       clearTimeout(warningTimer)
     }

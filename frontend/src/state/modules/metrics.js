@@ -1,6 +1,13 @@
 import ws from '@/services/ws'
 
 const HISTORY_LEN = 30
+const NUMERIC_SNAP_KEYS = [
+  'cpu_pct', 'ram_pct', 'swap_pct', 'disk_pct',
+  'ram_used', 'ram_total', 'swap_used', 'swap_total',
+  'disk_used', 'disk_total', 'disk_free',
+  'net_rx_rate', 'net_tx_rate', 'net_rx_total', 'net_tx_total',
+  'load1', 'load5', 'load15', 'uptime'
+]
 
 function emptySnap () {
   return {
@@ -14,6 +21,31 @@ function emptySnap () {
     uptime: 0, hostname: '', os: '', kernel: '', platform: '',
     ts: 0
   }
+}
+
+function sanitizeNumber (value) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : null
+}
+
+function sanitizeSnap (snap) {
+  const sanitized = { ...snap }
+  NUMERIC_SNAP_KEYS.forEach((key) => {
+    if (key in sanitized) {
+      const num = sanitizeNumber(sanitized[key])
+      sanitized[key] = num === null ? 0 : num
+    }
+  })
+  return sanitized
+}
+
+function assertFiniteHistory (history, name) {
+  if (!import.meta.env.DEV) return
+  history.forEach((value, index) => {
+    if (value !== null && !Number.isFinite(value)) {
+      console.error('Non-finite chart history value', { history: name, index, value })
+    }
+  })
 }
 
 function initHistory () {
@@ -36,12 +68,25 @@ export default {
 
   mutations: {
     SET_SNAP (state, snap) {
-      state.snap = snap
+      const sanitizedSnap = sanitizeSnap(snap)
+      state.snap = sanitizedSnap
 
-      state.cpuHistory = [...state.cpuHistory.slice(1), snap.cpu_pct]
-      state.ramHistory = [...state.ramHistory.slice(1), snap.ram_pct]
-      state.netRxHistory = [...state.netRxHistory.slice(1), snap.net_rx_rate]
-      state.netTxHistory = [...state.netTxHistory.slice(1), snap.net_tx_rate]
+      const cpuPoint = sanitizeNumber(snap.cpu_pct)
+      const ramPoint = sanitizeNumber(snap.ram_pct)
+      const rxPoint = sanitizeNumber(snap.net_rx_rate)
+      const txPoint = sanitizeNumber(snap.net_tx_rate)
+
+      state.cpuHistory = [...state.cpuHistory.slice(1), cpuPoint]
+      state.ramHistory = [...state.ramHistory.slice(1), ramPoint]
+      state.netRxHistory = [...state.netRxHistory.slice(1), rxPoint]
+      state.netTxHistory = [...state.netTxHistory.slice(1), txPoint]
+
+      if (import.meta.env.DEV) {
+        assertFiniteHistory(state.cpuHistory, 'cpuHistory')
+        assertFiniteHistory(state.ramHistory, 'ramHistory')
+        assertFiniteHistory(state.netRxHistory, 'netRxHistory')
+        assertFiniteHistory(state.netTxHistory, 'netTxHistory')
+      }
     },
     SET_WS_CONNECTED (state, val) { state.wsConnected = val },
     SET_PROCESSES (state, list) { state.processes = list },
