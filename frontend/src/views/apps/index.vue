@@ -1,900 +1,1255 @@
 <template>
-<div class="sc-view sc-view-apps">
-  <PageHeader title="Apps" icon="mdi mdi-apps" :items="[{ text: 'Apps', active: true, icon: 'mdi mdi-apps' }]">
-    <template #actions>
-      <button class="btn btn-sm btn-sc-primary" :disabled="loading" @click="refreshApps">
-        <i :class="`mdi ${loading ? 'mdi-loading mdi-spin' : 'mdi-refresh'} me-1`"></i>
-        Refresh
-      </button>
-    </template>
-  </PageHeader>
+  <div class="sc-page-shell sc-focus-ring apps-page" tabindex="0" @keydown="handleKeyboardNavigation">
+    <PageHeader title="Apps" icon="mdi mdi-apps" :items="[{ text: 'Apps', active: true, icon: 'mdi mdi-apps' }]">
+      <template #actions>
+        <AppButton variant="secondary" size="md" icon="mdi mdi-refresh" :loading="loading" label="Refresh" @click="refreshApps" />
+        <AppButton variant="secondary" size="md" icon="mdi mdi-text-box-search-outline" :label="showLogPanel ? 'Hide Activity' : 'Show Activity'" @click="showLogPanel = !showLogPanel" />
+        <AppButton variant="primary" size="md" icon="mdi mdi-package-variant-closed" label="Open Catalog" @click="showDrawer = true; selectedAppName = filteredApps[0]?.name || ''" />
+      </template>
+    </PageHeader>
 
-  <!-- Live Operation Log Window -->
-  <div v-if="showLogWindow" class="card mb-4 app-log-card">
-    <div class="card-header d-flex align-items-center justify-content-between">
-      <h6>
-        <i class="mdi mdi-terminal me-2" style="color:var(--sc-cyan)"></i>
-        {{ opKindLabel }} Log
-        <span class="ms-2 font-mono" style="font-size:0.72rem;color:var(--sc-text-muted)">{{ currentOpApp }}</span>
-      </h6>
-      <div class="d-flex gap-2 align-items-center">
-        <span class="status-dot" :class="opRunning ? 'online pulsing' : (opError ? 'offline' : 'warn')"></span>
-        <span style="font-size:0.72rem;color:var(--sc-text-muted)">
-          {{ opRunning ? 'running...' : (opError ? 'failed' : 'done') }}
-        </span>
-        <button class="btn btn-sm" style="background:rgba(90,116,153,.1);color:#5a7499" @click="closeLogWindow">
-          <i class="mdi mdi-close"></i>
-        </button>
+    <div v-if="updatesCount" class="sc-inline-error updates-banner">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <strong>{{ updatesCount }} apps have updates available</strong>
+        <span>Filter to upgrades or queue them from the selection bar.</span>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <AppButton variant="secondary" size="sm" icon="mdi mdi-arrow-up-circle-outline" label="Show updates" @click="installState = 'updates'" />
+        <AppButton variant="ghost" size="sm" icon="mdi mdi-close" label="Dismiss" @click="updatesCount && (installState = 'all')" />
       </div>
     </div>
-    <div class="card-body p-0">
-      <div class="app-log-window" ref="logWindow">
-        <div v-for="(line, idx) in opLogs" :key="idx" class="app-log-line font-mono">
-          <span class="log-ts">{{ line.ts }}</span>
-          <span :class="`log-text ${line.type}`">{{ line.text }}</span>
+
+    <div v-if="showLogPanel && (opLogs.length || opRunning || queueItems.length)" class="sc-surface op-panel">
+      <div class="op-panel__header">
+        <div>
+          <h5 class="mb-1">Operation Activity</h5>
+          <div class="text-muted text-sm">
+            {{ opRunning ? `${currentOpLabel} running` : 'No active operation' }}
+            <span v-if="queueItems.length"> · {{ queueItems.length }} queued</span>
+          </div>
         </div>
-        <div v-if="opRunning" class="app-log-line font-mono log-cursor-line">
-          <span class="log-ts">—</span>
-          <span class="log-text">running...</span>
-        </div>
-        <div v-if="opError" class="app-log-line font-mono">
-          <span class="log-ts">ERR</span>
-          <span class="log-text error">{{ opError }}</span>
+        <div class="d-flex flex-wrap gap-2">
+          <StatusBadge :state="opRunning ? 'pending' : (opError ? 'error' : 'ok')" :label="opRunning ? 'Running' : (opError ? 'Failed' : 'Idle')" />
+          <AppButton variant="ghost" size="sm" icon="mdi mdi-delete-outline" label="Clear" @click="opLogs = []" />
         </div>
       </div>
+      <div v-if="opRunning" class="op-progress-bar"><span></span></div>
+      <div ref="logWindow" class="op-log-window">
+        <div v-for="(line, index) in opLogs" :key="`${index}-${line.ts}`" class="op-log-line" :class="`op-log-line--${line.type}`">
+          <span class="op-log-time">{{ line.ts }}</span>
+          <span>{{ line.text }}</span>
+        </div>
+        <div v-if="opError" class="op-log-line op-log-line--error">
+          <span class="op-log-time">ERR</span>
+          <span>{{ opError }}</span>
+        </div>
+      </div>
     </div>
-    <div class="card-footer d-flex align-items-center justify-content-between">
-      <button class="btn btn-sm" style="background:rgba(74,158,255,.1);color:#4a9eff;font-size:.72rem" @click="opLogs = []">
-        <i class="mdi mdi-delete-empty me-1"></i>Clear
-      </button>
-      <span style="font-size:.72rem;color:var(--sc-text-muted)">{{ opLogs.length }} lines</span>
-    </div>
-  </div>
 
-  <!-- Stat cards -->
-  <div class="row g-3 mb-4">
-    <div class="col-xl-3 col-md-6">
-      <StatCard label="Total Apps" :value="apps.length" sub="in catalog" icon="mdi mdi-apps" icon-color="#4a9eff" icon-bg="rgba(74,158,255,.12)" />
+    <div class="row g-3 stat-row">
+      <div class="col-6 col-xl-3 col-md-6">
+        <StatCard label="Catalog" :value="apps.length" sub="Managed packages" icon="mdi mdi-apps" clickable @click="installState = 'all'" />
+      </div>
+      <div class="col-6 col-xl-3 col-md-6">
+        <StatCard label="Installed" :value="installedCount" sub="Present on this server" icon="mdi mdi-check-circle-outline" tone="ok" clickable @click="installState = 'installed'" />
+      </div>
+      <div class="col-6 col-xl-3 col-md-6">
+        <StatCard label="Updates" :value="updatesCount" sub="Ready to upgrade" icon="mdi mdi-arrow-up-circle-outline" :tone="updatesCount ? 'warn' : 'default'" clickable @click="installState = 'updates'" />
+      </div>
+      <div class="col-6 col-xl-3 col-md-6">
+        <StatCard label="Not Installed" :value="notInstalledCount" sub="Available to add" icon="mdi mdi-package-variant-plus" clickable @click="installState = 'not-installed'" />
+      </div>
     </div>
-    <div class="col-xl-3 col-md-6">
-      <StatCard label="Installed" :value="installedCount" sub="on this server" icon="mdi mdi-check-circle-outline" icon-color="#22d67c" icon-bg="rgba(34,214,124,.12)" />
-    </div>
-    <div class="col-xl-3 col-md-6">
-      <StatCard label="Updates Available" :value="updatesCount" sub="can be upgraded" icon="mdi mdi-update" icon-color="#f5a623" icon-bg="rgba(245,166,35,.12)" />
-    </div>
-    <div class="col-xl-3 col-md-6">
-      <StatCard label="Not Installed" :value="notInstalledCount" sub="available to install" icon="mdi mdi-package-variant" icon-color="#a78bfa" icon-bg="rgba(167,139,250,.12)" />
-    </div>
-  </div>
 
-  <!-- Filter + category tabs -->
-  <div class="card sc-panel-card mb-4">
-  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-  <div class="d-flex gap-2 flex-wrap align-items-center">
-  <h6 class="mb-0"><i class="mdi mdi-package-variant-closed me-2" style="color:var(--sc-blue)"></i>Managed Apps</h6>
-  <div class="category-pills-wrapper">
-  <button
-  v-for="cat in allCategories" :key="cat"
-  class="btn btn-sm cat-tab"
-  :class="{ active: activeCategory === cat }"
-  @click="activeCategory = cat"
-  >
-  <i :class="`mdi ${categoryIcon(cat)} me-1`"></i>{{ cat === 'all' ? 'All' : catLabel(cat) }}
-  <span v-if="cat !== 'all'" class="cat-count">{{ countByCategory(cat) }}</span>
-  </button>
-  </div>
-  </div>
-  <input v-model="q" class="form-control form-control-sm" placeholder="Search apps..." style="width:200px" />
-  </div>
-  
-  <!-- Installed / All toggle -->
-  <div class="card-body border-bottom p-2" style="background:rgba(10,22,40,.5)">
-  <div class="d-flex align-items-center gap-2">
-  <span class="filter-label" style="font-size:0.85rem;color:var(--sc-text-muted)">Show:</span>
-  <button
-  class="btn btn-sm"
-  :class="showInstalledOnly ? 'btn-sc-primary' : ''"
-  style="background:rgba(90,116,153,.1);color:var(--sc-text-muted)"
-  @click="showInstalledOnly = !showInstalledOnly"
-  >
-  <i :class="`mdi me-1 ${showInstalledOnly ? 'mdi-check-circle' : 'mdi-apps'}`"></i>
-  {{ showInstalledOnly ? 'Installed Only' : 'All Apps' }}
-  </button>
-  </div>
-  </div>
+    <FilterToolbar
+      :search-query="searchQuery"
+      search-placeholder="Search app, category, binary alias, install method… Try gh, node, python3"
+      :active-chips="activeChips"
+      :result-label="resultLabel"
+      @update:search-query="updateSearch"
+      @remove-chip="removeChip"
+      @clear-all="clearFilters"
+    >
+      <template #controls>
+        <select v-model="categoryFilter" class="form-select sc-focus-ring toolbar-select">
+          <option value="">All categories</option>
+          <option v-for="category in categories" :key="category" :value="category">{{ categoryLabel(category) }}</option>
+        </select>
+        <select v-model="installState" class="form-select sc-focus-ring toolbar-select">
+          <option value="all">All states</option>
+          <option value="installed">Installed</option>
+          <option value="not-installed">Not installed</option>
+          <option value="updates">Updates only</option>
+        </select>
+        <details class="toolbar-menu">
+          <summary class="sc-button sc-button--secondary sc-button--md">
+            <i class="mdi mdi-content-save-outline"></i>
+            Saved filters
+          </summary>
+          <div class="toolbar-menu__body">
+            <button type="button" class="dropdown-item" @click="saveCurrentFilter">Save current view</button>
+            <div v-if="!savedFilters.length" class="toolbar-menu__empty">No saved views yet</div>
+            <template v-else>
+              <div v-for="filter in savedFilters" :key="filter.id" class="saved-filter-row">
+                <button type="button" class="dropdown-item" @click="applySavedFilter(filter)">{{ filter.name }}</button>
+                <button type="button" class="sc-button sc-button--ghost sc-button--sm sc-button--icon-only" aria-label="Delete saved filter" @click="deleteSavedFilter(filter.id)">
+                  <i class="mdi mdi-close"></i>
+                </button>
+              </div>
+            </template>
+          </div>
+        </details>
+      </template>
+      <template #meta>
+        <span class="sc-inline-note">{{ resultLabel }}</span>
+        <select v-model="viewMode" class="form-select sc-focus-ring toolbar-select toolbar-select--narrow" @change="persistViewMode">
+          <option value="grid">Grid</option>
+          <option value="list">List</option>
+        </select>
+        <select v-model="density" class="form-select sc-focus-ring toolbar-select toolbar-select--narrow" @change="persistDensity">
+          <option value="comfortable">Comfortable</option>
+          <option value="compact">Compact</option>
+        </select>
+        <AppButton :variant="multiSelect ? 'primary' : 'secondary'" size="md" icon="mdi mdi-checkbox-multiple-marked-outline" :label="multiSelect ? 'Selecting' : 'Select'" @click="toggleMultiSelect" />
+      </template>
+    </FilterToolbar>
 
-    <div class="card-body p-0">
-      <!-- Loading skeleton -->
-      <div v-if="loading" class="p-4 text-center sc-text-muted">
-        <i class="mdi mdi-loading mdi-spin me-2"></i>Loading apps and checking versions...
+    <ErrorState v-if="errorMessage" title="Apps refresh failed" :description="errorMessage">
+      <template #actions>
+        <AppButton variant="secondary" size="sm" icon="mdi mdi-refresh" label="Retry" @click="refreshApps" />
+      </template>
+    </ErrorState>
+
+    <div v-if="multiSelect && selectedNames.length" class="sc-inline-error bulk-bar">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <strong>{{ selectedNames.length }} apps selected</strong>
+        <span>{{ bulkSummary }}</span>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <AppButton variant="secondary" size="sm" icon="mdi mdi-package-down" label="Install selected" :disabled="!selectedInstallable.length || anyOpRunning" @click="queueSelected('install')" />
+        <AppButton variant="secondary" size="sm" icon="mdi mdi-arrow-up-circle-outline" label="Update selected" :disabled="!selectedUpdatable.length || anyOpRunning" @click="queueSelected('update')" />
+        <AppButton variant="secondary" size="sm" icon="mdi mdi-delete-outline" label="Remove selected" :disabled="!selectedRemovable.length || anyOpRunning" @click="queueSelected('uninstall')" />
+        <AppButton variant="ghost" size="sm" icon="mdi mdi-download" label="Export" @click="exportApps(true)" />
+      </div>
+    </div>
+
+    <div class="sc-surface apps-shell">
+      <div v-if="loading" class="skeleton-wrap" aria-busy="true">
+        <div v-for="n in 8" :key="n" class="skeleton-row"></div>
       </div>
 
-      <div v-else-if="!filtered.length" class="p-4 text-center sc-text-muted">
-        No apps match your filter.
-      </div>
+      <EmptyState
+        v-else-if="!apps.length"
+        icon="mdi mdi-package-variant-closed-remove"
+        title="No apps available"
+        description="The managed catalog could not be loaded from the server."
+      >
+        <template #actions>
+          <AppButton variant="secondary" size="md" icon="mdi mdi-refresh" label="Refresh" @click="refreshApps" />
+        </template>
+      </EmptyState>
 
-      <!-- App cards grid -->
-      <div v-else class="app-grid p-3">
-        <div
-          v-for="app in filtered"
-          :key="app.name"
-          class="app-card"
-          :class="{
-            'app-card--installed': app.installed,
-            'app-card--update': app.update_avail,
-            'app-card--busy': isBusy(app),
-          }"
-        >
-          <!-- Header row -->
-          <div class="app-card-header">
-            <div class="app-icon" :class="`app-icon--${app.category}`">
-              <i :class="`mdi ${categoryIcon(app.category)}`"></i>
-            </div>
-            <div class="app-meta">
-              <div class="app-label">{{ app.label }}</div>
-              <div class="d-flex gap-1 flex-wrap mt-1">
-                <span class="badge app-cat-badge" :class="`cat-${app.category}`">{{ catLabel(app.category) }}</span>
-                <span class="badge app-method-badge">{{ methodLabel(app.install_method) }}</span>
+      <EmptyState
+        v-else-if="!filteredApps.length"
+        icon="mdi mdi-filter-off-outline"
+        title="No apps match these filters"
+        description="Clear the active filters or widen the search to see more of the catalog."
+      >
+        <template #actions>
+          <AppButton variant="secondary" size="md" icon="mdi mdi-filter-remove-outline" label="Clear filters" @click="clearFilters" />
+        </template>
+      </EmptyState>
+
+      <template v-else>
+        <div v-if="viewMode === 'list'" class="d-none d-md-block">
+          <table class="table apps-table mb-0" :class="{ compact: density === 'compact' }">
+            <thead>
+              <tr>
+                <th v-if="multiSelect" class="checkbox-col"></th>
+                <th>App</th>
+                <th>Binary</th>
+                <th>Versions</th>
+                <th>Status</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(app, index) in filteredApps" :key="app.name" class="apps-row" :class="{ active: focusedIndex === index }" @click="openApp(app)">
+                <td v-if="multiSelect" class="checkbox-col" @click.stop>
+                  <input type="checkbox" :checked="selectedNames.includes(app.name)" @change="toggleSelected(app.name)" />
+                </td>
+                <td>
+                  <div class="app-cell">
+                    <div class="app-icon" :class="`app-icon--${app.category}`"><i :class="categoryIcon(app.category)"></i></div>
+                    <div>
+                      <div class="app-title">{{ app.label }}</div>
+                      <div class="app-subtitle">{{ app.description }}</div>
+                      <div class="app-meta-row">
+                        <span class="sc-chip">{{ categoryLabel(app.category) }}</span>
+                        <span class="sc-chip">{{ methodLabel(app.install_method) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="binary-pill">{{ app.binary || app.name }}</span>
+                </td>
+                <td>
+                  <div class="version-stack">
+                    <span class="text-muted text-sm">Installed: {{ app.version || '—' }}</span>
+                    <span class="text-muted text-sm">Latest: {{ app.new_version || (app.installed ? app.version || 'Unknown' : '—') }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <StatusBadge :state="statusState(app)" :label="statusLabel(app)" :icon="statusIcon(app)" />
+                    <StatusBadge v-if="app.update_avail" state="warn" label="Update" />
+                  </div>
+                  <div v-if="isBusy(app)" class="mini-progress"><span></span></div>
+                </td>
+                <td class="text-end" @click.stop>
+                  <div class="action-row justify-content-end">
+                    <AppButton
+                      :variant="primaryAction(app).variant"
+                      size="sm"
+                      :icon="primaryAction(app).icon"
+                      :label="primaryAction(app).label"
+                      :disabled="primaryAction(app).disabled"
+                      :loading="primaryAction(app).loading"
+                      @click="runPrimaryAction(app)"
+                    />
+                    <details class="app-menu">
+                      <summary class="sc-button sc-button--ghost sc-button--sm sc-button--icon-only">
+                        <i class="mdi mdi-dots-horizontal"></i>
+                      </summary>
+                      <div class="toolbar-menu__body app-menu__body">
+                        <button type="button" class="dropdown-item" @click="openApp(app)">View details</button>
+                        <button type="button" class="dropdown-item" :disabled="!app.homepage" @click="openHomepage(app)">Open homepage</button>
+                        <button type="button" class="dropdown-item" @click="copyBinary(app)">Copy binary</button>
+                        <button type="button" class="dropdown-item" :disabled="!app.installed || anyOpRunning" @click="queueAction(app, 'uninstall')">Uninstall</button>
+                      </div>
+                    </details>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-else class="apps-grid">
+          <article v-for="(app, index) in filteredApps" :key="`grid-${app.name}`" class="app-card" :class="{ active: focusedIndex === index, compact: density === 'compact', busy: isBusy(app), update: app.update_avail, installed: app.installed }" @click="openApp(app)">
+            <div class="app-card__top">
+              <div class="app-card__identity">
+                <div v-if="multiSelect" class="alert-checkbox" @click.stop>
+                  <input type="checkbox" :checked="selectedNames.includes(app.name)" @change="toggleSelected(app.name)" />
+                </div>
+                <div class="app-icon" :class="`app-icon--${app.category}`"><i :class="categoryIcon(app.category)"></i></div>
+                <div>
+                  <div class="app-title">{{ app.label }}</div>
+                  <div class="app-meta-row">
+                    <span class="sc-chip">{{ categoryLabel(app.category) }}</span>
+                    <span class="sc-chip">{{ methodLabel(app.install_method) }}</span>
+                    <span class="binary-pill">{{ app.binary || app.name }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="action-row" @click.stop>
+                <StatusBadge :state="statusState(app)" :label="statusLabel(app)" :icon="statusIcon(app)" />
+                <details class="app-menu">
+                  <summary class="sc-button sc-button--ghost sc-button--sm sc-button--icon-only">
+                    <i class="mdi mdi-dots-horizontal"></i>
+                  </summary>
+                  <div class="toolbar-menu__body app-menu__body">
+                    <button type="button" class="dropdown-item" @click="openApp(app)">View details</button>
+                    <button type="button" class="dropdown-item" :disabled="!app.homepage" @click="openHomepage(app)">Open homepage</button>
+                    <button type="button" class="dropdown-item" @click="copyBinary(app)">Copy binary</button>
+                    <button type="button" class="dropdown-item" :disabled="!app.installed || anyOpRunning" @click="queueAction(app, 'uninstall')">Uninstall</button>
+                  </div>
+                </details>
               </div>
             </div>
-            <div class="app-status-wrap">
-              <span class="badge rounded-pill app-status-badge" :class="statusClass(app)">
-                <i :class="`mdi ${statusIcon(app)} me-1`"></i>
-                {{ statusLabel(app) }}
-              </span>
+
+            <p class="app-subtitle app-subtitle--clamped">{{ app.description }}</p>
+
+            <div v-if="app.update_avail" class="update-banner-row">
+              <i class="mdi mdi-arrow-up-bold-circle-outline"></i>
+              Update available: {{ app.version || 'Unknown' }} → {{ app.new_version || 'Latest' }}
             </div>
-          </div>
 
-          <!-- Description -->
-          <p class="app-desc">{{ app.description }}</p>
-
-          <!-- Version row -->
-          <div class="app-version-row" v-if="app.installed || app.new_version">
-            <div v-if="app.version" class="version-chip installed-ver">
-              <i class="mdi mdi-tag-outline me-1"></i>
-              <span>{{ app.version }}</span>
-              <span class="ver-label">installed</span>
+            <div class="version-stack">
+              <span class="text-muted text-sm">Installed: {{ app.version || '—' }}</span>
+              <span class="text-muted text-sm">Latest: {{ app.new_version || (app.installed ? app.version || 'Unknown' : '—') }}</span>
             </div>
-            <div v-if="app.new_version" class="version-chip" :class="app.update_avail ? 'new-ver-avail' : 'new-ver-same'">
-              <i class="mdi mdi-arrow-up-circle-outline me-1"></i>
-              <span>{{ app.new_version }}</span>
-              <span class="ver-label">{{ app.update_avail ? 'update available' : 'latest' }}</span>
+
+            <div v-if="isBusy(app)" class="mini-progress"><span></span></div>
+
+            <div class="action-row" @click.stop>
+              <AppButton
+                :variant="primaryAction(app).variant"
+                size="sm"
+                :icon="primaryAction(app).icon"
+                :label="primaryAction(app).label"
+                :disabled="primaryAction(app).disabled"
+                :loading="primaryAction(app).loading"
+                @click="runPrimaryAction(app)"
+              />
+              <AppButton variant="secondary" size="sm" icon="mdi mdi-open-in-new" :disabled="!app.homepage" label="Docs" @click="openHomepage(app)" />
             </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="app-actions">
-            <!-- Install -->
-            <button
-              v-if="!app.installed"
-              class="btn btn-sm btn-app-install"
-              :disabled="isBusy(app) || anyOpRunning"
-              @click="installApp(app)"
-            >
-              <i :class="`mdi ${isBusy(app) ? 'mdi-loading mdi-spin' : 'mdi-package-down'} me-1`"></i>
-              {{ isBusy(app) ? 'Installing...' : 'Install' }}
-            </button>
-
-            <!-- Update -->
-            <button
-              v-if="app.installed && app.update_avail"
-              class="btn btn-sm btn-app-update"
-              :disabled="isBusy(app) || anyOpRunning"
-              @click="updateApp(app)"
-            >
-              <i :class="`mdi ${isBusy(app) && app.status === 'updating' ? 'mdi-loading mdi-spin' : 'mdi-arrow-up-circle'} me-1`"></i>
-              {{ isBusy(app) && app.status === 'updating' ? 'Updating...' : 'Update' }}
-            </button>
-
-            <!-- Up to date indicator -->
-            <span v-if="app.installed && !app.update_avail && app.new_version" class="app-uptodate">
-              <i class="mdi mdi-check-circle me-1"></i>Up to date
-            </span>
-
-            <!-- View logs button (when this app is being operated on) -->
-            <button
-              v-if="isBusy(app)"
-              class="btn btn-sm btn-app-logs"
-              @click="showLogWindow = true"
-            >
-              <i class="mdi mdi-text-box-outline me-1"></i>View Log
-            </button>
-
-            <!-- Homepage link -->
-            <a
-              v-if="app.homepage"
-              :href="app.homepage"
-              target="_blank"
-              rel="noopener"
-              class="btn btn-sm btn-app-info"
-              title="Open homepage"
-            >
-              <i class="mdi mdi-open-in-new"></i>
-            </a>
-
-            <!-- Uninstall (installed apps only) -->
-            <button
-              v-if="app.installed"
-              class="btn btn-sm btn-app-remove"
-              :disabled="isBusy(app) || anyOpRunning"
-              @click="uninstallApp(app)"
-              title="Uninstall"
-            >
-              <i :class="`mdi ${isBusy(app) && app.status === 'uninstalling' ? 'mdi-loading mdi-spin' : 'mdi-delete-outline'}`"></i>
-            </button>
-          </div>
+          </article>
         </div>
-      </div>
+      </template>
     </div>
+
+    <DetailDrawer
+      :model-value="showDrawer"
+      :title="selectedApp ? selectedApp.label : 'App details'"
+      :subtitle="selectedApp ? statusLabel(selectedApp) : ''"
+      @update:model-value="showDrawer = $event"
+      @navigate="navigateDrawer"
+    >
+      <template #nav>
+        <AppButton variant="ghost" size="sm" icon="mdi mdi-chevron-left" aria-label="Previous app" icon-only @click="navigateDrawer(-1)" />
+        <AppButton variant="ghost" size="sm" icon="mdi mdi-chevron-right" aria-label="Next app" icon-only @click="navigateDrawer(1)" />
+      </template>
+      <div v-if="selectedApp" class="drawer-grid">
+        <section class="drawer-panel">
+          <h6>App Overview</h6>
+          <div class="drawer-stack">
+            <div class="drawer-meta-row"><span>Status</span><StatusBadge :state="statusState(selectedApp)" :label="statusLabel(selectedApp)" :icon="statusIcon(selectedApp)" /></div>
+            <div class="drawer-meta-row"><span>Category</span><span>{{ categoryLabel(selectedApp.category) }}</span></div>
+            <div class="drawer-meta-row"><span>Binary</span><span class="binary-pill">{{ selectedApp.binary || selectedApp.name }}</span></div>
+            <div class="drawer-meta-row"><span>Install method</span><span>{{ methodLabel(selectedApp.install_method) }}</span></div>
+          </div>
+        </section>
+
+        <section class="drawer-panel">
+          <h6>Versions</h6>
+          <div class="drawer-stack">
+            <div class="drawer-meta-row"><span>Installed</span><span>{{ selectedApp.version || '—' }}</span></div>
+            <div class="drawer-meta-row"><span>Latest</span><span>{{ selectedApp.new_version || (selectedApp.installed ? selectedApp.version || 'Unknown' : '—') }}</span></div>
+            <div class="drawer-meta-row"><span>Homepage</span><a v-if="selectedApp.homepage" :href="selectedApp.homepage" target="_blank" rel="noopener">{{ selectedApp.homepage }}</a><span v-else>—</span></div>
+          </div>
+        </section>
+
+        <section class="drawer-panel drawer-panel--wide">
+          <h6>Description</h6>
+          <p class="drawer-copy">{{ selectedApp.description }}</p>
+        </section>
+
+        <section class="drawer-panel drawer-panel--wide" v-if="currentOpAppName === selectedApp.name && opLogs.length">
+          <h6>Current Operation</h6>
+          <div class="op-log-window op-log-window--drawer">
+            <div v-for="(line, index) in opLogs" :key="`drawer-log-${index}`" class="op-log-line" :class="`op-log-line--${line.type}`">
+              <span class="op-log-time">{{ line.ts }}</span>
+              <span>{{ line.text }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="drawer-panel drawer-panel--wide">
+          <details>
+            <summary>Raw JSON</summary>
+            <pre>{{ JSON.stringify(selectedApp, null, 2) }}</pre>
+          </details>
+        </section>
+      </div>
+      <template #footer>
+        <div class="d-flex flex-wrap gap-2">
+          <AppButton
+            v-if="selectedApp"
+            :variant="primaryAction(selectedApp).variant"
+            size="sm"
+            :icon="primaryAction(selectedApp).icon"
+            :label="primaryAction(selectedApp).label"
+            :disabled="primaryAction(selectedApp).disabled"
+            :loading="primaryAction(selectedApp).loading"
+            @click="runPrimaryAction(selectedApp)"
+          />
+          <AppButton variant="secondary" size="sm" icon="mdi mdi-open-in-new" :disabled="!selectedApp?.homepage" label="Open docs" @click="selectedApp && openHomepage(selectedApp)" />
+          <AppButton variant="destructive" size="sm" icon="mdi mdi-delete-outline" :disabled="!selectedApp?.installed || anyOpRunning" label="Uninstall" @click="selectedApp && queueAction(selectedApp, 'uninstall')" />
+        </div>
+      </template>
+    </DetailDrawer>
   </div>
-</div>
 </template>
 
 <script>
 import PageHeader from '@/components/page-header.vue'
 import StatCard from '@/components/widgets/stat-card.vue'
+import AppButton from '@/components/ui/app-button.vue'
+import StatusBadge from '@/components/ui/status-badge.vue'
+import FilterToolbar from '@/components/ui/filter-toolbar.vue'
+import DetailDrawer from '@/components/ui/detail-drawer.vue'
+import EmptyState from '@/components/ui/empty-state.vue'
+import ErrorState from '@/components/ui/error-state.vue'
 import api from '@/services/api'
+import {
+  getAppsViewPreference,
+  getDensityPreference,
+  loadSavedFilters,
+  matchesQuery,
+  saveSavedFilters,
+  setAppsViewPreference,
+  setDensityPreference
+} from '@/utils/formatters'
 
-const CAT_LABELS = {
-  all: 'All',
+const CATEGORY_LABELS = {
   cli: 'CLI Tools',
   runtime: 'Runtimes',
-  web: 'Web Server',
+  web: 'Web',
   database: 'Database',
   build: 'Build Tools',
-  devtool: 'Dev Tools',
-  shell: 'Shell',
+  devtool: 'Developer Tools',
+  shell: 'Shell'
 }
 
-const CAT_ICONS = {
-  all: 'mdi-apps',
-  cli: 'mdi-console-line',
-  runtime: 'mdi-code-braces',
-  web: 'mdi-web',
-  database: 'mdi-database',
-  build: 'mdi-hammer-wrench',
-  devtool: 'mdi-tools',
-  shell: 'mdi-bash',
+const CATEGORY_ICONS = {
+  cli: 'mdi mdi-console-line',
+  runtime: 'mdi mdi-code-braces',
+  web: 'mdi mdi-web',
+  database: 'mdi mdi-database',
+  build: 'mdi mdi-hammer-wrench',
+  devtool: 'mdi mdi-tools',
+  shell: 'mdi mdi-bash'
 }
 
 const METHOD_LABELS = {
   pkg: 'Package',
   script: 'Script',
   binary: 'Binary',
-  rustup: 'rustup',
+  rustup: 'rustup'
 }
 
 export default {
   name: 'AppsPage',
-  components: { PageHeader, StatCard },
-  data() {
+  components: {
+    PageHeader,
+    StatCard,
+    AppButton,
+    StatusBadge,
+    FilterToolbar,
+    DetailDrawer,
+    EmptyState,
+    ErrorState
+  },
+  data () {
     return {
       loading: false,
+      errorMessage: '',
       apps: [],
-      q: '',
-      activeCategory: 'all',
-      showInstalledOnly: false,
-      // Operation state
-      showLogWindow: false,
+      searchQuery: '',
+      debouncedSearch: '',
+      searchTimer: null,
+      categoryFilter: '',
+      installState: 'all',
+      savedFilters: loadSavedFilters('apps'),
+      viewMode: getAppsViewPreference(),
+      density: getDensityPreference(),
+      multiSelect: false,
+      selectedNames: [],
+      showDrawer: false,
+      selectedAppName: '',
+      focusedIndex: 0,
+      showLogPanel: true,
       opRunning: false,
       opLogs: [],
       opError: '',
-      opKind: '',
-      currentOpApp: '',
+      currentOpAppName: '',
+      currentOpLabel: '',
+      currentOpKind: '',
       opSeenCount: 0,
-      opPollTimer: null,
-      // Per-app busy map (optimistic UI)
-      busyApps: {},
+      pollTimer: null,
+      queueItems: []
     }
   },
   computed: {
-    filtered() {
-      let list = this.apps
-      if (this.activeCategory !== 'all') {
-        list = list.filter(a => a.category === this.activeCategory)
-      }
-      if (this.showInstalledOnly) {
-        list = list.filter(a => a.installed)
-      }
-      if (this.q) {
-        const t = this.q.toLowerCase()
-        list = list.filter(a =>
-          a.name.toLowerCase().includes(t) ||
-          a.label.toLowerCase().includes(t) ||
-          a.description.toLowerCase().includes(t) ||
-          a.category.toLowerCase().includes(t)
-        )
-      }
-      return list
+    categories () {
+      return [...new Set(this.apps.map(app => app.category).filter(Boolean))].sort()
     },
-    installedCount() {
-      return this.apps.filter(a => a.installed).length
+    filteredApps () {
+      return [...this.apps]
+        .filter(app => !this.categoryFilter || app.category === this.categoryFilter)
+        .filter(app => {
+          if (this.installState === 'installed') return app.installed
+          if (this.installState === 'not-installed') return !app.installed
+          if (this.installState === 'updates') return app.update_avail
+          return true
+        })
+        .filter(app => matchesQuery(app, this.debouncedSearch, {
+          fields: ['name', 'label', 'description', 'category', 'install_method', 'homepage', 'binary'],
+          operators: {
+            binary: entry => entry.binary || entry.name,
+            category: entry => entry.category,
+            method: entry => entry.install_method,
+            state: entry => this.statusLabel(entry).toLowerCase()
+          }
+        }))
+        .sort((left, right) => {
+          if (left.update_avail !== right.update_avail) return Number(right.update_avail) - Number(left.update_avail)
+          if (left.installed !== right.installed) return Number(right.installed) - Number(left.installed)
+          return left.label.localeCompare(right.label)
+        })
     },
-    updatesCount() {
-      return this.apps.filter(a => a.update_avail).length
+    selectedApp () {
+      return this.filteredApps.find(app => app.name === this.selectedAppName) || this.apps.find(app => app.name === this.selectedAppName) || null
     },
-    notInstalledCount() {
-      return this.apps.filter(a => !a.installed).length
+    installedCount () {
+      return this.apps.filter(app => app.installed).length
     },
-    allCategories() {
-      const cats = ['all', ...new Set(this.apps.map(a => a.category))]
-      return cats
+    updatesCount () {
+      return this.apps.filter(app => app.update_avail).length
     },
-    anyOpRunning() {
-      return this.opRunning || Object.values(this.busyApps).some(Boolean)
+    notInstalledCount () {
+      return this.apps.filter(app => !app.installed).length
     },
-    opKindLabel() {
-      const map = { install: 'Installation', update: 'Update', uninstall: 'Uninstall' }
-      return map[this.opKind] || 'Operation'
+    resultLabel () {
+      return this.filteredApps.length === this.apps.length
+        ? `${this.apps.length} apps`
+        : `${this.filteredApps.length} of ${this.apps.length} apps`
     },
-  },
-  async mounted() {
-    await this.loadApps()
-    // Resume polling if server says an op is running
-    const { data } = await api.getAppOpLogs().catch(() => ({ data: {} }))
-    if (data.running) {
-      this.opRunning = true
-      this.currentOpApp = data.app || ''
-      this.opKind = data.kind || ''
-      this.showLogWindow = true
-      this.startPolling()
+    activeChips () {
+      const chips = []
+      if (this.categoryFilter) chips.push({ key: 'category', label: `Category: ${this.categoryLabel(this.categoryFilter)}` })
+      if (this.installState !== 'all') chips.push({ key: 'state', label: `State: ${this.installState}` })
+      if (this.debouncedSearch) chips.push({ key: 'search', label: `Search: ${this.debouncedSearch}` })
+      return chips
+    },
+    anyOpRunning () {
+      return this.opRunning || this.queueItems.length > 0
+    },
+    selectedApps () {
+      return this.filteredApps.filter(app => this.selectedNames.includes(app.name))
+    },
+    selectedInstallable () {
+      return this.selectedApps.filter(app => !app.installed)
+    },
+    selectedUpdatable () {
+      return this.selectedApps.filter(app => app.installed && app.update_avail)
+    },
+    selectedRemovable () {
+      return this.selectedApps.filter(app => app.installed)
+    },
+    bulkSummary () {
+      return `${this.selectedInstallable.length} installable, ${this.selectedUpdatable.length} updatable, ${this.selectedRemovable.length} removable.`
     }
   },
-  beforeUnmount() {
+  watch: {
+    searchQuery () {
+      clearTimeout(this.searchTimer)
+      this.searchTimer = setTimeout(() => {
+        this.debouncedSearch = this.searchQuery
+      }, 150)
+    },
+    filteredApps () {
+      if (this.focusedIndex >= this.filteredApps.length) {
+        this.focusedIndex = Math.max(0, this.filteredApps.length - 1)
+      }
+    }
+  },
+  async mounted () {
+    await this.loadApps()
+    try {
+      const { data } = await api.getAppOpLogs()
+      if (data.running) {
+        this.opRunning = true
+        this.currentOpAppName = data.app || ''
+        this.currentOpLabel = this.apps.find(app => app.name === data.app)?.label || data.app || ''
+        this.currentOpKind = data.kind || ''
+        this.showLogPanel = true
+        this.startPolling()
+      }
+    } catch {
+      // Ignore warm-start polling failures.
+    }
+  },
+  beforeUnmount () {
+    clearTimeout(this.searchTimer)
     this.stopPolling()
   },
   methods: {
-    // ── Data loading ────────────────────────────────────────────────────────
-    async loadApps() {
+    async loadApps () {
       this.loading = true
+      this.errorMessage = ''
       try {
-        // Add cache-busting timestamp to ensure fresh data
         const { data } = await api.getApps()
-        this.apps = data || []
-        // Sync busyApps from server state
-        this.apps.forEach(a => {
-          if (['installing', 'updating', 'uninstalling'].includes(a.status)) {
-            this.busyApps[a.name] = true
-            if (!this.opRunning) {
-              this.opRunning = true
-              this.currentOpApp = a.label
-              this.opKind = a.status.replace('ing', '')
-              this.showLogWindow = true
-              this.startPolling()
-            }
-          }
-        })
-      } catch (e) {
-        this.$swal({ icon: 'error', title: 'Failed to load apps', text: e.response?.data?.error || e.message })
+        this.apps = Array.isArray(data) ? data : []
+      } catch (error) {
+        this.errorMessage = error.response?.data?.error || error.message || 'Unable to load apps.'
       } finally {
         this.loading = false
       }
     },
-  
-    // Force refresh with cache invalidation
-    async refreshApps() {
-      // Clear apps first to force fresh render
-      this.apps = []
+    async refreshApps () {
       await this.loadApps()
     },
-
-    // ── Category helpers ────────────────────────────────────────────────────
-    catLabel(cat) { return CAT_LABELS[cat] || cat },
-    categoryIcon(cat) { return CAT_ICONS[cat] || 'mdi-package' },
-    methodLabel(m) { return METHOD_LABELS[m] || m },
-    countByCategory(cat) {
-      return this.apps.filter(a => a.category === cat).length
+    updateSearch (value) {
+      this.searchQuery = value
     },
-
-    // ── Status display ──────────────────────────────────────────────────────
-    statusLabel(app) {
-      if (app.status === 'installing') return 'Installing...'
-      if (app.status === 'updating') return 'Updating...'
-      if (app.status === 'uninstalling') return 'Removing...'
+    clearFilters () {
+      this.searchQuery = ''
+      this.debouncedSearch = ''
+      this.categoryFilter = ''
+      this.installState = 'all'
+    },
+    removeChip (key) {
+      if (key === 'category') this.categoryFilter = ''
+      if (key === 'state') this.installState = 'all'
+      if (key === 'search') {
+        this.searchQuery = ''
+        this.debouncedSearch = ''
+      }
+    },
+    persistViewMode () {
+      setAppsViewPreference(this.viewMode)
+    },
+    persistDensity () {
+      setDensityPreference(this.density)
+    },
+    saveCurrentFilter () {
+      const name = window.prompt('Name this saved filter')
+      if (!name) return
+      this.savedFilters = [
+        {
+          id: `${Date.now()}`,
+          name,
+          state: {
+            searchQuery: this.searchQuery,
+            categoryFilter: this.categoryFilter,
+            installState: this.installState,
+            viewMode: this.viewMode,
+            density: this.density
+          }
+        },
+        ...this.savedFilters
+      ].slice(0, 10)
+      saveSavedFilters('apps', this.savedFilters)
+    },
+    applySavedFilter (filter) {
+      Object.assign(this, filter.state)
+      this.debouncedSearch = filter.state.searchQuery
+      this.persistViewMode()
+      this.persistDensity()
+    },
+    deleteSavedFilter (id) {
+      this.savedFilters = this.savedFilters.filter(filter => filter.id !== id)
+      saveSavedFilters('apps', this.savedFilters)
+    },
+    categoryLabel (category) {
+      return CATEGORY_LABELS[category] || category || 'Unknown'
+    },
+    categoryIcon (category) {
+      return CATEGORY_ICONS[category] || 'mdi mdi-package-variant-closed'
+    },
+    methodLabel (method) {
+      return METHOD_LABELS[method] || method || 'Unknown'
+    },
+    statusLabel (app) {
+      if (['installing', 'updating', 'uninstalling'].includes(app.status)) {
+        return app.status.charAt(0).toUpperCase() + app.status.slice(1)
+      }
       if (app.status === 'failed') return 'Failed'
       if (app.installed && app.update_avail) return 'Update Available'
       if (app.installed) return 'Installed'
       return 'Not Installed'
     },
-    statusClass(app) {
-      if (['installing', 'updating', 'uninstalling'].includes(app.status)) return 'badge-installing'
-      if (app.status === 'failed') return 'badge-offline'
-      if (app.installed && app.update_avail) return 'badge-update'
-      if (app.installed) return 'badge-online'
-      return 'badge-warning'
+    statusState (app) {
+      if (['installing', 'updating', 'uninstalling'].includes(app.status)) return 'pending'
+      if (app.status === 'failed') return 'error'
+      if (app.installed && app.update_avail) return 'warn'
+      if (app.installed) return 'ok'
+      return 'muted'
     },
-    statusIcon(app) {
-      if (['installing', 'updating', 'uninstalling'].includes(app.status)) return 'mdi-loading mdi-spin'
-      if (app.status === 'failed') return 'mdi-alert-circle'
-      if (app.installed && app.update_avail) return 'mdi-arrow-up-circle'
-      if (app.installed) return 'mdi-check-circle'
-      return 'mdi-minus-circle-outline'
+    statusIcon (app) {
+      if (app.status === 'installing') return 'mdi mdi-loading mdi-spin'
+      if (app.status === 'updating') return 'mdi mdi-loading mdi-spin'
+      if (app.status === 'uninstalling') return 'mdi mdi-loading mdi-spin'
+      if (app.status === 'failed') return 'mdi mdi-alert-circle-outline'
+      if (app.installed && app.update_avail) return 'mdi mdi-arrow-up-circle-outline'
+      if (app.installed) return 'mdi mdi-check-circle-outline'
+      return 'mdi mdi-package-variant-closed'
     },
-    isBusy(app) {
-      return this.busyApps[app.name] ||
-        ['installing', 'updating', 'uninstalling'].includes(app.status)
+    isBusy (app) {
+      return ['installing', 'updating', 'uninstalling'].includes(app.status) || this.currentOpAppName === app.name && this.opRunning
     },
-
-    // ── Actions ─────────────────────────────────────────────────────────────
-    async installApp(app) {
-      const r = await this.$swal({
-        title: `Install ${app.label}?`,
-        html: `<div style="font-size:.9rem;color:#8aa4c8">${app.description}</div>`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Install',
-      })
-      if (!r.isConfirmed) return
-      this.beginOp(app, 'install')
-      try {
-        await api.installApp(app.name)
-        this.addLog(`Started installation of ${app.label}`, 'info')
-        this.startPolling()
-      } catch (e) {
-        const msg = e.response?.data?.error || e.message
-        this.addLog(`Error: ${msg}`, 'error')
-        this.endOp(app, msg)
-        this.$swal({ icon: 'error', title: `Install failed: ${app.label}`, text: msg })
+    primaryAction (app) {
+      if (app.status === 'installing') return { label: 'Installing', icon: 'mdi mdi-loading mdi-spin', variant: 'secondary', disabled: true, loading: true }
+      if (app.status === 'updating') return { label: 'Updating', icon: 'mdi mdi-loading mdi-spin', variant: 'secondary', disabled: true, loading: true }
+      if (app.status === 'uninstalling') return { label: 'Removing', icon: 'mdi mdi-loading mdi-spin', variant: 'secondary', disabled: true, loading: true }
+      if (!app.installed) return { label: 'Install', icon: 'mdi mdi-package-down', variant: 'primary', disabled: this.anyOpRunning, loading: false }
+      if (app.update_avail) return { label: 'Update', icon: 'mdi mdi-arrow-up-circle-outline', variant: 'secondary', disabled: this.anyOpRunning, loading: false }
+      return { label: 'Installed', icon: 'mdi mdi-check-circle-outline', variant: 'ghost', disabled: true, loading: false }
+    },
+    runPrimaryAction (app) {
+      if (!app.installed) return this.queueAction(app, 'install')
+      if (app.update_avail) return this.queueAction(app, 'update')
+    },
+    toggleMultiSelect () {
+      this.multiSelect = !this.multiSelect
+      if (!this.multiSelect) this.selectedNames = []
+    },
+    toggleSelected (name) {
+      if (this.selectedNames.includes(name)) {
+        this.selectedNames = this.selectedNames.filter(item => item !== name)
+      } else {
+        this.selectedNames = [...this.selectedNames, name]
       }
     },
-
-    async updateApp(app) {
-      const r = await this.$swal({
-        title: `Update ${app.label}?`,
-        html: `<div style="font-size:.9rem;color:#8aa4c8">
-          Installed: <b>${app.version || '?'}</b> → Available: <b>${app.new_version || '?'}</b>
-        </div>`,
-        icon: 'question',
+    openApp (app) {
+      this.selectedAppName = app.name
+      this.showDrawer = true
+    },
+    navigateDrawer (step) {
+      if (!this.selectedApp) return
+      const index = this.filteredApps.findIndex(app => app.name === this.selectedApp.name)
+      const next = this.filteredApps[index + step]
+      if (next) this.openApp(next)
+    },
+    async queueAction (app, kind) {
+      const labels = { install: 'Install', update: 'Update', uninstall: 'Uninstall' }
+      const confirmed = await this.$swal({
+        icon: kind === 'uninstall' ? 'warning' : 'question',
+        title: `${labels[kind]} ${app.label}?`,
+        text: kind === 'uninstall' ? 'This removes the managed package from the server.' : app.description,
         showCancelButton: true,
-        confirmButtonText: 'Update',
+        confirmButtonText: labels[kind]
       })
-      if (!r.isConfirmed) return
-      this.beginOp(app, 'update')
-      try {
-        await api.updateApp(app.name)
-        this.addLog(`Started update of ${app.label}`, 'info')
-        this.startPolling()
-      } catch (e) {
-        const msg = e.response?.data?.error || e.message
-        this.addLog(`Error: ${msg}`, 'error')
-        this.endOp(app, msg)
-        this.$swal({ icon: 'error', title: `Update failed: ${app.label}`, text: msg })
+      if (!confirmed.isConfirmed) return
+      this.queueItems = [...this.queueItems, { name: app.name, kind }]
+      if (!this.opRunning) {
+        this.processQueue()
       }
     },
-
-    async uninstallApp(app) {
-      const r = await this.$swal({
-        title: `Uninstall ${app.label}?`,
-        text: 'This will remove the package from the system. Configuration files may be preserved.',
-        icon: 'warning',
+    async queueSelected (kind) {
+      const map = {
+        install: this.selectedInstallable,
+        update: this.selectedUpdatable,
+        uninstall: this.selectedRemovable
+      }
+      const items = map[kind]
+      if (!items.length) return
+      const confirmed = await this.$swal({
+        icon: kind === 'uninstall' ? 'warning' : 'question',
+        title: `${kind.charAt(0).toUpperCase() + kind.slice(1)} ${items.length} apps?`,
+        text: 'Operations will run one at a time in the queue.',
         showCancelButton: true,
-        confirmButtonText: 'Uninstall',
-        confirmButtonColor: '#f04040',
+        confirmButtonText: 'Queue operations'
       })
-      if (!r.isConfirmed) return
-      this.beginOp(app, 'uninstall')
-      try {
-        await api.uninstallApp(app.name)
-        this.addLog(`Started uninstall of ${app.label}`, 'info')
-        this.startPolling()
-      } catch (e) {
-        const msg = e.response?.data?.error || e.message
-        this.addLog(`Error: ${msg}`, 'error')
-        this.endOp(app, msg)
-        this.$swal({ icon: 'error', title: `Uninstall failed: ${app.label}`, text: msg })
+      if (!confirmed.isConfirmed) return
+      this.queueItems = [...this.queueItems, ...items.map(app => ({ name: app.name, kind }))]
+      if (!this.opRunning) {
+        this.processQueue()
       }
     },
-
-    // ── Op helpers ───────────────────────────────────────────────────────────
-    beginOp(app, kind) {
-      this.busyApps = { ...this.busyApps, [app.name]: true }
-      // Optimistically update the app's status in the list
-      const idx = this.apps.findIndex(a => a.name === app.name)
-      if (idx >= 0) {
-        this.apps[idx] = { ...this.apps[idx], status: kind + 'ing' }
+    async processQueue () {
+      if (this.opRunning || !this.queueItems.length) return
+      const next = this.queueItems[0]
+      const app = this.apps.find(item => item.name === next.name)
+      if (!app) {
+        this.queueItems = this.queueItems.slice(1)
+        return this.processQueue()
       }
       this.opRunning = true
-      this.opKind = kind
-      this.currentOpApp = app.label
-      this.opLogs = []
-      this.opSeenCount = 0
+      this.currentOpAppName = app.name
+      this.currentOpLabel = app.label
+      this.currentOpKind = next.kind
       this.opError = ''
-      this.showLogWindow = true
-    },
-
-    endOp(app, errMsg = '') {
-      this.busyApps = { ...this.busyApps, [app.name]: false }
-      this.opRunning = false
-      this.opError = errMsg
-      this.stopPolling()
-    },
-
-    // ── Log polling ──────────────────────────────────────────────────────────
-    startPolling() {
-      this.stopPolling()
-      this.opPollTimer = setInterval(() => this.pollLogs(), 1500)
-    },
-
-    stopPolling() {
-      if (this.opPollTimer) {
-        clearInterval(this.opPollTimer)
-        this.opPollTimer = null
+      this.showLogPanel = true
+      this.opLogs = this.queueItems.length === 1 ? [] : this.opLogs
+      this.addLog(`Queued ${next.kind} for ${app.label}`, 'info')
+      this.apps = this.apps.map(item => item.name === app.name ? { ...item, status: `${next.kind}ing` } : item)
+      try {
+        if (next.kind === 'install') await api.installApp(app.name)
+        if (next.kind === 'update') await api.updateApp(app.name)
+        if (next.kind === 'uninstall') await api.uninstallApp(app.name)
+        this.addLog(`Started ${next.kind} for ${app.label}`, 'info')
+        this.startPolling()
+      } catch (error) {
+        this.opError = error.response?.data?.error || error.message || 'Operation failed.'
+        this.addLog(this.opError, 'error')
+        this.opRunning = false
+        this.queueItems = this.queueItems.slice(1)
+        await this.loadApps()
+        this.processQueue()
       }
     },
-
-    async pollLogs() {
+    startPolling () {
+      this.stopPolling()
+      this.pollTimer = window.setInterval(() => this.pollLogs(), 1500)
+    },
+    stopPolling () {
+      if (this.pollTimer) {
+        clearInterval(this.pollTimer)
+        this.pollTimer = null
+      }
+    },
+    async pollLogs () {
       try {
         const { data } = await api.getAppOpLogs()
-        // Append new log lines
-        if (data.logs && data.logs.length > this.opSeenCount) {
-          const newLines = data.logs.slice(this.opSeenCount)
+        if (Array.isArray(data.logs) && data.logs.length > this.opSeenCount) {
+          const incoming = data.logs.slice(this.opSeenCount)
           this.opSeenCount = data.logs.length
-          newLines.forEach(line => {
+          incoming.forEach(line => {
             const lower = line.toLowerCase()
-            const type = lower.includes('error') || lower.includes('fail') || lower.includes('err]') ? 'error'
-              : lower.includes('===') || lower.includes('success') || lower.includes('installed') || lower.includes('ok') ? 'success'
-              : lower.includes('warn') ? 'warn'
-              : 'info'
+            const type = lower.includes('error') || lower.includes('fail') ? 'error' : lower.includes('warn') ? 'warn' : lower.includes('success') || lower.includes('installed') || lower.includes('complete') ? 'success' : 'info'
             this.addLog(line, type)
           })
         }
-
         if (data.done) {
           this.stopPolling()
-          this.opRunning = false
-
           if (data.error) {
             this.opError = data.error
             this.addLog(`Operation failed: ${data.error}`, 'error')
-            this.$swal({
-              icon: 'error',
-              title: `${this.opKindLabel} failed`,
-              text: data.error,
-            })
           } else {
-            this.addLog(`${this.opKindLabel} completed successfully`, 'success')
-            this.$swal({
-              toast: true,
-              position: 'top-end',
-              icon: 'success',
-              title: `${this.currentOpApp} — ${this.opKindLabel} complete`,
-              showConfirmButton: false,
-              timer: 3000,
-            })
+            this.addLog(`${this.currentOpLabel} ${this.currentOpKind} complete`, 'success')
           }
-
-          // Clear busy map and reload fresh status
-          this.busyApps = {}
+          this.opRunning = false
+          this.queueItems = this.queueItems.slice(1)
+          this.opSeenCount = 0
           await this.loadApps()
+          this.processQueue()
         }
       } catch {
-        // Silent fail for polling
+        // Ignore polling failures until the next tick.
       }
     },
-
-    addLog(text, type = 'info') {
-      const ts = new Date().toLocaleTimeString()
-      this.opLogs.push({ ts, text, type })
+    addLog (text, type = 'info') {
+      this.opLogs.push({ ts: new Date().toLocaleTimeString(), text, type })
       this.$nextTick(() => {
-        const el = this.$refs.logWindow
-        if (el) el.scrollTop = el.scrollHeight
+        const element = this.$refs.logWindow
+        if (element) element.scrollTop = element.scrollHeight
       })
     },
-
-    closeLogWindow() {
-      this.showLogWindow = false
+    openHomepage (app) {
+      if (app.homepage) window.open(app.homepage, '_blank', 'noopener')
     },
-  },
+    async copyBinary (app) {
+      try {
+        await navigator.clipboard.writeText(app.binary || app.name)
+        this.$swal({ toast: true, position: 'top-end', icon: 'success', title: 'Binary copied', showConfirmButton: false, timer: 2000 })
+      } catch {
+        this.errorMessage = 'Unable to copy binary to clipboard.'
+      }
+    },
+    exportApps (selectedOnly = false) {
+      const rows = selectedOnly ? this.selectedApps : this.filteredApps
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json;charset=utf-8' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `apps-${Date.now()}.json`
+      link.click()
+    },
+    handleKeyboardNavigation (event) {
+      if (!this.filteredApps.length) return
+      if (['ArrowDown', 'j', 'J'].includes(event.key)) {
+        event.preventDefault()
+        this.focusedIndex = Math.min(this.focusedIndex + 1, this.filteredApps.length - 1)
+        return
+      }
+      if (['ArrowUp', 'k', 'K'].includes(event.key)) {
+        event.preventDefault()
+        this.focusedIndex = Math.max(this.focusedIndex - 1, 0)
+        return
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        this.openApp(this.filteredApps[this.focusedIndex])
+        return
+      }
+      if (event.key === ' ' && this.multiSelect) {
+        event.preventDefault()
+        this.toggleSelected(this.filteredApps[this.focusedIndex].name)
+      }
+      if (event.key === 'Escape') {
+        this.showDrawer = false
+      }
+    }
+  }
 }
 </script>
 
 <style scoped>
-.sc-text-muted { color: var(--sc-text-muted, #5a7499); }
-
-/* ── Category pills wrapper (scrollable) ── */
-.category-pills-wrapper {
-  display: flex;
-  gap: 0.25rem;
-  overflow-x: auto;
-  white-space: nowrap;
-  padding-bottom: 2px;
-  max-width: 600px;
-}
-.category-pills-wrapper::-webkit-scrollbar {
-  height: 4px;
-}
-.category-pills-wrapper::-webkit-scrollbar-track {
-  background: rgba(90, 116, 153, 0.1);
-  border-radius: 2px;
-}
-.category-pills-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(74, 158, 255, 0.3);
-  border-radius: 2px;
-}
-.category-pills-wrapper::-webkit-scrollbar-thumb:hover {
-  background: rgba(74, 158, 255, 0.5);
-}
-.cat-tab {
-  flex-shrink: 0;
-}
-.cat-count {
-  margin-left: 4px;
-  font-size: 0.65rem;
-  opacity: 0.8;
+.apps-page {
+  overscroll-behavior: contain;
 }
 
-/* ── App grid ── */
-.app-grid {
+.updates-banner,
+.bulk-bar {
+  border-color: var(--state-info-border);
+  background: var(--state-info-bg);
+  color: var(--state-info-fg);
+}
+
+.stat-row {
+  --bs-gutter-y: var(--space-16);
+}
+
+.toolbar-select {
+  width: 150px;
+}
+
+.toolbar-select--narrow {
+  width: 120px;
+}
+
+.toolbar-menu {
+  position: relative;
+}
+
+.toolbar-menu summary {
+  list-style: none;
+}
+
+.toolbar-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.toolbar-menu[open] .toolbar-menu__body {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 1rem;
 }
 
-/* ── App card ── */
-.app-card {
-  background: var(--sc-bg-secondary, #0a1628);
-  border: 1px solid var(--sc-border, #1e2d4a);
-  border-radius: 10px;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.app-card:hover {
-  border-color: rgba(74,158,255,.3);
-  box-shadow: 0 2px 12px rgba(0,0,0,.25);
-}
-.app-card--installed {
-  border-color: rgba(34,214,124,.2);
-}
-.app-card--update {
-  border-color: rgba(245,166,35,.3);
-  box-shadow: 0 0 0 1px rgba(245,166,35,.15);
-}
-.app-card--busy {
-  border-color: rgba(74,158,255,.4);
-  animation: app-card-pulse 2s infinite;
-}
-@keyframes app-card-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(74,158,255,.2); }
-  50%       { box-shadow: 0 0 0 4px rgba(74,158,255,.1); }
+.toolbar-menu__body {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  padding: var(--space-8);
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  z-index: 6;
 }
 
-/* ── Card header ── */
-.app-card-header {
+.toolbar-menu__empty {
+  padding: var(--space-8);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-12);
+}
+
+.saved-filter-row {
   display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.op-panel {
+  display: grid;
+  gap: var(--space-12);
+}
+
+.op-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.op-progress-bar,
+.mini-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.op-progress-bar span,
+.mini-progress span {
+  display: block;
+  height: 100%;
+  width: 30%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 40%, white));
+  animation: progress-slide 1.2s ease-in-out infinite;
+}
+
+.op-log-window {
+  max-height: 260px;
+  overflow: auto;
+  padding: var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.op-log-window--drawer {
+  max-height: 320px;
+}
+
+.op-log-line {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  gap: var(--space-10);
+  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-size: var(--font-size-12);
+}
+
+.op-log-line--error {
+  color: var(--state-error-fg);
+}
+
+.op-log-line--warn {
+  color: var(--state-warn-fg);
+}
+
+.op-log-line--success {
+  color: var(--state-ok-fg);
+}
+
+.op-log-time {
+  color: var(--text-tertiary);
+}
+
+.apps-shell {
+  overflow: hidden;
+}
+
+.skeleton-wrap {
+  display: grid;
+  gap: var(--space-12);
+  padding: var(--space-20);
+}
+
+.skeleton-row {
+  height: 120px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  background-size: 200% 100%;
+  animation: app-skeleton 1.5s linear infinite;
+}
+
+.apps-table.compact :deep(td),
+.apps-table.compact :deep(th) {
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-8);
+}
+
+.apps-row {
+  cursor: pointer;
+}
+
+.apps-row.active,
+.apps-row:hover {
+  background: var(--surface-2);
+}
+
+.checkbox-col {
+  width: 42px;
+}
+
+.app-cell {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: var(--space-12);
+  align-items: start;
 }
 
 .app-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  display: flex;
+  border-radius: var(--radius-md);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
-  flex-shrink: 0;
-}
-.app-icon--cli      { background: rgba(74,158,255,.12); color: #4a9eff; }
-.app-icon--runtime  { background: rgba(34,214,124,.12); color: #22d67c; }
-.app-icon--web      { background: rgba(167,139,250,.12); color: #a78bfa; }
-.app-icon--database { background: rgba(245,166,35,.12); color: #f5a623; }
-.app-icon--build    { background: rgba(240,64,64,.12); color: #f04040; }
-.app-icon--devtool  { background: rgba(0,208,255,.12); color: #00d0ff; }
-.app-icon--shell    { background: rgba(100,116,139,.12); color: #64748b; }
-
-.app-meta {
-  flex: 1;
-  min-width: 0;
-}
-.app-label {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--sc-text, #e2ecff);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  background: var(--surface-3);
 }
 
-.app-status-wrap {
-  flex-shrink: 0;
+.app-icon--cli { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.app-icon--runtime { background: color-mix(in srgb, var(--state-ok) 16%, transparent); color: var(--state-ok); }
+.app-icon--web { background: color-mix(in srgb, var(--state-info) 16%, transparent); color: var(--state-info); }
+.app-icon--database { background: color-mix(in srgb, var(--state-warn) 16%, transparent); color: var(--state-warn); }
+.app-icon--build { background: color-mix(in srgb, var(--state-error) 16%, transparent); color: var(--state-error); }
+.app-icon--devtool { background: color-mix(in srgb, var(--state-pending) 16%, transparent); color: var(--state-pending); }
+.app-icon--shell { background: color-mix(in srgb, var(--state-muted) 22%, transparent); color: var(--text-secondary); }
+
+.app-title {
+  font-size: var(--font-size-15);
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-/* ── Category / method badges ── */
-.app-cat-badge {
-  font-size: 0.6rem !important;
-  padding: 2px 6px !important;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-.cat-cli      { background: rgba(74,158,255,.12) !important; color: #4a9eff !important; }
-.cat-runtime  { background: rgba(34,214,124,.12) !important; color: #22d67c !important; }
-.cat-web      { background: rgba(167,139,250,.12) !important; color: #a78bfa !important; }
-.cat-database { background: rgba(245,166,35,.12)  !important; color: #f5a623 !important; }
-.cat-build    { background: rgba(240,64,64,.12)   !important; color: #f04040 !important; }
-.cat-devtool  { background: rgba(0,208,255,.12)   !important; color: #00d0ff !important; }
-.cat-shell    { background: rgba(100,116,139,.12) !important; color: #8aa4c8 !important; }
-
-.app-method-badge {
-  font-size: 0.6rem !important;
-  padding: 2px 6px !important;
-  background: rgba(90,116,153,.12) !important;
-  color: var(--sc-text-muted, #5a7499) !important;
+.app-subtitle {
+  font-size: var(--font-size-13);
+  color: var(--text-secondary);
 }
 
-/* ── Status badges ── */
-.app-status-badge { font-size: 0.65rem !important; padding: 3px 8px !important; }
-.badge-installing { background: rgba(74,158,255,.18) !important; color: #4a9eff !important; }
-.badge-update     { background: rgba(245,166,35,.18) !important; color: #f5a623 !important; }
-.badge-online     { background: rgba(34,214,124,.18) !important; color: #22d67c !important; }
-.badge-warning    { background: rgba(90,116,153,.18) !important; color: #8aa4c8 !important; }
-.badge-offline    { background: rgba(240,64,64,.18)  !important; color: #f04040 !important; }
-
-/* ── Description ── */
-.app-desc {
-  font-size: 0.78rem;
-  color: var(--sc-text-secondary, #8aa4c8);
-  line-height: 1.5;
+.app-subtitle--clamped {
   margin: 0;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-/* ── Version chips ── */
-.app-version-row {
+.app-meta-row,
+.action-row,
+.version-stack {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-8);
   flex-wrap: wrap;
+  align-items: center;
 }
-.version-chip {
+
+.version-stack {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.binary-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.7rem;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-family: monospace;
-}
-.installed-ver {
-  background: rgba(34,214,124,.1);
-  color: #22d67c;
-  border: 1px solid rgba(34,214,124,.2);
-}
-.new-ver-avail {
-  background: rgba(245,166,35,.1);
-  color: #f5a623;
-  border: 1px solid rgba(245,166,35,.2);
-}
-.new-ver-same {
-  background: rgba(90,116,153,.08);
-  color: var(--sc-text-muted);
-  border: 1px solid rgba(90,116,153,.15);
-}
-.ver-label {
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  opacity: .7;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+  font-size: var(--font-size-12);
 }
 
-/* ── Actions ── */
-.app-actions {
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-16);
+  padding: var(--space-20);
+}
+
+.app-card {
+  display: grid;
+  gap: var(--space-12);
+  padding: var(--space-16);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.app-card:hover,
+.app-card.active {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-default));
+  background: var(--surface-3);
+}
+
+.app-card.installed {
+  border-color: color-mix(in srgb, var(--state-ok) 20%, var(--border-default));
+}
+
+.app-card.update {
+  border-color: color-mix(in srgb, var(--state-warn) 35%, var(--border-default));
+}
+
+.app-card.busy {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-default));
+}
+
+.app-card.compact {
+  padding: var(--space-12);
+}
+
+.app-card__top,
+.app-card__identity {
   display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  gap: var(--space-12);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.update-banner-row {
+  display: inline-flex;
+  gap: var(--space-8);
   align-items: center;
-  margin-top: auto;
-}
-.btn-app-install {
-  background: rgba(245,166,35,.12) !important;
-  color: #f5a623 !important;
-  font-size: 0.72rem !important;
-  padding: 3px 10px !important;
-}
-.btn-app-install:disabled { opacity: .5; cursor: not-allowed; }
-.btn-app-update {
-  background: rgba(74,158,255,.12) !important;
-  color: #4a9eff !important;
-  font-size: 0.72rem !important;
-  padding: 3px 10px !important;
-}
-.btn-app-update:disabled { opacity: .5; cursor: not-allowed; }
-.btn-app-logs {
-  background: rgba(167,139,250,.1) !important;
-  color: #a78bfa !important;
-  font-size: 0.72rem !important;
-  padding: 3px 10px !important;
-}
-.btn-app-info {
-  background: rgba(90,116,153,.08) !important;
-  color: var(--sc-text-muted) !important;
-  font-size: 0.72rem !important;
-  padding: 3px 8px !important;
-  border: 1px solid var(--sc-border) !important;
-}
-.btn-app-info:hover { color: #4a9eff !important; border-color: #4a9eff !important; }
-.btn-app-remove {
-  background: rgba(240,64,64,.08) !important;
-  color: #f04040 !important;
-  font-size: 0.72rem !important;
-  padding: 3px 8px !important;
-  margin-left: auto;
-}
-.btn-app-remove:disabled { opacity: .5; cursor: not-allowed; }
-.app-uptodate {
-  font-size: 0.7rem;
-  color: var(--sc-text-muted);
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-md);
+  background: var(--state-warn-bg);
+  border: 1px solid var(--state-warn-border);
+  color: var(--state-warn-fg);
+  font-size: var(--font-size-12);
 }
 
-/* ── Category filter tabs ── */
-.cat-tab {
-  font-size: 0.7rem !important;
-  padding: 3px 10px !important;
-  background: transparent !important;
-  color: var(--sc-text-muted) !important;
-  border: 1px solid var(--sc-border, #1e2d4a) !important;
-  border-radius: 20px !important;
-}
-.cat-tab:hover {
-  background: rgba(74,158,255,.08) !important;
-  color: #4a9eff !important;
-  border-color: rgba(74,158,255,.3) !important;
-}
-.cat-tab.active {
-  background: rgba(74,158,255,.15) !important;
-  color: #4a9eff !important;
-  border-color: rgba(74,158,255,.4) !important;
-}
-.cat-count {
-  display: inline-block;
-  background: rgba(255,255,255,.08);
-  border-radius: 10px;
-  padding: 0 5px;
-  font-size: 0.6rem;
-  margin-left: 3px;
+.app-menu {
+  position: relative;
 }
 
-/* ── Log window ── */
-.app-log-card {
-  border: 1px solid var(--sc-border);
+.app-menu__body {
+  right: 0;
+  left: auto;
 }
-.app-log-window {
-  height: 260px;
-  overflow-y: auto;
-  background: var(--sc-bg-secondary);
-  padding: 0.75rem;
-  font-size: 0.77rem;
+
+.drawer-grid {
+  display: grid;
+  gap: var(--space-16);
 }
-.app-log-line {
+
+.drawer-panel {
+  display: grid;
+  gap: var(--space-12);
+  padding: var(--space-16);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.drawer-panel--wide {
+  grid-column: 1 / -1;
+}
+
+.drawer-meta-row {
   display: flex;
-  gap: 0.5rem;
-  padding: 1px 0;
+  justify-content: space-between;
+  gap: var(--space-12);
+  align-items: flex-start;
+}
+
+.drawer-meta-row > span:first-child {
+  color: var(--text-tertiary);
+  min-width: 90px;
+}
+
+.drawer-stack {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.drawer-copy,
+pre {
+  margin: 0;
+}
+
+pre {
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: break-word;
 }
-.log-ts {
-  color: var(--sc-text-muted);
-  min-width: 72px;
-  flex-shrink: 0;
-}
-.log-text         { color: var(--sc-text, #e2ecff); }
-.log-text.error   { color: var(--sc-red, #f04040); }
-.log-text.success { color: var(--sc-green, #22d67c); }
-.log-text.warn    { color: var(--sc-amber, #f5a623); }
-.log-cursor-line  { font-style: italic; color: var(--sc-text-muted); }
 
-/* ── Pulsing dot ── */
-@keyframes dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .4; }
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(320%); }
 }
-.status-dot.pulsing { animation: dot-pulse 1.2s infinite; }
 
-/* ── Card header padding ── */
-.sc-view-apps :deep(.card-header) { padding: 0.85rem 1rem; }
+@keyframes app-skeleton {
+  from { background-position: 0% 0%; }
+  to { background-position: 200% 0%; }
+}
+
+@media (max-width: 767px) {
+  .toolbar-select,
+  .toolbar-select--narrow {
+    width: 100%;
+  }
+
+  .apps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .app-card__top,
+  .app-card__identity {
+    flex-direction: column;
+  }
+}
 </style>

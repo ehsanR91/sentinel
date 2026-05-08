@@ -242,6 +242,7 @@ type managedApp struct {
 	Description   string `json:"description"`
 	Category      string `json:"category"`
 	Homepage      string `json:"homepage"`
+	Binary        string `json:"binary"`
 	InstallMethod string `json:"install_method"`
 	Installed     bool   `json:"installed"`
 	Status        string `json:"status"`      // not_installed | installing | updating | uninstalling | installed | failed
@@ -345,6 +346,7 @@ func (h *Handlers) GetApps(w http.ResponseWriter, r *http.Request) {
 			Description:   meta.Description,
 			Category:      meta.Category,
 			Homepage:      meta.Homepage,
+			Binary:        meta.Binary,
 			InstallMethod: meta.InstallMethod,
 			Installed:     installed,
 			Status:        status,
