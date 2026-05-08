@@ -1,6 +1,6 @@
 import ws from '@/services/ws'
 
-const HISTORY_LEN = 30
+const HISTORY_LEN = 60
 const NUMERIC_SNAP_KEYS = [
   'cpu_pct', 'ram_pct', 'swap_pct', 'disk_pct',
   'ram_used', 'ram_total', 'swap_used', 'swap_total',
@@ -59,8 +59,11 @@ export default {
     snap: emptySnap(),
     cpuHistory: initHistory(),
     ramHistory: initHistory(),
+    swapHistory: initHistory(),
+    diskHistory: initHistory(),
     netRxHistory: initHistory(),
     netTxHistory: initHistory(),
+    lastMetricTs: 0,
     wsConnected: false,
     processes: [],
     services: []
@@ -73,17 +76,24 @@ export default {
 
       const cpuPoint = sanitizeNumber(snap.cpu_pct)
       const ramPoint = sanitizeNumber(snap.ram_pct)
+      const swapPoint = sanitizeNumber(snap.swap_pct)
+      const diskPoint = sanitizeNumber(snap.disk_pct)
       const rxPoint = sanitizeNumber(snap.net_rx_rate)
       const txPoint = sanitizeNumber(snap.net_tx_rate)
 
       state.cpuHistory = [...state.cpuHistory.slice(1), cpuPoint]
       state.ramHistory = [...state.ramHistory.slice(1), ramPoint]
+      state.swapHistory = [...state.swapHistory.slice(1), swapPoint]
+      state.diskHistory = [...state.diskHistory.slice(1), diskPoint]
       state.netRxHistory = [...state.netRxHistory.slice(1), rxPoint]
       state.netTxHistory = [...state.netTxHistory.slice(1), txPoint]
+      state.lastMetricTs = sanitizedSnap.ts || Math.floor(Date.now() / 1000)
 
       if (import.meta.env.DEV) {
         assertFiniteHistory(state.cpuHistory, 'cpuHistory')
         assertFiniteHistory(state.ramHistory, 'ramHistory')
+        assertFiniteHistory(state.swapHistory, 'swapHistory')
+        assertFiniteHistory(state.diskHistory, 'diskHistory')
         assertFiniteHistory(state.netRxHistory, 'netRxHistory')
         assertFiniteHistory(state.netTxHistory, 'netTxHistory')
       }
@@ -131,8 +141,11 @@ export default {
     snap: s => s.snap,
     cpuHistory: s => s.cpuHistory,
     ramHistory: s => s.ramHistory,
+    swapHistory: s => s.swapHistory,
+    diskHistory: s => s.diskHistory,
     netRxHistory: s => s.netRxHistory,
     netTxHistory: s => s.netTxHistory,
+    lastMetricTs: s => s.lastMetricTs,
     wsConnected: s => s.wsConnected,
     processes: s => s.processes,
     services: s => s.services

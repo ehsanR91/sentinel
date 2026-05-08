@@ -133,6 +133,31 @@
   --tooltip-radius-compact: 7px;
   --tooltip-radius-rich: 10px;
   --tooltip-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI Variable", system-ui, sans-serif;
+  --dashboard-hero-bg:
+    radial-gradient(circle at top left, rgba(74, 158, 255, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(13, 23, 40, 0.98), rgba(9, 17, 31, 0.94));
+  --dashboard-panel-bg: rgba(12, 20, 34, 0.9);
+  --dashboard-panel-bg-strong: rgba(8, 15, 27, 0.96);
+  --dashboard-panel-border: rgba(138, 164, 200, 0.18);
+  --dashboard-panel-border-strong: rgba(138, 164, 200, 0.3);
+  --dashboard-grid-pattern: rgba(107, 168, 255, 0.045);
+  --dashboard-ring-track: rgba(138, 164, 200, 0.12);
+  --dashboard-ring-ok: #3ad38a;
+  --dashboard-ring-warn: #f3b54a;
+  --dashboard-ring-error: #ff6a6a;
+  --dashboard-spark-fill: rgba(107, 168, 255, 0.16);
+  --dashboard-spark-fill-strong: rgba(107, 168, 255, 0.3);
+  --dashboard-spark-line: #6ba8ff;
+  --dashboard-spark-line-alt: #3ad38a;
+  --dashboard-glow-ok: 0 0 0 1px rgba(58, 211, 138, 0.18), 0 18px 40px rgba(58, 211, 138, 0.12);
+  --dashboard-glow-warn: 0 0 0 1px rgba(243, 181, 74, 0.18), 0 18px 40px rgba(243, 181, 74, 0.12);
+  --dashboard-glow-error: 0 0 0 1px rgba(255, 106, 106, 0.22), 0 18px 40px rgba(255, 106, 106, 0.16);
+  --dashboard-threshold-ok: linear-gradient(90deg, rgba(58, 211, 138, 0.82), rgba(58, 211, 138, 0.52));
+  --dashboard-threshold-warn: linear-gradient(90deg, rgba(243, 181, 74, 0.82), rgba(243, 181, 74, 0.54));
+  --dashboard-threshold-error: linear-gradient(90deg, rgba(255, 106, 106, 0.88), rgba(255, 106, 106, 0.6));
+  --dashboard-live-dot: #3ad38a;
+  --dashboard-stale-dot: #93a4bd;
+  --dashboard-activity-highlight: rgba(107, 168, 255, 0.08);
   
   // Fonts
   --font-family-monospace: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -239,6 +264,31 @@
   --tooltip-radius-compact: 7px;
   --tooltip-radius-rich: 10px;
   --tooltip-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI Variable", system-ui, sans-serif;
+  --dashboard-hero-bg:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(240, 244, 248, 0.94));
+  --dashboard-panel-bg: rgba(255, 255, 255, 0.9);
+  --dashboard-panel-bg-strong: rgba(248, 251, 255, 0.96);
+  --dashboard-panel-border: rgba(55, 65, 81, 0.12);
+  --dashboard-panel-border-strong: rgba(55, 65, 81, 0.2);
+  --dashboard-grid-pattern: rgba(37, 99, 235, 0.035);
+  --dashboard-ring-track: rgba(100, 116, 139, 0.16);
+  --dashboard-ring-ok: #1f9f5c;
+  --dashboard-ring-warn: #b96f00;
+  --dashboard-ring-error: #d33434;
+  --dashboard-spark-fill: rgba(37, 99, 235, 0.14);
+  --dashboard-spark-fill-strong: rgba(37, 99, 235, 0.26);
+  --dashboard-spark-line: #2563eb;
+  --dashboard-spark-line-alt: #1f9f5c;
+  --dashboard-glow-ok: 0 0 0 1px rgba(31, 159, 92, 0.14), 0 18px 32px rgba(31, 159, 92, 0.12);
+  --dashboard-glow-warn: 0 0 0 1px rgba(185, 111, 0, 0.16), 0 18px 32px rgba(185, 111, 0, 0.12);
+  --dashboard-glow-error: 0 0 0 1px rgba(211, 52, 52, 0.18), 0 18px 32px rgba(211, 52, 52, 0.12);
+  --dashboard-threshold-ok: linear-gradient(90deg, rgba(31, 159, 92, 0.78), rgba(31, 159, 92, 0.48));
+  --dashboard-threshold-warn: linear-gradient(90deg, rgba(185, 111, 0, 0.78), rgba(185, 111, 0, 0.52));
+  --dashboard-threshold-error: linear-gradient(90deg, rgba(211, 52, 52, 0.82), rgba(211, 52, 52, 0.56));
+  --dashboard-live-dot: #1f9f5c;
+  --dashboard-stale-dot: #64748b;
+  --dashboard-activity-highlight: rgba(37, 99, 235, 0.08);
   
   // Fonts
   --font-family-monospace: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;

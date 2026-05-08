@@ -1,500 +1,993 @@
 <template>
-  <div ref="pageEl">
-    <!-- Pull-to-refresh indicator (mobile) -->
-    <div class="ptr-bar" :class="{ pulling: isPulling, refreshing: isRefreshing }"
-         :style="{ height: `${Math.min(pullDist, 64)}px`, opacity: Math.min(pullDist / 64, 1) }">
+  <div ref="pageEl" class="dashboard-page">
+    <div
+      class="ptr-bar"
+      :class="{ pulling: isPulling, refreshing: isRefreshing }"
+      :style="{ height: `${Math.min(pullDist, 64)}px`, opacity: Math.min(pullDist / 64, 1) }"
+    >
       <i class="mdi" :class="isRefreshing ? 'mdi-loading mdi-spin' : pullDist >= 64 ? 'mdi-refresh' : 'mdi-arrow-down'"></i>
     </div>
 
     <PageHeader title="Dashboard" icon="mdi mdi-view-dashboard" :items="breadcrumbs">
       <template #actions>
-        <span v-if="isRefreshing" class="spinner-border spinner-border-sm text-info me-2" role="status"></span>
-        <div class="btn-group btn-group-sm me-2">
-          <Tooltip label="Flexible layout" as-child>
-            <button class="btn" :class="layoutMode === 'flexible' ? 'btn-sc-primary' : 'btn-outline-secondary'" @click="setLayoutMode('flexible')">
-              <i class="mdi mdi-application"></i>
-            </button>
-          </Tooltip>
-          <Tooltip label="Compact layout" as-child>
-            <button class="btn" :class="layoutMode === 'compact' ? 'btn-sc-primary' : 'btn-outline-secondary'" @click="setLayoutMode('compact')">
-              <i class="mdi mdi-application-outline"></i>
-            </button>
-          </Tooltip>
-          <Tooltip label="Refresh all widgets" as-child>
-            <button class="btn btn-sc-primary" @click="refreshAll">
-              <i class="mdi mdi-refresh"></i>
-            </button>
-          </Tooltip>
+        <div class="dashboard-header-actions">
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :icon="layoutEditMode ? 'mdi mdi-lock-outline' : 'mdi mdi-pencil-ruler-outline'"
+            :label="layoutEditMode ? 'Lock layout' : 'Edit layout'"
+            @click="toggleLayoutEdit"
+          />
+          <AppButton
+            variant="secondary"
+            size="sm"
+            :icon="isFullscreen ? 'mdi mdi-fullscreen-exit' : 'mdi mdi-fullscreen'"
+            :label="isFullscreen ? 'Exit focus' : 'Focus mode'"
+            @click="toggleFullscreen"
+          />
+          <label class="dashboard-select-wrap">
+            <span>Preset</span>
+            <select v-model="activePreset" class="dashboard-select" @change="applyPreset(activePreset)">
+              <option v-for="preset in presetOptions" :key="preset.value" :value="preset.value">{{ preset.label }}</option>
+            </select>
+          </label>
+          <label class="dashboard-select-wrap dashboard-select-wrap--compact">
+            <span>Refresh</span>
+            <select v-model.number="auxRefreshSec" class="dashboard-select" @change="persistDashboardState">
+              <option :value="30">30s</option>
+              <option :value="60">60s</option>
+              <option :value="120">2m</option>
+            </select>
+          </label>
+          <AppButton variant="secondary" size="sm" icon="mdi mdi-view-grid-plus-outline" label="Add widget" @click="showWidgetCatalog = true" />
+          <div class="dashboard-refresh-block">
+            <span class="dashboard-refresh-note">Last sync {{ formatRelativeFromNow(lastLoadedAt) }}</span>
+            <AppButton variant="primary" size="sm" icon="mdi mdi-refresh" :loading="isRefreshing" label="Refresh" @click="refreshAll" />
+          </div>
         </div>
       </template>
     </PageHeader>
 
-    <!-- ── Stat row ─────────────────────────────────────────────────────── -->
-    <draggable
-      v-model="statWidgets"
-      class="row g-3 mb-4"
-      item-key="id"
-      handle=".drag-handle"
-      :animation="200"
-      ghost-class="drag-ghost"
-      chosen-class="drag-chosen"
-      @end="saveStatWidgetOrder"
-    >
-      <template #item="{ element }">
-        <div :class="element.colClass">
-          <div class="widget-wrapper">
-            <Tooltip label="Drag to rearrange" as-child>
-              <div class="drag-handle">
-                <i class="mdi mdi-drag-vertical"></i>
-              </div>
-            </Tooltip>
-            <StatCard
-              v-if="element.id === 'cpu'"
-              label="CPU Usage"
-              :value="`${cpu}%`"
-              :sub="`Load avg: ${loadAvg}`"
-              icon="mdi mdi-chip"
-              icon-color="#4a9eff"
-              icon-bg="rgba(74,158,255,0.12)"
-              :progress="cpu"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-            <StatCard
-              v-else-if="element.id === 'memory'"
-              label="Memory"
-              :value="`${ram}%`"
-              :sub="`${ramUsed} / ${ramTotal} used`"
-              icon="mdi mdi-memory"
-              icon-color="#a78bfa"
-              icon-bg="rgba(167,139,250,0.12)"
-              :progress="ram"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-            <StatCard
-              v-else-if="element.id === 'disk'"
-              label="Disk / (root)"
-              :value="`${disk}%`"
-              :sub="`${diskUsed} / ${diskTotal}`"
-              icon="mdi mdi-harddisk"
-              icon-color="#f5a623"
-              icon-bg="rgba(245,166,35,0.12)"
-              :progress="disk"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-            <StatCard
-              v-else-if="element.id === 'network'"
-              label="Network Out"
-              :value="netOut"
-              :sub="`In: ${netIn}`"
-              icon="mdi mdi-swap-vertical"
-              icon-color="#22d67c"
-              icon-bg="rgba(34,214,124,0.12)"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-            <div
-              v-else-if="element.id === 'cleanup'"
-              class="card"
-              style="cursor:pointer"
-              @click="openCleaner"
-            >
-              <div class="card-body d-flex align-items-center justify-content-between py-3">
-                <div>
-                  <div class="text-uppercase" style="font-size:0.68rem;color:#5a7499;letter-spacing:.05em">Junk Cleanable</div>
-                  <div style="font-size:1.35rem;font-weight:700;color:#22d67c">{{ cleanupStats.estimated_junk_human || '—' }}</div>
-                  <div style="font-size:0.72rem;color:#8aa4c8">Tap to run cleaner animation</div>
-                </div>
-                <div style="width:46px;height:46px;border-radius:14px;background:rgba(34,214,124,0.15);display:flex;align-items:center;justify-content:center;color:#22d67c">
-                  <i class="mdi mdi-broom" style="font-size:1.3rem"></i>
-                </div>
-              </div>
-            </div>
+    <section class="dashboard-hero-grid">
+      <HealthRing
+        class="dashboard-hero-grid__health"
+        :health-data="healthData"
+        :history="healthHistory"
+        :loading="healthLoading"
+        :stale="isAuxStale"
+        @open="showHealthDrawer = true"
+        @inspect-issue="openHealthIssue"
+      />
+
+      <article class="dashboard-panel dashboard-server-card">
+        <div class="dashboard-panel__header">
+          <div>
+            <div class="dashboard-panel__eyebrow">Server Identity</div>
+            <h2 class="dashboard-panel__title">{{ snap.hostname || 'Sentinel node' }}</h2>
+          </div>
+          <div class="dashboard-live-chip" :class="{ 'is-offline': !wsConnected || isMetricStale }">
+            <span class="dashboard-live-chip__dot"></span>
+            {{ connectionStateLabel }}
           </div>
         </div>
-      </template>
-    </draggable>
 
-    <div v-if="showCleaner" class="cleaner-modal" @click.self="closeCleaner">
-      <div class="cleaner-card">
-        <h5 class="mb-2"><i class="mdi mdi-broom me-1"></i>System Cleaner</h5>
-        <p class="mb-3" style="font-size:0.82rem;color:#8aa4c8">Reclaiming junk files and optimizing cache...</p>
-        <div class="cleaner-bubble">
-          <div class="cleaner-fill" :style="{ height: cleanerProgress + '%' }"></div>
-          <div class="cleaner-value">{{ cleanerProgress }}%</div>
+        <div class="dashboard-identity-grid">
+          <div v-for="row in identityRows" :key="row.label" class="dashboard-identity-row">
+            <span class="dashboard-identity-row__label">{{ row.label }}</span>
+            <span class="dashboard-identity-row__value" :class="{ 'is-mono': row.mono }">{{ row.value }}</span>
+          </div>
         </div>
-        <div class="mt-3" style="font-size:0.8rem;color:#5a7499">Freed: {{ cleanupStats.last_freed_human || cleanupStats.estimated_junk_human || '0 B' }}</div>
-        <div class="d-flex gap-2 mt-3">
-          <button class="btn btn-sm btn-sc-primary" :disabled="cleanerRunning" @click="runCleaner">
-            <i :class="cleanerRunning ? 'mdi mdi-loading mdi-spin me-1' : 'mdi mdi-play me-1'"></i>{{ cleanerRunning ? 'Cleaning…' : 'Start Cleaner' }}
+      </article>
+
+      <article class="dashboard-panel dashboard-hero-side">
+        <div class="dashboard-panel__header">
+          <div>
+            <div class="dashboard-panel__eyebrow">Critical Signals</div>
+            <h2 class="dashboard-panel__title">Operator Actions</h2>
+          </div>
+        </div>
+
+        <div class="dashboard-status-pills">
+          <button
+            v-for="pill in heroPills"
+            :key="pill.label"
+            type="button"
+            class="dashboard-status-pill"
+            :class="`dashboard-status-pill--${pill.tone}`"
+            @click="navigateTo(pill.route)"
+          >
+            <span class="dashboard-status-pill__label">{{ pill.label }}</span>
+            <span class="dashboard-status-pill__value">{{ pill.value }}</span>
           </button>
-          <button class="btn btn-sm btn-outline-secondary" @click="closeCleaner">Close</button>
         </div>
-      </div>
-    </div>
 
-    <!-- ── Security summary row ──────────────────────────────────────────── -->
+        <div class="dashboard-actions-grid">
+          <AppButton variant="primary" size="md" icon="mdi mdi-shield-search" label="Scan now" @click="runScanAction" />
+          <AppButton variant="secondary" size="md" icon="mdi mdi-broom" :loading="cleanerRunning" label="Run cleaner" @click="openCleaner" />
+          <AppButton variant="secondary" size="md" icon="mdi mdi-reload-alert" label="Reload services" @click="reloadServicesPanel" />
+          <AppButton variant="secondary" size="md" icon="mdi mdi-console-line" label="Open terminal" @click="navigateTo('/terminal')" />
+        </div>
+      </article>
+    </section>
+
     <draggable
-      v-model="securityWidgets"
-      class="row g-3 mb-4"
+      v-model="kpiWidgets"
+      class="dashboard-kpi-grid"
       item-key="id"
-      handle=".drag-handle"
-      :animation="200"
+      handle=".dashboard-edit-handle"
+      :disabled="!layoutEditMode"
+      :animation="180"
       ghost-class="drag-ghost"
       chosen-class="drag-chosen"
-      @end="saveSecurityWidgetOrder"
+      @end="persistDashboardState"
     >
       <template #item="{ element }">
-        <div :class="element.colClass">
-          <div class="widget-wrapper">
-            <Tooltip label="Drag to rearrange" as-child>
-              <div class="drag-handle">
-                <i class="mdi mdi-drag-vertical"></i>
-              </div>
-            </Tooltip>
-            <StatCard
-              v-if="element.id === 'bans'"
-              label="Active Bans"
-              :value="secStats.activeBans"
-              sub="fail2ban + CrowdSec"
-              icon="mdi mdi-shield-lock"
-              icon-color="#f04040"
-              icon-bg="rgba(240,64,64,0.12)"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-            <StatCard
-              v-else-if="element.id === 'logins24h'"
-              label="Failed Logins (24h)"
-              :value="secStats.failedLogins"
-              sub="all sources"
-              icon="mdi mdi-lock-alert"
-              icon-color="#f5a623"
-              icon-bg="rgba(245,166,35,0.12)"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-            <StatCard
-              v-else-if="element.id === 'docker'"
-              label="Docker Containers"
-              :value="`${dockerInfo.containers_running}/${dockerInfo.containers_total}`"
-              sub="running / total"
-              icon="mdi mdi-docker"
-              icon-color="#22d3ee"
-              icon-bg="rgba(34,211,238,0.12)"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-            <StatCard
-              v-else-if="element.id === 'uptime'"
-              label="Uptime"
-              :value="uptime"
-              sub="since last reboot"
-              icon="mdi mdi-clock-outline"
-              icon-color="#22d67c"
-              icon-bg="rgba(34,214,124,0.12)"
-              @click="navigateTo(element.link)"
-              style="cursor:pointer"
-            />
-          </div>
+        <div class="dashboard-kpi-grid__item">
+          <button v-if="layoutEditMode" type="button" class="dashboard-edit-handle" aria-label="Drag widget">
+            <i class="mdi mdi-drag"></i>
+          </button>
+          <button
+            v-if="layoutEditMode && kpiWidgets.length > 2"
+            type="button"
+            class="dashboard-hide-button"
+            aria-label="Hide widget"
+            @click="hideKpi(element.id)"
+          >
+            <i class="mdi mdi-eye-off-outline"></i>
+          </button>
+          <KPICard v-bind="kpiCardById(element.id)" @click="openKpiDrawer(element.id)" />
         </div>
       </template>
     </draggable>
 
-    <!-- ── Charts row ─────────────────────────────────────────────────────── -->
-    <div class="row g-3 mb-4">
-      <div class="col-xl-6">
-        <div class="widget-wrapper">
-          <Tooltip label="Drag to rearrange" as-child>
-            <div class="drag-handle">
-              <i class="mdi mdi-drag-vertical"></i>
-            </div>
-          </Tooltip>
-          <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-              <h6><i class="mdi mdi-chip me-2" style="color:#4a9eff"></i>CPU Usage (last 60s)</h6>
-              <span class="badge" style="background:rgba(74,158,255,0.15);color:#4a9eff;font-size:0.7rem">LIVE</span>
-            </div>
-            <div class="card-body py-2">
-              <apexchart type="area" height="180" :options="cpuChart.options" :series="cpuChart.series" />
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-xl-6">
-        <div class="widget-wrapper">
-          <Tooltip label="Drag to rearrange" as-child>
-            <div class="drag-handle">
-              <i class="mdi mdi-drag-vertical"></i>
-            </div>
-          </Tooltip>
-          <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-              <h6><i class="mdi mdi-swap-vertical me-2" style="color:#22d67c"></i>Network Traffic (last 60s)</h6>
-              <span class="badge" style="background:rgba(34,214,124,0.15);color:#22d67c;font-size:0.7rem">LIVE</span>
-            </div>
-            <div class="card-body py-2">
-              <apexchart type="area" height="180" :options="netChart.options" :series="netChart.series" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Draggable widget row ──────────────────────────────────────────── -->
     <draggable
-      v-model="widgets"
-      class="row g-3"
+      v-model="sectionWidgets"
+      class="dashboard-section-stack"
       item-key="id"
-      handle=".drag-handle"
-      :animation="200"
+      handle=".dashboard-section-handle"
+      :disabled="!layoutEditMode"
+      :animation="180"
       ghost-class="drag-ghost"
       chosen-class="drag-chosen"
-      @end="saveWidgetOrder"
+      @end="persistDashboardState"
     >
       <template #item="{ element }">
-        <div :class="widgetColClass">
-          <div class="widget-wrapper h-100">
-            <Tooltip label="Drag to rearrange" as-child>
-              <div class="drag-handle">
-                <i class="mdi mdi-drag-vertical"></i>
-              </div>
-            </Tooltip>
-            <HealthCheck   v-if="element.id === 'health'" class="h-100" />
-            <AlertFeed    v-else-if="element.id === 'alerts'" class="h-100" :compact="layoutMode === 'compact'" />
-            <ServiceStatus v-else-if="element.id === 'services'" class="h-100" :compact="layoutMode === 'compact'" />
-            <div v-else-if="element.id === 'logins'" class="card h-100">
-              <div class="card-header d-flex align-items-center justify-content-between">
-                <h6><i class="mdi mdi-login me-2" style="color:#a78bfa"></i>Recent Login Attempts</h6>
-              </div>
-              <div class="card-body" :style="layoutMode === 'compact' ? 'max-height:200px;overflow-y:auto;padding:0.75rem' : 'max-height:300px;overflow-y:auto;padding:0.75rem'">
-                <div style="overflow-x:auto">
-                  <table class="table mb-0" style="min-width:100%">
-                    <thead><tr><th style="font-size:0.72rem;padding:0.5rem 0.75rem">IP</th><th style="font-size:0.72rem;padding:0.5rem 0.75rem">User</th><th style="font-size:0.72rem;padding:0.5rem 0.75rem">Status</th><th style="font-size:0.72rem;padding:0.5rem 0.75rem">Time</th></tr></thead>
-                    <tbody>
-                      <tr v-if="!loginAttempts.length">
-                        <td colspan="4" class="text-center" style="color:#5a7499;font-size:0.8rem;padding:1.5rem">No login attempts recorded</td>
-                      </tr>
-                      <tr v-for="(a, i) in loginAttempts" :key="i">
-                        <td class="font-mono" style="font-size:0.75rem;padding:0.5rem 0.75rem;word-break:break-all">{{ a.ip }}</td>
-                        <td style="font-size:0.78rem;padding:0.5rem 0.75rem">{{ a.username }}</td>
-                        <td style="padding:0.5rem 0.75rem">
-                          <span class="badge rounded-pill" :class="a.success ? 'badge-online' : 'badge-offline'">
-                            {{ a.success ? 'OK' : 'FAIL' }}
-                          </span>
-                        </td>
-                        <td style="font-size:0.72rem;color:#5a7499;padding:0.5rem 0.75rem;white-space:nowrap">{{ new Date(a.ts * 1000).toLocaleTimeString() }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
+        <section class="dashboard-section-shell">
+          <div v-if="layoutEditMode" class="dashboard-section-tools">
+            <button type="button" class="dashboard-section-handle" aria-label="Drag section">
+              <i class="mdi mdi-drag"></i>
+            </button>
+            <button
+              v-if="sectionWidgets.length > 1"
+              type="button"
+              class="dashboard-hide-button"
+              aria-label="Hide section"
+              @click="hideSection(element.id)"
+            >
+              <i class="mdi mdi-eye-off-outline"></i>
+            </button>
+          </div>
+
+          <template v-if="element.id === 'telemetry'">
+            <div class="dashboard-telemetry-grid">
+              <TelemetryChart
+                title="CPU + Load"
+                description="Auto-scales around the current CPU band while preserving alert thresholds."
+                icon="mdi mdi-chip"
+                :live="wsConnected && !isMetricStale"
+                :series="cpuTelemetrySeries"
+                :formatter="formatPercentValue"
+                :range-options="telemetryRanges"
+                :thresholds="cpuTelemetryThresholds"
+                :percent-scale="lockCpuToPercent"
+              />
+              <TelemetryChart
+                title="Memory + Swap"
+                description="RAM and swap pressure, stacked for fast saturation reads."
+                icon="mdi mdi-memory"
+                :live="wsConnected && !isMetricStale"
+                :series="memoryTelemetrySeries"
+                :formatter="formatPercentValue"
+                :range-options="telemetryRanges"
+                :thresholds="memoryTelemetryThresholds"
+                :stacked="true"
+                :percent-scale="true"
+              />
+              <TelemetryChart
+                title="Network Traffic"
+                description="Linked ingress and egress streams with shared crosshair timing."
+                icon="mdi mdi-swap-vertical"
+                :live="wsConnected && !isMetricStale"
+                :series="networkTelemetrySeries"
+                :formatter="formatRateValue"
+                :range-options="telemetryRanges"
+              />
+
+              <article class="dashboard-panel dashboard-mount-card">
+                <div class="dashboard-panel__header">
+                  <div>
+                    <div class="dashboard-panel__eyebrow">Disk Space by Mount</div>
+                    <h3 class="dashboard-panel__title">Storage Pressure</h3>
+                  </div>
+                  <span class="dashboard-panel__hint">{{ mountRows.length }} mounts</span>
                 </div>
+                <div class="dashboard-mount-list">
+                  <div v-if="!mountRows.length" class="dashboard-empty-inline">Collecting partition metrics…</div>
+                  <div v-for="mount in mountRows" :key="mount.mount" class="dashboard-mount-row">
+                    <div class="dashboard-mount-row__head">
+                      <span class="dashboard-mount-row__mount">{{ mount.mount }}</span>
+                      <span class="dashboard-mount-row__value">{{ mount.pct }}%</span>
+                    </div>
+                    <div class="dashboard-mount-row__meta">{{ mount.used }} / {{ mount.total }} · {{ mount.device }}</div>
+                    <div class="dashboard-mount-row__bar">
+                      <span class="dashboard-mount-row__fill" :style="{ width: `${mount.pct}%` }" :class="mount.tone"></span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </template>
+
+          <ServiceHealthPanel v-else-if="element.id === 'services'" ref="servicePanel" />
+          <ActivityFeed v-else-if="element.id === 'activity'" :items-by-tab="activityItemsByTab" @open-item="openActivityItem" />
+        </section>
+      </template>
+    </draggable>
+
+    <section class="dashboard-footer-strip dashboard-panel">
+      <div class="dashboard-footer-strip__group">
+        <span class="dashboard-footer-strip__label">Agent build</span>
+        <span class="dashboard-footer-strip__value">v{{ healthData.version || 'unknown' }}</span>
+      </div>
+      <div class="dashboard-footer-strip__group">
+        <span class="dashboard-footer-strip__label">Last sync</span>
+        <span class="dashboard-footer-strip__value">{{ formatRelativeFromNow(lastLoadedAt) }}</span>
+      </div>
+      <div class="dashboard-footer-strip__group">
+        <span class="dashboard-footer-strip__label">Connection</span>
+        <span class="dashboard-connection-pill" :class="`dashboard-connection-pill--${connectionTone}`">{{ connectionStateLabel }}</span>
+      </div>
+      <div class="dashboard-footer-strip__group">
+        <span class="dashboard-footer-strip__label">Endpoint</span>
+        <span class="dashboard-footer-strip__value dashboard-footer-strip__value--mono">{{ endpointLabel }}</span>
+      </div>
+      <div class="dashboard-footer-strip__group">
+        <span class="dashboard-footer-strip__label">Operator IP</span>
+        <span class="dashboard-footer-strip__value dashboard-footer-strip__value--mono">{{ userMeta.client_ip || 'Unavailable' }}</span>
+      </div>
+    </section>
+
+    <DetailDrawer
+      :model-value="showWidgetCatalog"
+      title="Widget catalog"
+      subtitle="Restore hidden dashboard widgets"
+      @update:model-value="showWidgetCatalog = $event"
+    >
+      <div class="dashboard-drawer-grid">
+        <div>
+          <h4 class="dashboard-drawer-title">Hidden KPI cards</h4>
+          <div class="dashboard-restore-list">
+            <button
+              v-for="widget in hiddenKpiEntries"
+              :key="widget.id"
+              type="button"
+              class="dashboard-restore-row"
+              @click="restoreKpi(widget.id)"
+            >
+              <span>
+                <strong>{{ widget.label }}</strong>
+                <small>{{ widget.description }}</small>
+              </span>
+              <i class="mdi mdi-plus"></i>
+            </button>
+            <div v-if="!hiddenKpiEntries.length" class="dashboard-empty-inline">No hidden KPI cards.</div>
+          </div>
+        </div>
+        <div>
+          <h4 class="dashboard-drawer-title">Hidden sections</h4>
+          <div class="dashboard-restore-list">
+            <button
+              v-for="section in hiddenSectionEntries"
+              :key="section.id"
+              type="button"
+              class="dashboard-restore-row"
+              @click="restoreSection(section.id)"
+            >
+              <span>
+                <strong>{{ section.label }}</strong>
+                <small>{{ section.description }}</small>
+              </span>
+              <i class="mdi mdi-plus"></i>
+            </button>
+            <div v-if="!hiddenSectionEntries.length" class="dashboard-empty-inline">All major sections are visible.</div>
+          </div>
+        </div>
+      </div>
+    </DetailDrawer>
+
+    <DetailDrawer
+      :model-value="showHealthDrawer"
+      :title="`${healthData.score || 0}/100 · ${healthHeadline}`"
+      subtitle="Remediation and posture detail"
+      @update:model-value="showHealthDrawer = $event"
+    >
+      <div class="dashboard-health-drawer">
+        <div class="dashboard-health-drawer__summary">{{ healthData.summary || 'No health summary available.' }}</div>
+        <div class="dashboard-health-drawer__categories">
+          <div v-for="category in healthCategories" :key="category.key" class="dashboard-health-category">
+            <span>{{ category.label }}</span>
+            <strong>{{ category.score }}/100</strong>
+          </div>
+        </div>
+        <div class="dashboard-health-drawer__issues">
+          <div v-for="check in healthIssues" :key="check.name" class="dashboard-health-issue-card">
+            <div>
+              <div class="dashboard-health-issue-card__title">
+                <span class="dashboard-health-badge" :class="check.status">{{ check.status }}</span>
+                <strong>{{ check.name }}</strong>
               </div>
+              <p>{{ check.message }}</p>
+              <small>Checked {{ formatTimestamp(check.last_checked || healthData.timestamp) }}</small>
+            </div>
+            <div class="dashboard-health-issue-card__actions">
+              <AppButton variant="secondary" size="sm" label="Fix" :loading="healthFixingName === check.name && healthFixMode === 'auto'" @click="fixHealthIssue(check, 'auto')" />
+              <AppButton variant="ghost" size="sm" label="Guide" :loading="healthFixingName === check.name && healthFixMode === 'manual'" @click="fixHealthIssue(check, 'manual')" />
             </div>
           </div>
         </div>
-      </template>
-    </draggable>
+        <div v-if="healthFixResponse" class="dashboard-health-response" :class="healthFixResponse.success ? 'is-success' : 'is-error'">
+          <strong>{{ healthFixResponse.message }}</strong>
+          <p v-if="healthFixResponse.remedy">{{ healthFixResponse.remedy }}</p>
+          <pre v-if="healthFixResponse.command">{{ healthFixResponse.command }}</pre>
+        </div>
+      </div>
+    </DetailDrawer>
+
+    <DetailDrawer
+      :model-value="showKpiDrawer"
+      :title="selectedKpiDetail?.label || 'KPI detail'"
+      subtitle="Current metric context"
+      @update:model-value="showKpiDrawer = $event"
+    >
+      <div v-if="selectedKpiDetail" class="dashboard-kpi-drawer">
+        <div class="dashboard-kpi-drawer__hero">
+          <div>
+            <div class="dashboard-kpi-drawer__value">{{ selectedKpiDetail.value }}</div>
+            <div class="dashboard-kpi-drawer__delta" :class="`is-${selectedKpiDetail.deltaTone}`">{{ selectedKpiDetail.deltaLabel || 'No delta yet' }}</div>
+          </div>
+          <div class="dashboard-kpi-drawer__status">{{ selectedKpiDetail.statusLabel || selectedKpiDetail.rangeLabel }}</div>
+        </div>
+        <div class="dashboard-kpi-drawer__lines">
+          <div v-for="line in selectedKpiDetail.contextLines" :key="line" class="dashboard-kpi-drawer__line">{{ line }}</div>
+        </div>
+        <div v-if="selectedKpiDetail.threshold" class="dashboard-kpi-drawer__thresholds">
+          <div>Warn at {{ selectedKpiDetail.threshold.warn }}</div>
+          <div>Critical at {{ selectedKpiDetail.threshold.crit }}</div>
+          <div>Current {{ selectedKpiDetail.threshold.value }}</div>
+        </div>
+      </div>
+    </DetailDrawer>
+
+    <div v-if="showCleaner" class="dashboard-cleaner-overlay" @click.self="closeCleaner">
+      <div class="dashboard-cleaner-card">
+        <div class="dashboard-cleaner-card__header">
+          <div>
+            <div class="dashboard-panel__eyebrow">Maintenance</div>
+            <h3 class="dashboard-panel__title">System Cleaner</h3>
+          </div>
+          <button type="button" class="dashboard-hide-button" aria-label="Close cleaner" @click="closeCleaner">
+            <i class="mdi mdi-close"></i>
+          </button>
+        </div>
+        <p class="dashboard-cleaner-card__copy">Clear reclaimable package cache and stale temporary files, then sync the latest maintenance status back into the dashboard.</p>
+        <div class="dashboard-cleaner-progress">
+          <span class="dashboard-cleaner-progress__fill" :style="{ width: `${cleanerProgress}%` }"></span>
+        </div>
+        <div class="dashboard-cleaner-stats">
+          <span>Progress {{ cleanerProgress }}%</span>
+          <span>Last reclaimed {{ cleanupStats.last_freed_human || '0 B' }}</span>
+        </div>
+        <div class="dashboard-cleaner-card__actions">
+          <AppButton variant="primary" size="md" icon="mdi mdi-play" :loading="cleanerRunning" :label="cleanerRunning ? 'Cleaning…' : 'Start cleaner'" @click="runCleaner" />
+          <AppButton variant="secondary" size="md" label="Close" @click="closeCleaner" />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import PageHeader    from '@/components/page-header.vue'
-import Tooltip       from '@/components/ui/tooltip.vue'
-import StatCard      from '@/components/widgets/stat-card.vue'
-import AlertFeed     from '@/components/widgets/alert-feed.vue'
-import ServiceStatus from '@/components/widgets/service-status.vue'
-import HealthCheck   from '@/components/widgets/health-check.vue'
-import draggable     from 'vuedraggable'
+import PageHeader from '@/components/page-header.vue'
+import AppButton from '@/components/ui/app-button.vue'
+import DetailDrawer from '@/components/ui/detail-drawer.vue'
+import HealthRing from '@/components/dashboard/health-ring.vue'
+import KPICard from '@/components/dashboard/kpi-card.vue'
+import TelemetryChart from '@/components/dashboard/telemetry-chart.vue'
+import ActivityFeed from '@/components/dashboard/activity-feed.vue'
+import ServiceHealthPanel from '@/components/dashboard/service-health-panel.vue'
+import draggable from 'vuedraggable'
 import { mapGetters } from 'vuex'
 
-function sanitizeSeries(data = []) {
-  return data.map(value => {
-    const num = Number(value)
-    return Number.isFinite(num) ? num : null
-  })
-}
+const DASHBOARD_STATE_KEY = 'sc_dashboard_v2_layout'
 
-function assertFiniteSeries(series, name) {
-  if (!import.meta.env.DEV) return
-  series.forEach((value, index) => {
-    if (value !== null && !Number.isFinite(value)) {
-      console.error('Non-finite chart value in series', { name, index, value })
-    }
-  })
-}
-
-const DEFAULT_WIDGETS = [
-  { id: 'health' },
-  { id: 'alerts' },
-  { id: 'services' },
-  { id: 'logins' }
+const DEFAULT_KPI_WIDGETS = [
+  { id: 'cpu' },
+  { id: 'memory' },
+  { id: 'disk' },
+  { id: 'network' },
+  { id: 'bans' },
+  { id: 'logins24h' },
+  { id: 'containers' },
+  { id: 'uptime' }
 ]
 
-function fmtBytes (b) {
-  if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB'
-  if (b >= 1048576)    return (b / 1048576).toFixed(1) + ' MB'
-  if (b >= 1024)       return (b / 1024).toFixed(0) + ' KB'
-  return b + ' B'
+const DEFAULT_SECTION_WIDGETS = [
+  { id: 'telemetry' },
+  { id: 'services' },
+  { id: 'activity' }
+]
+
+const PRESETS = {
+  operator: {
+    kpis: ['cpu', 'memory', 'disk', 'network', 'bans', 'logins24h', 'containers', 'uptime'],
+    sections: ['telemetry', 'services', 'activity']
+  },
+  security: {
+    kpis: ['bans', 'logins24h', 'cpu', 'memory', 'disk', 'network', 'containers', 'uptime'],
+    sections: ['activity', 'services', 'telemetry']
+  },
+  performance: {
+    kpis: ['cpu', 'memory', 'disk', 'network', 'uptime', 'containers', 'bans', 'logins24h'],
+    sections: ['telemetry', 'activity', 'services']
+  },
+  compact: {
+    kpis: ['cpu', 'memory', 'disk', 'network', 'containers', 'uptime', 'bans', 'logins24h'],
+    sections: ['telemetry', 'services', 'activity']
+  }
 }
 
-function fmtUptime (seconds) {
-  const d = Math.floor(seconds / 86400)
-  const h = Math.floor((seconds % 86400) / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (d > 0) return `${d}d ${h}h ${m}m`
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
+function safeLocalState() {
+  try {
+    return JSON.parse(localStorage.getItem(DASHBOARD_STATE_KEY) || '{}')
+  } catch {
+    return {}
+  }
 }
 
-const CHART_OPTS_BASE = (color) => ({
-  chart:  { type: 'area', toolbar: { show: false }, animations: { enabled: true, easing: 'easeinout', speed: 400 }, background: 'transparent' },
-  theme:  { mode: 'dark' },
-  colors: [color],
-  stroke: { curve: 'smooth', width: 2 },
-  fill:   { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.02 } },
-  grid:   { borderColor: '#1e2d4a', strokeDashArray: 3 },
-  xaxis:  { labels: { show: false }, axisBorder: { show: false }, axisTicks: { show: false } },
-  dataLabels: { enabled: false }
-})
+function fmtBytes(bytes) {
+  const value = Number(bytes || 0)
+  if (value >= 1024 ** 4) return `${(value / 1024 ** 4).toFixed(1)} TB`
+  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`
+  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`
+  if (value >= 1024) return `${(value / 1024).toFixed(0)} KB`
+  return `${value.toFixed(0)} B`
+}
+
+function fmtRate(bytes) {
+  return `${fmtBytes(bytes)}/s`
+}
+
+function fmtPercent(value) {
+  const numeric = Number(value || 0)
+  return `${numeric.toFixed(numeric >= 10 ? 0 : 1)}%`
+}
+
+function fmtUptime(seconds) {
+  const value = Number(seconds || 0)
+  const days = Math.floor(value / 86400)
+  const hours = Math.floor((value % 86400) / 3600)
+  const minutes = Math.floor((value % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+function appendHistory(source = [], value, limit = 60) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return source.slice(-limit)
+  return [...source, numeric].slice(-limit)
+}
+
+function lastFinite(values = []) {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = Number(values[index])
+    if (Number.isFinite(value)) return value
+  }
+  return null
+}
+
+function previousFinite(values = []) {
+  let found = 0
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = Number(values[index])
+    if (!Number.isFinite(value)) continue
+    found += 1
+    if (found === 2) return value
+  }
+  return null
+}
+
+function deriveDelta(values = [], options = {}) {
+  const current = lastFinite(values)
+  const previous = previousFinite(values)
+  if (current === null || previous === null) {
+    return { label: 'Collecting…', direction: 'neutral', tone: 'neutral' }
+  }
+  const rawChange = current - previous
+  const baseline = Math.abs(previous) < 0.0001 ? 1 : Math.abs(previous)
+  const pct = Math.abs((rawChange / baseline) * 100)
+  const direction = rawChange > 0 ? 'up' : rawChange < 0 ? 'down' : 'neutral'
+  const inverted = !!options.inverted
+  let tone = 'neutral'
+  if (direction !== 'neutral') {
+    const improving = inverted ? rawChange < 0 : rawChange > 0
+    tone = improving ? 'good' : 'bad'
+  }
+  return {
+    label: `${direction === 'up' ? '▲' : direction === 'down' ? '▼' : '—'} ${pct.toFixed(pct >= 10 ? 0 : 1)}%`,
+    direction,
+    tone
+  }
+}
+
+function thresholdTone(value, warn, crit) {
+  if (value >= crit) return 'error'
+  if (value >= warn) return 'warn'
+  return 'ok'
+}
+
+function relativeTime(timestamp) {
+  if (!timestamp) return 'just now'
+  const delta = Math.max(0, Math.floor((Date.now() - Number(timestamp)) / 1000))
+  if (delta < 60) return `${delta}s ago`
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
+  return `${Math.floor(delta / 86400)}d ago`
+}
+
+function formatTimestamp(value) {
+  if (!value) return 'Unknown'
+  return new Date(value).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function healthCategoryScores(healthData) {
+  const buckets = {
+    security: { key: 'security', label: 'Security', total: 0, count: 0 },
+    integrity: { key: 'integrity', label: 'Integrity', total: 0, count: 0 },
+    availability: { key: 'availability', label: 'Availability', total: 0, count: 0 },
+    performance: { key: 'performance', label: 'Performance', total: 0, count: 0 }
+  }
+  ;(healthData?.checks || []).forEach(check => {
+    const name = String(check.name || '').toLowerCase()
+    const group =
+      /sudo|permission|apparmor|audit|network/.test(name) ? 'security' :
+      /database|binary|file/.test(name) ? 'integrity' :
+      /service|dependency/.test(name) ? 'availability' : 'performance'
+    const value = check.status === 'healthy' ? 100 : check.status === 'warning' ? 60 : check.status === 'critical' ? 20 : 40
+    buckets[group].total += value
+    buckets[group].count += 1
+  })
+  return Object.values(buckets).map(bucket => ({
+    ...bucket,
+    score: bucket.count ? Math.round(bucket.total / bucket.count) : Number(healthData?.score || 0)
+  }))
+}
 
 export default {
   name: 'DashboardPage',
-  components: { PageHeader, Tooltip, StatCard, AlertFeed, ServiceStatus, HealthCheck, draggable },
-
+  components: {
+    PageHeader,
+    AppButton,
+    DetailDrawer,
+    HealthRing,
+    KPICard,
+    TelemetryChart,
+    ActivityFeed,
+    ServiceHealthPanel,
+    draggable
+  },
   data() {
-    const savedOrder = (() => {
-      try { return JSON.parse(localStorage.getItem('sc_widget_order') || 'null') } catch { return null }
-    })()
-    const savedLayout = (() => {
-      try { return localStorage.getItem('sc_layout_mode') || 'flexible' } catch { return 'flexible' }
-    })()
+    const saved = safeLocalState()
     return {
-      breadcrumbs:  [{ text: 'Dashboard', active: true, icon: 'mdi mdi-view-dashboard' }],
-      dockerInfo:   { containers_running: 0, containers_total: 0 },
-      loginAttempts: [],
-      secStats:     { activeBans: '—', failedLogins: '—' },
-      cleanupStats: { estimated_junk_bytes: 0, estimated_junk_human: '0 B', last_freed_human: '0 B' },
+      breadcrumbs: [{ text: 'Dashboard', active: true, icon: 'mdi mdi-view-dashboard' }],
+      layoutEditMode: !!saved.layoutEditMode,
+      activePreset: saved.activePreset || 'operator',
+      auxRefreshSec: Number(saved.auxRefreshSec || 60),
+      kpiWidgets: Array.isArray(saved.kpiWidgets) && saved.kpiWidgets.length ? saved.kpiWidgets : DEFAULT_KPI_WIDGETS,
+      hiddenKpis: Array.isArray(saved.hiddenKpis) ? saved.hiddenKpis : [],
+      sectionWidgets: Array.isArray(saved.sectionWidgets) && saved.sectionWidgets.length ? saved.sectionWidgets : DEFAULT_SECTION_WIDGETS,
+      hiddenSections: Array.isArray(saved.hiddenSections) ? saved.hiddenSections : [],
       isRefreshing: false,
-      widgets:      savedOrder || DEFAULT_WIDGETS,
-      layoutMode:   savedLayout,
-      statWidgets: [
-        { id: 'cpu', colClass: 'col-xl-3 col-md-6', link: '/monitoring' },
-        { id: 'memory', colClass: 'col-xl-3 col-md-6', link: '/monitoring' },
-        { id: 'disk', colClass: 'col-xl-3 col-md-6', link: '/monitoring' },
-        { id: 'network', colClass: 'col-xl-3 col-md-6', link: '/monitoring' },
-        { id: 'cleanup', colClass: 'col-xl-3 col-md-6', link: '' }
-      ],
-      securityWidgets: [
-        { id: 'bans', colClass: 'col-xl-3 col-md-6', link: '/security' },
-        { id: 'logins24h', colClass: 'col-xl-3 col-md-6', link: '/audit-logs' },
-        { id: 'docker', colClass: 'col-xl-3 col-md-6', link: '/containers' },
-        { id: 'uptime', colClass: 'col-xl-3 col-md-6', link: '/monitoring' }
-      ],
-
-      // pull-to-refresh
-      pullStartY:  0,
-      pullDist:    0,
-      isPulling:   false,
+      isPulling: false,
+      pullStartY: 0,
+      pullDist: 0,
+      isFullscreen: !!document.fullscreenElement,
+      showWidgetCatalog: false,
+      showHealthDrawer: false,
+      showKpiDrawer: false,
       showCleaner: false,
       cleanerRunning: false,
       cleanerProgress: 0,
       cleanerTimer: null,
+      selectedKpiId: '',
+      healthFixResponse: null,
+      healthFixMode: '',
+      healthFixingName: '',
+      userMeta: {},
+      dockerInfo: { containers_running: 0, containers_total: 0 },
+      secStats: { activeBans: 0, failedLogins: 0, ufwActive: false, services: [], securityScore: 0 },
+      cleanupStats: { estimated_junk_human: '0 B', last_freed_human: '0 B', last_cleaned_at: null },
+      loginAttempts: [],
+      alerts: [],
+      auditEntries: [],
+      updates: { count: 0, last_updated: null },
+      tasks: [],
+      healthData: { overall_status: 'unknown', score: 0, checks: [], summary: '', timestamp: null, version: '2.1' },
+      healthHistory: [],
+      healthLoading: false,
+      lastLoadedAt: 0,
+      refreshTimer: null,
+      derivedHistory: {
+        activeBans: [],
+        failedLogins: [],
+        containersRunning: [],
+        updatesPending: []
+      }
     }
   },
-
   computed: {
-    ...mapGetters('metrics', ['snap', 'cpuHistory', 'ramHistory', 'netRxHistory', 'netTxHistory']),
-
-    widgetColClass() {
-      return this.layoutMode === 'compact' ? 'col-xl-4 col-md-4' : 'col-xl-4 col-md-6'
+    ...mapGetters('metrics', ['snap', 'cpuHistory', 'ramHistory', 'swapHistory', 'diskHistory', 'netRxHistory', 'netTxHistory', 'wsConnected', 'lastMetricTs']),
+    presetOptions() {
+      return [
+        { value: 'operator', label: 'Operator' },
+        { value: 'security', label: 'Security' },
+        { value: 'performance', label: 'Performance' },
+        { value: 'compact', label: 'Compact' }
+      ]
     },
-
-    cpu()       { return this.snap.cpu_pct },
-    ram()       { return this.snap.ram_pct },
-    disk()      { return this.snap.disk_pct },
-    loadAvg()   { return `${this.snap.load1}, ${this.snap.load5}, ${this.snap.load15}` },
-    ramUsed()   { return fmtBytes(this.snap.ram_used) },
-    ramTotal()  { return fmtBytes(this.snap.ram_total) },
-    diskUsed()  { return fmtBytes(this.snap.disk_used) },
-    diskTotal() { return fmtBytes(this.snap.disk_total) },
-    netOut()    { return fmtBytes(this.snap.net_tx_rate) + '/s' },
-    netIn()     { return fmtBytes(this.snap.net_rx_rate) + '/s' },
-    uptime()    { return fmtUptime(this.snap.uptime) },
-
-    cpuChart() {
-      const series = sanitizeSeries(this.cpuHistory)
-      assertFiniteSeries(series, 'cpuHistory')
-      return {
-        series: [{ name: 'CPU %', data: series }],
-        options: {
-          ...CHART_OPTS_BASE('#4a9eff'),
-          yaxis: { min: 0, max: 100, labels: { style: { colors: '#5a7499', fontSize: '11px' }, formatter: v => `${v}%` } },
-          tooltip: { theme: 'dark', y: { formatter: v => `${v}%` } }
-        }
-      }
+    telemetryRanges() {
+      const enough = this.cpuHistory.filter(value => Number.isFinite(Number(value))).length >= 45
+      return [
+        { key: '1m', label: '1m', enabled: true },
+        { key: '5m', label: '5m', enabled: enough },
+        { key: '15m', label: '15m', enabled: false },
+        { key: '1h', label: '1h', enabled: false }
+      ]
     },
-
-    netChart() {
-      const rxSeries = sanitizeSeries(this.netRxHistory)
-      const txSeries = sanitizeSeries(this.netTxHistory)
-      assertFiniteSeries(rxSeries, 'netRxHistory')
-      assertFiniteSeries(txSeries, 'netTxHistory')
-      return {
-        series: [
-          { name: 'RX', data: rxSeries },
-          { name: 'TX', data: txSeries }
-        ],
-        options: {
-          ...CHART_OPTS_BASE('#22d67c'),
-          colors: ['#4a9eff', '#22d67c'],
-          fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.25, opacityTo: 0.02 } },
-          yaxis: { labels: { style: { colors: '#5a7499', fontSize: '11px' }, formatter: v => fmtBytes(v) + '/s' } },
-          tooltip: { theme: 'dark', shared: true, y: { formatter: v => fmtBytes(v) + '/s' } },
-          legend: { position: 'top', labels: { colors: '#8aa4c8' } }
+    lockCpuToPercent() {
+      return false
+    },
+    endpointLabel() {
+      return window.location.host || 'local'
+    },
+    metricFreshnessMs() {
+      return this.lastMetricTs ? (Date.now() - this.lastMetricTs * 1000) : Number.POSITIVE_INFINITY
+    },
+    isMetricStale() {
+      return this.metricFreshnessMs > 20000
+    },
+    isAuxStale() {
+      if (!this.lastLoadedAt) return true
+      return Date.now() - this.lastLoadedAt > this.auxRefreshSec * 2000
+    },
+    connectionTone() {
+      if (!this.wsConnected) return 'error'
+      if (this.isMetricStale) return 'warn'
+      return 'ok'
+    },
+    connectionStateLabel() {
+      if (!this.wsConnected) return 'Disconnected'
+      if (this.isMetricStale) return 'Reconnecting'
+      return 'Connected'
+    },
+    identityRows() {
+      return [
+        { label: 'Hostname', value: this.snap.hostname || 'Unavailable', mono: true },
+        { label: 'Endpoint', value: this.endpointLabel, mono: true },
+        { label: 'OS', value: this.snap.os || 'Unknown' },
+        { label: 'Kernel', value: this.snap.kernel || 'Unknown', mono: true },
+        { label: 'Uptime', value: fmtUptime(this.snap.uptime) },
+        { label: 'Region', value: 'Self-hosted' },
+        { label: 'Agent', value: `v${this.healthData.version || 'unknown'}`, mono: true },
+        { label: 'Last tick', value: this.lastMetricTs ? formatTimestamp(this.lastMetricTs * 1000) : 'Awaiting stream' }
+      ]
+    },
+    backupTask() {
+      return this.tasks.find(task => /backup/i.test(task.name || '') || /backup/i.test(task.command || '')) || null
+    },
+    heroPills() {
+      const stoppedIds = (this.secStats.services || []).filter(service => service.active_state !== 'active').length
+      return [
+        {
+          label: 'Firewall',
+          value: this.secStats.ufwActive ? 'Active' : 'Inactive',
+          tone: this.secStats.ufwActive ? 'ok' : 'error',
+          route: '/firewall'
+        },
+        {
+          label: 'IDS',
+          value: stoppedIds ? `${stoppedIds} stopped` : 'All active',
+          tone: stoppedIds ? 'warn' : 'ok',
+          route: '/services'
+        },
+        {
+          label: 'Updates',
+          value: this.updates.count ? `${this.updates.count} pending` : 'Current',
+          tone: this.updates.count ? 'warn' : 'ok',
+          route: '/updates'
+        },
+        {
+          label: 'Backups',
+          value: this.backupTask?.last_run?.started_at ? this.formatRelativeFromNow(new Date(this.backupTask.last_run.started_at).getTime()) : 'No recent run',
+          tone: this.backupTask?.last_run?.started_at ? 'info' : 'warn',
+          route: '/tasks'
         }
+      ]
+    },
+    cpuTelemetrySeries() {
+      return [{ name: 'CPU', data: this.cpuHistory, color: '#6ba8ff' }]
+    },
+    memoryTelemetrySeries() {
+      return [
+        { name: 'RAM', data: this.ramHistory, color: '#7c3aed' },
+        { name: 'Swap', data: this.swapHistory, color: '#f3b54a' }
+      ]
+    },
+    networkTelemetrySeries() {
+      return [
+        { name: 'Ingress', data: this.netRxHistory, color: '#6ba8ff' },
+        { name: 'Egress', data: this.netTxHistory, color: '#3ad38a' }
+      ]
+    },
+    cpuTelemetryThresholds() {
+      return [
+        { value: 70, label: 'Warn', color: '#f3b54a' },
+        { value: 90, label: 'Crit', color: '#ff6a6a' }
+      ]
+    },
+    memoryTelemetryThresholds() {
+      return [
+        { value: 80, label: 'Warn', color: '#f3b54a' },
+        { value: 95, label: 'Crit', color: '#ff6a6a' }
+      ]
+    },
+    mountRows() {
+      return [...(this.snap.partitions || [])]
+        .sort((left, right) => Number(right.pct || 0) - Number(left.pct || 0))
+        .slice(0, 6)
+        .map(partition => ({
+          mount: partition.mount,
+          pct: Number(partition.pct || 0).toFixed(0),
+          used: fmtBytes(partition.used),
+          total: fmtBytes(partition.total),
+          device: partition.device || partition.fstype || 'disk',
+          tone: thresholdTone(Number(partition.pct || 0), 80, 95)
+        }))
+    },
+    activityItemsByTab() {
+      const alerts = this.alerts.map(alert => ({
+        id: `alert-${alert.id}`,
+        type: 'alert',
+        severity: alert.severity === 'critical' || alert.severity === 'emergency' ? 'critical' : alert.severity === 'warning' ? 'warning' : 'info',
+        icon: alert.severity === 'critical' || alert.severity === 'emergency' ? 'mdi mdi-alert-octagon' : alert.severity === 'warning' ? 'mdi mdi-alert' : 'mdi mdi-information',
+        summary: `${alert.message || 'Alert'} · ${alert.source || 'system'}`,
+        meta: `Alerts · ${alert.severity || 'info'}`,
+        ts: (alert.ts || 0) * 1000,
+        route: '/alerts'
+      }))
+      const logins = this.loginAttempts.map((attempt, index) => ({
+        id: `login-${index}-${attempt.ts || 0}`,
+        type: 'login',
+        severity: attempt.success ? 'info' : 'warning',
+        icon: attempt.success ? 'mdi mdi-login-variant' : 'mdi mdi-lock-alert-outline',
+        summary: `${attempt.success ? 'Successful' : 'Failed'} login · ${attempt.username || 'unknown user'}`,
+        meta: `${attempt.ip || 'unknown IP'} · ${attempt.success ? 'Accepted' : 'Rejected'}`,
+        ts: (attempt.ts || 0) * 1000,
+        route: '/audit-logs'
+      }))
+      const audit = this.auditEntries.map((entry, index) => ({
+        id: `audit-${entry.id || index}`,
+        type: 'audit',
+        severity: entry.success ? 'info' : 'warning',
+        icon: entry.success ? 'mdi mdi-shield-check-outline' : 'mdi mdi-shield-alert-outline',
+        summary: `${entry.username || 'Unknown user'} · ${entry.reason || 'event'}`,
+        meta: `${entry.ip || 'unknown IP'} · ${entry.success ? 'Success' : 'Failure'}`,
+        ts: (entry.ts || 0) * 1000,
+        route: '/audit-logs'
+      }))
+      const system = []
+      if (this.cleanupStats.last_cleaned_at) {
+        system.push({
+          id: 'system-cleaner',
+          type: 'system',
+          severity: 'info',
+          icon: 'mdi mdi-broom',
+          summary: `Maintenance cleanup completed · ${this.cleanupStats.last_freed_human || '0 B'} reclaimed`,
+          meta: 'System · Maintenance',
+          ts: new Date(this.cleanupStats.last_cleaned_at).getTime(),
+          route: '/dashboard'
+        })
       }
+      if (this.updates.count) {
+        system.push({
+          id: 'system-updates',
+          type: 'system',
+          severity: this.updates.count > 10 ? 'warning' : 'info',
+          icon: 'mdi mdi-package-up',
+          summary: `${this.updates.count} updates pending`,
+          meta: 'System · Packages',
+          ts: this.updates.last_updated ? new Date(this.updates.last_updated).getTime() : Date.now(),
+          route: '/updates'
+        })
+      }
+      const all = [...alerts, ...logins, ...audit, ...system].sort((left, right) => right.ts - left.ts)
+      return { all, alerts, logins, audit, system }
+    },
+    healthCategories() {
+      return healthCategoryScores(this.healthData)
+    },
+    healthIssues() {
+      return [...(this.healthData.checks || [])].filter(check => check.status !== 'healthy')
+    },
+    healthHeadline() {
+      const score = Number(this.healthData.score || 0)
+      if (score < 35) return 'Critical posture'
+      if (score < 50) return 'Degraded posture'
+      if (score < 80) return 'Healthy with issues'
+      return 'Operationally healthy'
+    },
+    selectedKpiDetail() {
+      return this.selectedKpiId ? this.kpiCardById(this.selectedKpiId) : null
+    },
+    hiddenKpiEntries() {
+      return this.hiddenKpis.map(id => this.kpiCatalog(id)).filter(Boolean)
+    },
+    hiddenSectionEntries() {
+      return this.hiddenSections.map(id => this.sectionCatalog(id)).filter(Boolean)
     }
   },
-
+  watch: {
+    auxRefreshSec() {
+      this.scheduleRefreshTimer()
+      this.persistDashboardState()
+    }
+  },
   async mounted() {
+    document.addEventListener('fullscreenchange', this.onFullscreenChange)
     this.$store.dispatch('metrics/startLive')
-    await this.loadDashboardLayoutFromDb()
+    this.scheduleRefreshTimer()
     await this.loadAll()
-    window.dispatchEvent(new CustomEvent('sentinel:dashboard-ready'))
     this.registerPullToRefresh()
   },
-
   beforeUnmount() {
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
     this.unregisterPullToRefresh()
+    clearInterval(this.refreshTimer)
     if (this.cleanerTimer) {
       clearInterval(this.cleanerTimer)
       this.cleanerTimer = null
     }
   },
-
   methods: {
+    formatRelativeFromNow(timestamp) {
+      return relativeTime(timestamp)
+    },
+    formatTimestamp,
+    formatPercentValue(value) {
+      return fmtPercent(value)
+    },
+    formatRateValue(value) {
+      return fmtRate(value)
+    },
+    persistDashboardState() {
+      localStorage.setItem(DASHBOARD_STATE_KEY, JSON.stringify({
+        layoutEditMode: this.layoutEditMode,
+        activePreset: this.activePreset,
+        auxRefreshSec: this.auxRefreshSec,
+        kpiWidgets: this.kpiWidgets,
+        hiddenKpis: this.hiddenKpis,
+        sectionWidgets: this.sectionWidgets,
+        hiddenSections: this.hiddenSections
+      }))
+    },
+    applyPreset(presetKey) {
+      const preset = PRESETS[presetKey] || PRESETS.operator
+      this.activePreset = presetKey
+      this.kpiWidgets = preset.kpis.map(id => ({ id }))
+      this.hiddenKpis = DEFAULT_KPI_WIDGETS.map(item => item.id).filter(id => !preset.kpis.includes(id))
+      this.sectionWidgets = preset.sections.map(id => ({ id }))
+      this.hiddenSections = DEFAULT_SECTION_WIDGETS.map(item => item.id).filter(id => !preset.sections.includes(id))
+      this.persistDashboardState()
+    },
+    toggleLayoutEdit() {
+      this.layoutEditMode = !this.layoutEditMode
+      this.persistDashboardState()
+    },
+    async toggleFullscreen() {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen().catch(() => {})
+      } else {
+        await this.$el?.requestFullscreen?.().catch(() => {})
+      }
+    },
+    onFullscreenChange() {
+      this.isFullscreen = !!document.fullscreenElement
+    },
+    scheduleRefreshTimer() {
+      clearInterval(this.refreshTimer)
+      this.refreshTimer = setInterval(() => {
+        this.loadAll()
+      }, this.auxRefreshSec * 1000)
+    },
     async loadAll() {
       if (!this.$store.getters['auth/loggedIn']) return
+      this.healthLoading = !this.lastLoadedAt
       try {
         const api = (await import('@/services/api')).default
-        const [docker, secStatus, logins, cleanup] = await Promise.allSettled([
+        const [health, docker, secStatus, logins, cleanup, alerts, audit, updates, tasks, me] = await Promise.allSettled([
+          api.getHealth(),
           api.getDockerInfo(),
           api.getSecurityStatus(),
           api.getDashboardLoginAttempts(),
-          api.getCleanupStats()
+          api.getCleanupStats(),
+          api.getAlerts({ limit: 8 }),
+          api.getAuditLogs({ limit: 12 }),
+          api.getUpdates(),
+          api.getTasks(),
+          api.getMe()
         ])
-        if (docker.status === 'fulfilled') this.dockerInfo = docker.value.data
-        if (secStatus.status === 'fulfilled') {
-          const s = secStatus.value.data
-          this.secStats = { activeBans: s.active_bans ?? '—', failedLogins: s.failed_logins ?? '—' }
-        }
-        if (logins.status === 'fulfilled') this.loginAttempts = logins.value.data || []
-        if (cleanup.status === 'fulfilled') this.cleanupStats = cleanup.value.data || this.cleanupStats
-      } catch {}
-    },
 
+        if (health.status === 'fulfilled') {
+          this.healthData = health.value.data || this.healthData
+          this.healthHistory = appendHistory(this.healthHistory, this.healthData.score, 30)
+        }
+        if (docker.status === 'fulfilled') {
+          this.dockerInfo = docker.value.data || this.dockerInfo
+          this.derivedHistory.containersRunning = appendHistory(this.derivedHistory.containersRunning, this.dockerInfo.containers_running || 0, 30)
+        }
+        if (secStatus.status === 'fulfilled') {
+          const data = secStatus.value.data || {}
+          this.secStats = {
+            activeBans: data.active_bans || 0,
+            failedLogins: data.failed_logins || 0,
+            ufwActive: !!data.ufw_active,
+            services: Array.isArray(data.services) ? data.services : [],
+            securityScore: data.security_score || 0
+          }
+          this.derivedHistory.activeBans = appendHistory(this.derivedHistory.activeBans, this.secStats.activeBans, 30)
+          this.derivedHistory.failedLogins = appendHistory(this.derivedHistory.failedLogins, this.secStats.failedLogins, 30)
+        }
+        if (logins.status === 'fulfilled') this.loginAttempts = Array.isArray(logins.value.data) ? logins.value.data : []
+        if (cleanup.status === 'fulfilled') this.cleanupStats = cleanup.value.data || this.cleanupStats
+        if (alerts.status === 'fulfilled') {
+          const data = alerts.value.data
+          this.alerts = Array.isArray(data) ? data : (data?.alerts || [])
+        }
+        if (audit.status === 'fulfilled') {
+          const data = audit.value.data
+          this.auditEntries = Array.isArray(data) ? data : (data?.logs || [])
+        }
+        if (updates.status === 'fulfilled') {
+          this.updates = updates.value.data || this.updates
+          this.derivedHistory.updatesPending = appendHistory(this.derivedHistory.updatesPending, this.updates.count || 0, 30)
+        }
+        if (tasks.status === 'fulfilled') {
+          const data = tasks.value.data
+          this.tasks = Array.isArray(data) ? data : (data?.tasks || [])
+        }
+        if (me.status === 'fulfilled') {
+          this.userMeta = me.value.data || {}
+        }
+        this.lastLoadedAt = Date.now()
+      } finally {
+        this.healthLoading = false
+      }
+    },
     async refreshAll() {
       if (this.isRefreshing) return
       this.isRefreshing = true
@@ -502,122 +995,296 @@ export default {
         const api = (await import('@/services/api')).default
         const metrics = await api.getMetrics()
         this.$store.commit('metrics/SET_SNAP', metrics.data)
-      } catch {}
+        await this.loadAll()
+      } finally {
+        this.isRefreshing = false
+      }
+    },
+    kpiCatalog(id) {
+      return {
+        cpu: { id: 'cpu', label: 'CPU usage', description: 'Processor saturation, delta, and load average.' },
+        memory: { id: 'memory', label: 'Memory', description: 'RAM pressure with swap context.' },
+        disk: { id: 'disk', label: 'Disk root', description: 'Root filesystem utilization and free space.' },
+        network: { id: 'network', label: 'Network I/O', description: 'Ingress and egress throughput.' },
+        bans: { id: 'bans', label: 'Active bans', description: 'fail2ban and CrowdSec pressure.' },
+        logins24h: { id: 'logins24h', label: 'Failed logins', description: 'Authentication failures over the last 24 hours.' },
+        containers: { id: 'containers', label: 'Containers', description: 'Running containers versus total footprint.' },
+        uptime: { id: 'uptime', label: 'Uptime', description: 'Host uptime and last-restart context.' }
+      }[id] || null
+    },
+    sectionCatalog(id) {
+      return {
+        telemetry: { id: 'telemetry', label: 'Telemetry zone', description: 'Charts and mount usage.' },
+        services: { id: 'services', label: 'Service health', description: 'Full-width service grid with actions.' },
+        activity: { id: 'activity', label: 'Activity feed', description: 'Alerts, logins, audit, and system events.' }
+      }[id] || null
+    },
+    hideKpi(id) {
+      this.kpiWidgets = this.kpiWidgets.filter(widget => widget.id !== id)
+      this.hiddenKpis = [...new Set([...this.hiddenKpis, id])]
+      this.persistDashboardState()
+    },
+    restoreKpi(id) {
+      if (!this.kpiWidgets.some(widget => widget.id === id)) {
+        this.kpiWidgets = [...this.kpiWidgets, { id }]
+      }
+      this.hiddenKpis = this.hiddenKpis.filter(entry => entry !== id)
+      this.persistDashboardState()
+    },
+    hideSection(id) {
+      this.sectionWidgets = this.sectionWidgets.filter(widget => widget.id !== id)
+      this.hiddenSections = [...new Set([...this.hiddenSections, id])]
+      this.persistDashboardState()
+    },
+    restoreSection(id) {
+      if (!this.sectionWidgets.some(widget => widget.id === id)) {
+        this.sectionWidgets = [...this.sectionWidgets, { id }]
+      }
+      this.hiddenSections = this.hiddenSections.filter(entry => entry !== id)
+      this.persistDashboardState()
+    },
+    kpiCardById(id) {
+      const counts = this.dockerInfo.containers_total ? `${this.dockerInfo.containers_running}/${this.dockerInfo.containers_total}` : '0/0'
+      const cpuDelta = deriveDelta(this.cpuHistory)
+      const memoryDelta = deriveDelta(this.ramHistory, { inverted: false })
+      const diskDelta = deriveDelta(this.diskHistory)
+      const networkCombined = this.netRxHistory.map((value, index) => Number(value || 0) + Number(this.netTxHistory[index] || 0))
+      const networkDelta = deriveDelta(networkCombined)
+      const bansDelta = deriveDelta(this.derivedHistory.activeBans, { inverted: true })
+      const loginDelta = deriveDelta(this.derivedHistory.failedLogins, { inverted: true })
+      const containerDelta = deriveDelta(this.derivedHistory.containersRunning)
+
+      const cards = {
+        cpu: {
+          label: 'CPU Usage',
+          icon: 'mdi mdi-chip',
+          value: fmtPercent(this.snap.cpu_pct),
+          deltaLabel: cpuDelta.label,
+          deltaDirection: cpuDelta.direction,
+          deltaTone: cpuDelta.tone,
+          sparkline: this.cpuHistory,
+          contextLines: [
+            `Load ${Number(this.snap.load1 || 0).toFixed(2)} · ${Number(this.snap.load5 || 0).toFixed(2)} · ${Number(this.snap.load15 || 0).toFixed(2)}`,
+            `Updated ${this.formatRelativeFromNow(this.lastMetricTs * 1000)}`
+          ],
+          threshold: { value: Number(this.snap.cpu_pct || 0), warn: 70, crit: 90, max: 100 },
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: thresholdTone(Number(this.snap.cpu_pct || 0), 70, 90),
+          statusLabel: this.isMetricStale ? 'Stale' : ''
+        },
+        memory: {
+          label: 'Memory',
+          icon: 'mdi mdi-memory',
+          value: fmtPercent(this.snap.ram_pct),
+          deltaLabel: memoryDelta.label,
+          deltaDirection: memoryDelta.direction,
+          deltaTone: memoryDelta.tone,
+          sparkline: this.ramHistory,
+          sparklineSecondary: this.swapHistory,
+          contextLines: [
+            `${fmtBytes(this.snap.ram_used)} / ${fmtBytes(this.snap.ram_total)} · swap ${fmtPercent(this.snap.swap_pct)}`,
+            `${fmtBytes(this.snap.swap_used)} / ${fmtBytes(this.snap.swap_total)}`
+          ],
+          threshold: { value: Number(this.snap.ram_pct || 0), warn: 80, crit: 95, max: 100 },
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: thresholdTone(Number(this.snap.ram_pct || 0), 80, 95)
+        },
+        disk: {
+          label: 'Disk (Root)',
+          icon: 'mdi mdi-harddisk',
+          value: fmtPercent(this.snap.disk_pct),
+          deltaLabel: diskDelta.label,
+          deltaDirection: diskDelta.direction,
+          deltaTone: diskDelta.tone,
+          sparkline: this.diskHistory,
+          contextLines: [
+            `${fmtBytes(this.snap.disk_used)} / ${fmtBytes(this.snap.disk_total)}`,
+            `${fmtBytes(this.snap.disk_free)} free on /`
+          ],
+          threshold: { value: Number(this.snap.disk_pct || 0), warn: 80, crit: 95, max: 100 },
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: thresholdTone(Number(this.snap.disk_pct || 0), 80, 95)
+        },
+        network: {
+          label: 'Network I/O',
+          icon: 'mdi mdi-swap-vertical',
+          value: fmtRate(Number(this.snap.net_rx_rate || 0) + Number(this.snap.net_tx_rate || 0)),
+          deltaLabel: networkDelta.label,
+          deltaDirection: networkDelta.direction,
+          deltaTone: networkDelta.tone,
+          sparkline: this.netRxHistory,
+          sparklineSecondary: this.netTxHistory,
+          contextLines: [
+            `in ${fmtRate(this.snap.net_rx_rate)} · out ${fmtRate(this.snap.net_tx_rate)}`,
+            `${fmtBytes(this.snap.net_rx_total)} rx · ${fmtBytes(this.snap.net_tx_total)} tx`
+          ],
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: 'default',
+          sparkColor: 'var(--dashboard-spark-line-alt)'
+        },
+        bans: {
+          label: 'Active Bans',
+          icon: 'mdi mdi-shield-lock-outline',
+          value: this.secStats.activeBans,
+          deltaLabel: bansDelta.label,
+          deltaDirection: bansDelta.direction,
+          deltaTone: bansDelta.tone,
+          sparkline: this.derivedHistory.activeBans,
+          contextLines: [
+            'fail2ban + CrowdSec pressure',
+            `${this.secStats.ufwActive ? 'Firewall active' : 'Firewall inactive'}`
+          ],
+          threshold: { value: Number(this.secStats.activeBans || 0), warn: 5, crit: 10, max: 15 },
+          live: true,
+          stale: this.isAuxStale,
+          rangeLabel: '24h window',
+          tone: thresholdTone(Number(this.secStats.activeBans || 0), 5, 10)
+        },
+        logins24h: {
+          label: 'Failed Logins',
+          icon: 'mdi mdi-lock-alert-outline',
+          value: this.secStats.failedLogins,
+          deltaLabel: loginDelta.label,
+          deltaDirection: loginDelta.direction,
+          deltaTone: loginDelta.tone,
+          sparkline: this.derivedHistory.failedLogins,
+          contextLines: [
+            `Last attempt ${this.loginAttempts[0]?.ts ? this.formatRelativeFromNow(this.loginAttempts[0].ts * 1000) : 'unknown'}`,
+            '24h aggregate across all auth sources'
+          ],
+          threshold: { value: Number(this.secStats.failedLogins || 0), warn: 10, crit: 50, max: 60 },
+          live: true,
+          stale: this.isAuxStale,
+          rangeLabel: '24h window',
+          tone: thresholdTone(Number(this.secStats.failedLogins || 0), 10, 50)
+        },
+        containers: {
+          label: 'Containers',
+          icon: 'mdi mdi-docker',
+          value: counts,
+          deltaLabel: containerDelta.label,
+          deltaDirection: containerDelta.direction,
+          deltaTone: containerDelta.tone,
+          sparkline: this.derivedHistory.containersRunning,
+          contextLines: [
+            `${this.dockerInfo.containers_running || 0} running · ${this.dockerInfo.containers_total || 0} total`,
+            `Updates ${this.updates.count || 0} pending`
+          ],
+          live: true,
+          stale: this.isAuxStale,
+          rangeLabel: 'service poll',
+          tone: this.dockerInfo.containers_running < this.dockerInfo.containers_total ? 'warn' : 'ok'
+        },
+        uptime: {
+          label: 'Uptime',
+          icon: 'mdi mdi-timer-outline',
+          value: fmtUptime(this.snap.uptime),
+          deltaLabel: '— stable',
+          deltaDirection: 'neutral',
+          deltaTone: 'neutral',
+          sparkline: [],
+          contextLines: [
+            `Host ${this.snap.hostname || 'node'} · kernel ${this.snap.kernel || 'unknown'}`,
+            `Last sync ${this.formatRelativeFromNow(this.lastLoadedAt)}`
+          ],
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: 'host lifetime',
+          tone: 'ok'
+        }
+      }
+      return cards[id] || null
+    },
+    openKpiDrawer(id) {
+      this.selectedKpiId = id
+      this.showKpiDrawer = true
+    },
+    navigateTo(route) {
+      if (!route) return
+      this.$router.push(route)
+    },
+    runScanAction() {
+      this.$router.push('/security-tools')
+    },
+    async reloadServicesPanel() {
+      const panelRef = Array.isArray(this.$refs.servicePanel) ? this.$refs.servicePanel[0] : this.$refs.servicePanel
+      await panelRef?.refreshServices?.()
       await this.loadAll()
-      this.isRefreshing = false
     },
-
-    saveWidgetOrder() {
-      localStorage.setItem('sc_widget_order', JSON.stringify(this.widgets))
-      this.saveWidgetOrderToDb()
+    openActivityItem(item) {
+      this.navigateTo(item.route)
     },
-
-    saveStatWidgetOrder() {
-      localStorage.setItem('sc_stat_widgets', JSON.stringify(this.statWidgets))
+    openHealthIssue(check) {
+      this.showHealthDrawer = true
+      this.healthFixResponse = null
+      this.$nextTick(() => {
+        const target = Array.from(this.$el.querySelectorAll('.dashboard-health-issue-card')).find(card => card.textContent.includes(check.name))
+        target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      })
     },
-
-    saveSecurityWidgetOrder() {
-      localStorage.setItem('sc_security_widgets', JSON.stringify(this.securityWidgets))
-    },
-
-    saveLayoutMode() {
-      localStorage.setItem('sc_layout_mode', this.layoutMode)
-      this.saveLayoutModeToDb()
-    },
-
-    navigateTo(link) {
-      if (link) {
-        this.$router.push(link)
-      }
-    },
-
-    async saveWidgetOrderToDb() {
+    async fixHealthIssue(check, mode) {
+      this.healthFixMode = mode
+      this.healthFixingName = check.name
+      this.healthFixResponse = null
       try {
         const api = (await import('@/services/api')).default
-        await api.saveDashboardLayout({ widgets: this.widgets, layoutMode: this.layoutMode })
-      } catch (err) {
-        console.error('Failed to save widget order to database:', err)
-      }
-    },
-
-    async saveLayoutModeToDb() {
-      try {
-        const api = (await import('@/services/api')).default
-        await api.saveDashboardLayout({ widgets: this.widgets, layoutMode: this.layoutMode })
-      } catch (err) {
-        console.error('Failed to save layout mode to database:', err)
-      }
-    },
-
-    async loadDashboardLayoutFromDb() {
-      if (!this.$store.getters['auth/loggedIn']) return
-      try {
-        const api = (await import('@/services/api')).default
-        const res = await api.getDashboardLayout()
-        if (res.data && res.data.widgets) {
-          // Ensure health widget is always included
-          const hasHealth = res.data.widgets.some(w => w.id === 'health')
-          if (!hasHealth) {
-            res.data.widgets = [{ id: 'health' }, ...res.data.widgets]
-          }
-          this.widgets = res.data.widgets
-          if (res.data.layoutMode) {
-            this.layoutMode = res.data.layoutMode
-          }
+        const { data } = await api.fixHealthIssue({ check_name: check.name, action: mode })
+        this.healthFixResponse = data
+        await this.loadAll()
+      } catch (error) {
+        this.healthFixResponse = {
+          success: false,
+          message: error.response?.data?.error || error.message || 'Fix request failed',
+          remedy: 'Open the Services or Security surfaces for manual remediation.'
         }
-      } catch (err) {
-        if (err.response?.status !== 401) {
-          console.error('Failed to load dashboard layout from database:', err)
-        }
+      } finally {
+        this.healthFixMode = ''
+        this.healthFixingName = ''
       }
     },
-
     registerPullToRefresh() {
       const el = this.$refs.pageEl
       if (!el) return
       el.addEventListener('touchstart', this.onTouchStart, { passive: true })
-      el.addEventListener('touchmove',  this.onTouchMove,  { passive: true })
-      el.addEventListener('touchend',   this.onTouchEnd,   { passive: true })
+      el.addEventListener('touchmove', this.onTouchMove, { passive: true })
+      el.addEventListener('touchend', this.onTouchEnd, { passive: true })
     },
-
     unregisterPullToRefresh() {
       const el = this.$refs.pageEl
       if (!el) return
       el.removeEventListener('touchstart', this.onTouchStart)
-      el.removeEventListener('touchmove',  this.onTouchMove)
-      el.removeEventListener('touchend',   this.onTouchEnd)
+      el.removeEventListener('touchmove', this.onTouchMove)
+      el.removeEventListener('touchend', this.onTouchEnd)
     },
-
-    onTouchStart(e) {
+    onTouchStart(event) {
       const scrollEl = document.querySelector('.page-content') || window
       const scrollTop = scrollEl === window ? window.scrollY : scrollEl.scrollTop
       if (scrollTop > 0) return
-      this.pullStartY = e.touches[0].clientY
-      this.isPulling  = true
+      this.pullStartY = event.touches[0].clientY
+      this.isPulling = true
     },
-
-    onTouchMove(e) {
+    onTouchMove(event) {
       if (!this.isPulling) return
-      const dy = e.touches[0].clientY - this.pullStartY
-      this.pullDist = dy > 0 ? dy : 0
+      const delta = event.touches[0].clientY - this.pullStartY
+      this.pullDist = delta > 0 ? delta : 0
     },
-
     async onTouchEnd() {
       if (!this.isPulling) return
       this.isPulling = false
       if (this.pullDist >= 64) {
-        this.isRefreshing = true
         this.pullDist = 0
         await this.refreshAll()
-        this.isRefreshing = false
       } else {
         this.pullDist = 0
       }
-    },
-
-    setLayoutMode(mode) {
-      this.layoutMode = mode
-      this.saveLayoutMode()
     },
     openCleaner() {
       this.showCleaner = true
@@ -637,10 +1304,9 @@ export default {
       this.cleanerProgress = 0
       const api = (await import('@/services/api')).default
       await api.runCleanup().catch(() => {})
-
       if (this.cleanerTimer) clearInterval(this.cleanerTimer)
       this.cleanerTimer = setInterval(async () => {
-        this.cleanerProgress = Math.min(98, this.cleanerProgress + Math.floor(Math.random() * 8 + 3))
+        this.cleanerProgress = Math.min(98, this.cleanerProgress + Math.floor(Math.random() * 12 + 4))
         const { data } = await api.getCleanupLogs().catch(() => ({ data: null }))
         if (data?.done) {
           this.cleanupStats = { ...this.cleanupStats, ...data }
@@ -657,7 +1323,16 @@ export default {
 </script>
 
 <style scoped>
-/* Pull-to-refresh bar */
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(107, 168, 255, 0.08), transparent 32%),
+    linear-gradient(180deg, transparent, rgba(107, 168, 255, 0.02));
+}
+
 .ptr-bar {
   display: flex;
   align-items: center;
@@ -672,96 +1347,577 @@ export default {
   opacity: 0;
 }
 
-/* Draggable */
-.widget-wrapper {
+.dashboard-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.dashboard-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--dashboard-panel-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dashboard-select {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.dashboard-select-wrap--compact {
+  min-width: 118px;
+}
+
+.dashboard-refresh-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-refresh-note {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dashboard-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.25fr) minmax(280px, 1fr) minmax(320px, 1.1fr);
+  gap: 18px;
+}
+
+.dashboard-panel {
+  border-radius: 22px;
+  border: 1px solid var(--dashboard-panel-border);
+  background: var(--dashboard-panel-bg);
+  box-shadow: var(--shadow-md);
+  padding: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dashboard-panel__eyebrow,
+.dashboard-footer-strip__label {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.dashboard-panel__title {
+  margin: 4px 0 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.dashboard-panel__hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dashboard-live-chip,
+.dashboard-connection-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-live-chip {
+  background: var(--state-ok-bg);
+  color: var(--state-ok-fg);
+}
+
+.dashboard-live-chip.is-offline {
+  background: var(--state-warn-bg);
+  color: var(--state-warn-fg);
+}
+
+.dashboard-live-chip__dot,
+.dashboard-connection-pill::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.dashboard-identity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.dashboard-identity-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-identity-row__label,
+.dashboard-cleaner-card__copy,
+.dashboard-empty-inline,
+.dashboard-kpi-drawer__line,
+.dashboard-health-issue-card p,
+.dashboard-health-issue-card small,
+.dashboard-mount-row__meta {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dashboard-identity-row__value {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dashboard-identity-row__value.is-mono,
+.dashboard-footer-strip__value--mono {
+  font-family: var(--font-family-monospace);
+}
+
+.dashboard-hero-side {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-status-pills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-status-pill {
+  border: 1px solid var(--dashboard-panel-border);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  padding: 12px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard-status-pill__label {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-status-pill__value {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dashboard-status-pill--ok {
+  box-shadow: var(--dashboard-glow-ok);
+}
+
+.dashboard-status-pill--warn {
+  box-shadow: var(--dashboard-glow-warn);
+}
+
+.dashboard-status-pill--error {
+  box-shadow: var(--dashboard-glow-error);
+}
+
+.dashboard-status-pill--info {
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-actions-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dashboard-kpi-grid__item,
+.dashboard-section-shell {
   position: relative;
 }
 
-.drag-handle {
+.dashboard-edit-handle,
+.dashboard-section-handle,
+.dashboard-hide-button {
+  position: absolute;
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--dashboard-panel-border);
+  background: rgba(8, 15, 27, 0.82);
+  color: var(--text-secondary);
+}
+
+.dashboard-edit-handle,
+.dashboard-section-handle {
+  top: 8px;
+  right: 48px;
+  cursor: grab;
+}
+
+.dashboard-hide-button {
+  top: 8px;
+  right: 8px;
+}
+
+.dashboard-section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.dashboard-section-tools {
   position: absolute;
   top: 8px;
-  right: 12px;
-  z-index: 10;
-  width: 28px;
-  height: 28px;
+  right: 8px;
+  z-index: 4;
   display: flex;
+  gap: 8px;
+}
+
+.dashboard-telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-mount-card {
+  min-height: 100%;
+}
+
+.dashboard-mount-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard-mount-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard-mount-row__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-mount-row__mount,
+.dashboard-mount-row__value,
+.dashboard-footer-strip__value,
+.dashboard-kpi-drawer__value,
+.dashboard-health-category strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.dashboard-mount-row__bar,
+.dashboard-cleaner-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.dashboard-mount-row__fill,
+.dashboard-cleaner-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.dashboard-mount-row__fill.ok {
+  background: var(--dashboard-threshold-ok);
+}
+
+.dashboard-mount-row__fill.warn {
+  background: var(--dashboard-threshold-warn);
+}
+
+.dashboard-mount-row__fill.error {
+  background: var(--dashboard-threshold-error);
+}
+
+.dashboard-footer-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
   align-items: center;
-  justify-content: center;
-  color: #5a7499;
-  cursor: grab;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  padding: 4px;
 }
 
-.drag-handle:hover {
-  color: #8aa4c8;
-  background: rgba(255,255,255,0.06);
+.dashboard-footer-strip__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.drag-handle:active {
-  cursor: grabbing;
+.dashboard-connection-pill--ok {
+  background: var(--state-ok-bg);
+  color: var(--state-ok-fg);
 }
 
-.drag-ghost {
-  opacity: 0.4;
+.dashboard-connection-pill--warn {
+  background: var(--state-warn-bg);
+  color: var(--state-warn-fg);
 }
 
-.drag-chosen {
-  box-shadow: 0 8px 32px rgba(74,158,255,0.18);
+.dashboard-connection-pill--error {
+  background: var(--state-error-bg);
+  color: var(--state-error-fg);
 }
 
-/* Add padding to cards so content doesn't overlap drag handle */
-.widget-wrapper .card {
-  padding-right: 40px;
+.dashboard-drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
 }
 
-.cleaner-modal {
+.dashboard-drawer-title {
+  margin: 0 0 12px;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.dashboard-restore-list,
+.dashboard-health-drawer,
+.dashboard-kpi-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard-restore-row,
+.dashboard-health-issue-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--dashboard-panel-border);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: left;
+}
+
+.dashboard-restore-row strong,
+.dashboard-health-issue-card strong,
+.dashboard-health-drawer__summary,
+.dashboard-kpi-drawer__status,
+.dashboard-kpi-drawer__delta,
+.dashboard-cleaner-stats span {
+  color: var(--text-primary);
+}
+
+.dashboard-restore-row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+.dashboard-health-drawer__categories,
+.dashboard-health-issue-card__actions,
+.dashboard-cleaner-stats,
+.dashboard-cleaner-card__actions,
+.dashboard-health-issue-card__title,
+.dashboard-kpi-drawer__hero,
+.dashboard-kpi-drawer__thresholds {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.dashboard-health-category {
+  flex: 1 1 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--dashboard-panel-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard-health-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dashboard-health-badge.critical {
+  background: var(--state-error-bg);
+  color: var(--state-error-fg);
+}
+
+.dashboard-health-badge.warning {
+  background: var(--state-warn-bg);
+  color: var(--state-warn-fg);
+}
+
+.dashboard-health-response {
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.dashboard-health-response.is-success {
+  background: var(--state-ok-bg);
+}
+
+.dashboard-health-response.is-error {
+  background: var(--state-error-bg);
+}
+
+.dashboard-health-response pre {
+  margin: 10px 0 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.dashboard-kpi-drawer__value {
+  font-size: 30px;
+  line-height: 1;
+}
+
+.dashboard-kpi-drawer__delta.is-good {
+  color: var(--state-ok-fg);
+}
+
+.dashboard-kpi-drawer__delta.is-bad {
+  color: var(--state-error-fg);
+}
+
+.dashboard-kpi-drawer__delta.is-neutral {
+  color: var(--text-secondary);
+}
+
+.dashboard-cleaner-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1060;
+  z-index: 1050;
   display: grid;
   place-items: center;
   background: rgba(8, 14, 24, 0.72);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px);
 }
 
-.cleaner-card {
-  width: min(92vw, 420px);
-  border-radius: 16px;
-  border: 1px solid rgba(34, 214, 124, 0.35);
-  background: rgba(15, 22, 41, 0.92);
-  padding: 1.2rem;
-}
-
-.cleaner-bubble {
-  width: 170px;
-  height: 170px;
-  border-radius: 50%;
-  margin: 0 auto;
+.dashboard-cleaner-card {
   position: relative;
-  overflow: hidden;
-  border: 2px solid rgba(34, 214, 124, 0.4);
-  box-shadow: inset 0 0 18px rgba(34, 214, 124, 0.25);
+  width: min(92vw, 520px);
+  border-radius: 24px;
+  border: 1px solid var(--dashboard-panel-border-strong);
+  background: var(--dashboard-panel-bg-strong);
+  box-shadow: var(--shadow-lg);
+  padding: 20px;
 }
 
-.cleaner-fill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(34,214,124,0.9), rgba(34,214,124,0.45));
-  transition: height 0.6s cubic-bezier(.22,.61,.36,1);
-}
-
-.cleaner-value {
-  position: absolute;
-  inset: 0;
+.dashboard-cleaner-card__header {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #d9fce9;
-  font-size: 1.9rem;
-  font-weight: 700;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dashboard-cleaner-stats {
+  margin-top: 10px;
+}
+
+.dashboard-cleaner-progress__fill {
+  background: var(--dashboard-threshold-ok);
+}
+
+.drag-ghost {
+  opacity: 0.42;
+}
+
+.drag-chosen {
+  box-shadow: var(--shadow-lg), var(--shadow-glow-accent);
+}
+
+@media (max-width: 1279px) {
+  .dashboard-hero-grid,
+  .dashboard-kpi-grid,
+  .dashboard-telemetry-grid,
+  .dashboard-footer-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
+  .dashboard-hero-grid,
+  .dashboard-kpi-grid,
+  .dashboard-telemetry-grid,
+  .dashboard-drawer-grid,
+  .dashboard-footer-strip,
+  .dashboard-identity-grid,
+  .dashboard-actions-grid,
+  .dashboard-status-pills {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-header-actions,
+  .dashboard-refresh-block {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .dashboard-health-drawer__categories,
+  .dashboard-health-issue-card,
+  .dashboard-kpi-drawer__hero,
+  .dashboard-kpi-drawer__thresholds {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-page {
+    gap: 14px;
+  }
+
+  .dashboard-panel,
+  .dashboard-cleaner-card {
+    padding: 16px;
+  }
 }
 </style>
