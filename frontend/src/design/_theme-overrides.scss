@@ -289,10 +289,27 @@ code, pre, kbd {
   .chip-label { color: var(--sc-text-muted); }
 }
 
-.menu-section-title { color: var(--sc-text-muted) !important; }
+:root {
+  color-scheme: dark light;
+}
 
-.sidebar-nav .nav-link {
-  color: var(--sc-text-muted) !important;
+body {
+  min-height: 100vh;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+#page-topbar {
+  padding-top: env(safe-area-inset-top);
+}
+
+.page-content,
+.content-page,
+.wrapper {
+  padding-bottom: env(safe-area-inset-bottom);
+}
   &:hover { color: var(--sc-text) !important; }
   &.active { color: var(--sc-blue) !important; }
 }

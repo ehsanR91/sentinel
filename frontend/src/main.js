@@ -9,6 +9,7 @@ import vClickOutside from 'v-click-outside'
 import 'nprogress/nprogress.css'
 import idleTimer from '@/plugins/idle-timer'
 import api from '@/services/api'
+import { pwaState, promptInstall } from '@/plugins/pwa'
 import '@/utils/console-guard'
 
 import '@/design/index.scss'
@@ -34,6 +35,8 @@ document.documentElement.setAttribute('data-theme', resolved)
 const app = createApp(App)
 
 app.config.globalProperties.$isOnline = () => window.__sc_is_online__
+app.config.globalProperties.$pwaState = pwaState
+app.config.globalProperties.$promptInstall = promptInstall
 
 app.use(router)
 app.use(store)

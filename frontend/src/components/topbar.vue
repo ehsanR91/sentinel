@@ -48,6 +48,37 @@
         </div>
       </div>
 
+      <button
+        v-if="updateAvailable"
+        class="topbar-btn"
+        title="New version available — reload"
+        aria-label="Update available"
+        tabindex="0"
+        @click="refreshAppVersion"
+      >
+        <i class="mdi mdi-update" style="font-size:1.1rem"></i>
+      </button>
+      <button
+        v-if="installAvailable"
+        class="topbar-btn"
+        title="Install SentinelCore"
+        aria-label="Install SentinelCore"
+        tabindex="0"
+        @click="onInstallClick"
+      >
+        <i class="mdi mdi-download" style="font-size:1.1rem"></i>
+      </button>
+      <button
+        v-else-if="showIosInstallHint"
+        class="topbar-btn"
+        title="Add SentinelCore to Home Screen"
+        aria-label="Add to Home Screen"
+        tabindex="0"
+        @click="openInstallHelp"
+      >
+        <i class="mdi mdi-information-outline" style="font-size:1.1rem"></i>
+      </button>
+
       <!-- Lock screen button -->
       <button
         v-if="lockPinSet"
@@ -327,11 +358,35 @@
       </div>
       </div>
     </Teleport>
+
+    <Teleport to="body">
+      <div v-if="showPwaInstallModal" class="pwa-install-backdrop" @click.self="closeInstallHelp">
+        <div class="pwa-install-modal">
+          <div class="pwa-install-header">
+            <h5><i class="mdi mdi-share-variant" style="color:#4a9eff"></i> Add SentinelCore to Home Screen</h5>
+            <button class="btn btn-sm p-0" style="color:#5a7499" @click="closeInstallHelp"><i class="mdi mdi-close"></i></button>
+          </div>
+          <div class="pwa-install-body">
+            <p>Safari does not support the native install prompt. Use the Share button and choose <strong>Add to Home Screen</strong>.</p>
+            <ol>
+              <li>Tap the <span style="font-weight:700">Share</span> button in Safari.</li>
+              <li>Scroll and select <span style="font-weight:700">Add to Home Screen</span>.</li>
+              <li>Tap <span style="font-weight:700">Add</span> to install SentinelCore.</li>
+            </ol>
+            <p class="text-muted">Once installed, the app launches as a standalone experience with offline support.</p>
+          </div>
+          <div class="pwa-install-footer">
+            <button class="btn btn-sm btn-sc-primary" @click="closeInstallHelp">Got it</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script>
 import api from '@/services/api'
+import { pwaState, promptInstall, reloadApp } from '@/plugins/pwa'
 
 export default {
   name: 'Topbar',
@@ -357,6 +412,7 @@ export default {
       // Quick Mount
       showQuickMount: false,
       showQuickMountHelp: false,
+      showPwaInstallModal: false,
       mountHelpCopied: false,
       tunnelApps: [],
       loadingTunnels: false,
@@ -412,6 +468,15 @@ export default {
     },
     lockPinSet() {
       return this.$store.getters['lock/lockPinSet']
+    },
+    installAvailable() {
+      return pwaState.isSupported && pwaState.installRequested && !pwaState.installed && !pwaState.isStandalone && !pwaState.isIos
+    },
+    showIosInstallHint() {
+      return pwaState.isIos && !pwaState.isStandalone
+    },
+    updateAvailable() {
+      return pwaState.updateAvailable
     },
     unreadCount() {
       return this.recentAlerts.filter(a => !a.read).length
@@ -490,6 +555,24 @@ export default {
         return
       }
       window.dispatchEvent(new CustomEvent('sentinel:lock'))
+    },
+    async onInstallClick() {
+      try {
+        await promptInstall()
+      } catch (err) {
+        console.error('PWA install prompt failed', err)
+      }
+    },
+    openInstallHelp() {
+      this.showPwaInstallModal = true
+    },
+    closeInstallHelp() {
+      this.showPwaInstallModal = false
+    },
+    async refreshAppVersion() {
+      if (pwaState.needsRefresh) {
+        await reloadApp()
+      }
     },
     focusSearch() {
       this.showSearchResults = true
@@ -895,6 +978,64 @@ export default {
   border: 1px solid var(--sc-border);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.pwa-install-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(5, 10, 18, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.pwa-install-modal {
+  width: min(520px, 100%);
+  background: var(--sc-bg-card);
+  border: 1px solid var(--sc-border);
+  border-radius: 18px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.pwa-install-header,
+.pwa-install-footer {
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pwa-install-body {
+  padding: 0 1.25rem 1.25rem;
+  color: var(--sc-text-secondary);
+  line-height: 1.7;
+}
+
+.pwa-install-body p,
+.pwa-install-body ol {
+  margin: 0 0 1rem;
+}
+
+.pwa-install-body ol {
+  padding-left: 1.25rem;
+}
+
+.pwa-install-body li {
+  margin-bottom: 0.75rem;
+}
+
+.pwa-install-body .text-muted {
+  color: var(--sc-text-muted);
+}
+
+.pwa-install-modal h5 {
+  margin: 0;
+  font-size: 1rem;
+}
   z-index: 1050;
 }
 

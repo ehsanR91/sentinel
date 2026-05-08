@@ -161,6 +161,23 @@
         </div>
       </div>
 
+      <div v-if="minimizedLogs.length" class="log-taskbar">
+        <div class="taskbar-title"><i class="mdi mdi-text-box-outline me-1"></i>Minimized log windows</div>
+        <div class="taskbar-items">
+          <button
+            v-for="modal in minimizedLogs"
+            :key="modal.modalId"
+            class="taskbar-pill"
+            @click="restoreLogModal(modal.modalId)"
+            :title="`Restore ${modal.container.name} logs`"
+          >
+            <span>{{ modal.container.name }}</span>
+            <small>{{ modal.container.statusText || modal.container.status }}</small>
+            <i class="mdi mdi-arrow-up-bold ms-2"></i>
+          </button>
+        </div>
+      </div>
+
       <div v-for="modal in containerLogs" :key="modal.modalId">
         <ContainerLogsModal
           :modal="modal"
@@ -207,6 +224,9 @@ export default {
       if (!this.containerFilter) return this.containers
       const f = this.containerFilter.toLowerCase()
       return this.containers.filter(c => c.name.toLowerCase().includes(f) || c.image.toLowerCase().includes(f))
+    },
+    minimizedLogs() {
+      return this.containerLogs.filter(modal => modal.minimized)
     }
   },
 
@@ -429,6 +449,12 @@ export default {
     closeLogModal(modalId) {
       this.containerLogs = this.containerLogs.filter(modal => modal.modalId !== modalId)
     },
+    restoreLogModal(modalId) {
+      const zIndex = ++this.maxModalZ
+      this.containerLogs = this.containerLogs.map(modal =>
+        modal.modalId === modalId ? { ...modal, minimized: false, zIndex } : modal
+      )
+    },
     updateLogModal(modal) {
       this.containerLogs = this.containerLogs.map(current => current.modalId === modal.modalId ? modal : current)
     },
@@ -485,5 +511,65 @@ export default {
 
 .sc-view-containers :deep(.card-body) {
   padding: 1rem;
+}
+.log-taskbar {
+  position: fixed;
+  left: 24px;
+  right: 24px;
+  bottom: 22px;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 1rem;
+  background: rgba(10, 20, 36, 0.96);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  box-shadow: 0 18px 42px rgba(0,0,0,0.28);
+}
+.taskbar-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  color: var(--sc-text-muted, #9bb7dc);
+  white-space: nowrap;
+}
+.taskbar-items {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+.taskbar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(12, 22, 42, 0.95);
+  color: #e7f0ff;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.taskbar-pill:hover {
+  transform: translateY(-1px);
+  background: rgba(28, 48, 86, 0.98);
+}
+.taskbar-pill small {
+  display: block;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.7);
+}
+
+@media (max-width: 900px) {
+  .log-taskbar {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    padding: 0.6rem 0.75rem;
+  }
 }
 </style>
