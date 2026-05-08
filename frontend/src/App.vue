@@ -1,9 +1,11 @@
 <template>
   <RouterView v-slot="{ Component, route }">
     <Transition :name="route.meta?.transition || 'app-shell'" mode="out-in">
-      <component :is="Component" :key="route.fullPath" />
+      <component :is="Component" />
     </Transition>
   </RouterView>
+
+  <CommandPalette />
 
   <Transition name="dash-preload">
     <div
@@ -63,8 +65,11 @@
 </template>
 
 <script>
+import CommandPalette from '@/components/command-palette.vue'
+
 export default {
   name: 'App',
+  components: { CommandPalette },
   data() {
     return {
       locked: false,

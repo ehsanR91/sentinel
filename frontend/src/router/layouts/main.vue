@@ -1,8 +1,8 @@
 <template>
-  <div class="wrapper" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+  <div class="wrapper" :class="wrapperClasses">
     <Sidebar />
     <!-- Mobile backdrop -->
-    <div class="sidebar-backdrop" @click="closeSidebar"></div>
+    <div class="sidebar-backdrop" :class="{ active: sidebarOpen && isMobileViewport }" @click="closeSidebar"></div>
     <div class="page-content">
       <Topbar @toggle-sidebar="toggleSidebar" />
       <div class="content-page">
@@ -25,26 +25,68 @@ import Footer  from '@/components/footer.vue'
 export default {
   name: 'MainLayout',
   components: { Sidebar, Topbar, Footer },
+  data() {
+    return {
+      viewportWidth: typeof window === 'undefined' ? 1440 : window.innerWidth
+    }
+  },
   computed: {
     sidebarCollapsed() {
       return this.$store.state.layout.sidebarCollapsed
+    },
+    sidebarHidden() {
+      return this.$store.state.layout.sidebarHidden
+    },
+    sidebarOpen() {
+      return this.$store.state.layout.sidebarOpen
+    },
+    sidebarPosition() {
+      return this.$store.state.layout.sidebarPosition
+    },
+    isMobileViewport() {
+      return this.viewportWidth < 768
+    },
+    isCompactViewport() {
+      return this.viewportWidth < 1100 && !this.isMobileViewport
+    },
+    effectiveSidebarCollapsed() {
+      return !this.isMobileViewport && (this.sidebarCollapsed || this.isCompactViewport)
+    },
+    wrapperClasses() {
+      return {
+        'sidebar-collapsed': this.effectiveSidebarCollapsed,
+        'sidebar-open': this.sidebarOpen && this.isMobileViewport,
+        'sidebar-hidden': this.sidebarHidden,
+        'sidebar-right': this.sidebarPosition === 'right'
+      }
     }
   },
   watch: {
     $route() {
-      this.closeSidebar()
+      if (this.isMobileViewport) {
+        this.closeSidebar()
+      }
     }
   },
+  mounted() {
+    window.addEventListener('resize', this.handleResize, { passive: true })
+    this.handleResize()
+  },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.handleResize)
+  },
   methods: {
+    handleResize() {
+      this.viewportWidth = window.innerWidth
+      if (!this.isMobileViewport) {
+        this.closeSidebar()
+      }
+    },
     toggleSidebar() {
-      const el = document.getElementById('sidebar-menu')
-      if (!el) return
-      el.classList.toggle('open')
-      document.querySelector('.sidebar-backdrop')?.classList.toggle('active')
+      this.$store.commit('layout/TOGGLE_SIDEBAR')
     },
     closeSidebar() {
-      document.getElementById('sidebar-menu')?.classList.remove('open')
-      document.querySelector('.sidebar-backdrop')?.classList.remove('active')
+      this.$store.commit('layout/CLOSE_SIDEBAR')
     }
   }
 }

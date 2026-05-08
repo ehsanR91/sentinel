@@ -1,3 +1,247 @@
+const sidebarSections = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    jumpKey: 'd',
+    items: [
+      {
+        id: 'dashboard',
+        label: 'Dashboard',
+        icon: 'mdi mdi-view-dashboard-outline',
+        link: '/dashboard',
+        shortcut: 'd',
+        keywords: ['overview', 'home', 'summary']
+      }
+    ]
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    jumpKey: 'a',
+    items: [
+      {
+        id: 'alerts',
+        label: 'Alerts',
+        icon: 'mdi mdi-bell-alert-outline',
+        link: '/alerts',
+        shortcut: 'a',
+        badgeKey: 'alerts',
+        keywords: ['incidents', 'detections', 'notifications']
+      },
+      {
+        id: 'security-center',
+        label: 'Security Center',
+        icon: 'mdi mdi-shield-lock-outline',
+        link: '/security',
+        shortcut: 's',
+        badgeKey: 'security',
+        statusKey: 'health',
+        keywords: ['hardening', 'policies', 'security']
+      },
+      {
+        id: 'firewall',
+        label: 'Firewall',
+        icon: 'mdi mdi-wall',
+        link: '/firewall',
+        shortcut: 'f',
+        statusKey: 'health',
+        keywords: ['rules', 'ufw', 'network']
+      },
+      {
+        id: 'security-tools',
+        label: 'Security Tools',
+        icon: 'mdi mdi-shield-bug-outline',
+        link: '/security-tools',
+        shortcut: 'x',
+        tag: 'experimental',
+        keywords: ['scanner', 'tooling', 'ops']
+      }
+    ]
+  },
+  {
+    id: 'infrastructure',
+    label: 'Infrastructure',
+    jumpKey: 'm',
+    items: [
+      {
+        id: 'monitoring',
+        label: 'Monitoring',
+        icon: 'mdi mdi-chart-areaspline',
+        link: '/monitoring',
+        shortcut: 'm',
+        statusKey: 'live',
+        keywords: ['metrics', 'telemetry', 'graphs']
+      },
+      {
+        id: 'services',
+        label: 'Services',
+        icon: 'mdi mdi-cog-refresh-outline',
+        link: '/services',
+        shortcut: 's',
+        statusKey: 'services',
+        keywords: ['systemd', 'daemons', 'service manager']
+      },
+      {
+        id: 'containers',
+        label: 'Containers',
+        icon: 'mdi mdi-docker',
+        link: '/containers',
+        shortcut: 'c',
+        keywords: ['docker', 'pods', 'images']
+      },
+      {
+        id: 'apps',
+        label: 'Apps',
+        icon: 'mdi mdi-apps',
+        link: '/apps',
+        shortcut: 'p',
+        tag: 'beta',
+        keywords: ['packages', 'catalog', 'software']
+      },
+      {
+        id: 'terminal',
+        label: 'Terminal',
+        icon: 'mdi mdi-console',
+        link: '/terminal',
+        shortcut: 't',
+        keywords: ['shell', 'console', 'ssh']
+      }
+    ]
+  },
+  {
+    id: 'operations',
+    label: 'Operations',
+    jumpKey: 'l',
+    items: [
+      {
+        id: 'logs',
+        label: 'Logs',
+        icon: 'mdi mdi-text-box-multiple-outline',
+        shortcut: 'l',
+        keywords: ['events', 'audit', 'journals'],
+        children: [
+          {
+            id: 'system-logs',
+            label: 'System Logs',
+            link: '/logs',
+            shortcut: 'l',
+            keywords: ['journal', 'syslog']
+          },
+          {
+            id: 'audit-logs',
+            label: 'Audit Logs',
+            link: '/audit-logs',
+            shortcut: 'u',
+            keywords: ['trail', 'changes', 'audit']
+          }
+        ]
+      },
+      {
+        id: 'tasks',
+        label: 'Tasks',
+        icon: 'mdi mdi-playlist-check',
+        link: '/tasks',
+        shortcut: 'k',
+        keywords: ['jobs', 'automation', 'runs']
+      },
+      {
+        id: 'updates',
+        label: 'Updates',
+        icon: 'mdi mdi-update',
+        link: '/updates',
+        shortcut: 'u',
+        tag: 'new',
+        keywords: ['packages', 'upgrades', 'patches']
+      }
+    ]
+  },
+  {
+    id: 'administration',
+    label: 'Administration',
+    jumpKey: 'u',
+    items: [
+      {
+        id: 'users',
+        label: 'Users',
+        icon: 'mdi mdi-account-group-outline',
+        link: '/users',
+        shortcut: 'u',
+        keywords: ['rbac', 'roles', 'accounts']
+      },
+      {
+        id: 'settings',
+        label: 'Settings',
+        icon: 'mdi mdi-cog-outline',
+        link: '/settings',
+        shortcut: 'g',
+        keywords: ['preferences', 'configuration', 'config']
+      }
+    ]
+  }
+]
+
+const settingsCommandEntries = [
+  { id: 'settings-general', label: 'Settings: General', route: '/settings', group: 'Settings', keywords: ['hostname', 'tls', 'listen address', 'admin email'] },
+  { id: 'settings-security', label: 'Settings: Security', route: '/settings', group: 'Settings', keywords: ['allowlist', 'login attempts', 'hardening'] },
+  { id: 'settings-integrations', label: 'Settings: Integrations', route: '/settings', group: 'Settings', keywords: ['recaptcha', 'ip lookup', 'api key'] },
+  { id: 'settings-2fa', label: 'Settings: Two-Factor Authentication', route: '/settings', group: 'Settings', keywords: ['totp', 'authy', 'google authenticator'] },
+  { id: 'settings-secret-gate', label: 'Settings: Secret Link Gate', route: '/settings', group: 'Settings', keywords: ['gate', 'secret path', 'cookie expiry'] }
+]
+
+function flattenItems(items, section, parent = null) {
+  return items.flatMap(item => {
+    const base = {
+      ...item,
+      sectionId: section.id,
+      sectionLabel: section.label,
+      parentId: parent?.id || null,
+      parentLabel: parent?.label || null
+    }
+
+    if (item.children?.length) {
+      return [base, ...flattenItems(item.children, section, item)]
+    }
+
+    return [base]
+  })
+}
+
+function flattenSidebarItems() {
+  return sidebarSections.flatMap(section => flattenItems(section.items, section))
+}
+
+function routeItems() {
+  return flattenSidebarItems().filter(item => item.link)
+}
+
+function findSidebarItemById(id) {
+  return flattenSidebarItems().find(item => item.id === id) || null
+}
+
+function findSidebarItemByRoute(route) {
+  return routeItems().find(item => item.link === route) || null
+}
+
+function navigationSearchEntries() {
+  return routeItems().map(item => ({
+    id: item.id,
+    label: item.parentLabel ? `${item.parentLabel}: ${item.label}` : item.label,
+    route: item.link,
+    icon: item.icon || null,
+    group: 'Navigation',
+    sectionLabel: item.sectionLabel,
+    keywords: item.keywords || []
+  }))
+}
+
+export {
+  sidebarSections,
+  settingsCommandEntries,
+  flattenSidebarItems,
+  findSidebarItemById,
+  findSidebarItemByRoute,
+  navigationSearchEntries
+}
 export const menuItems = [
   {
     id: 1,

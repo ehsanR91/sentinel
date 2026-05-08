@@ -817,8 +817,14 @@ export default {
         return
       }
 
-      // Search: Ctrl+K or Ctrl+/
-      if ((e.ctrlKey && (e.key === 'k' || e.key === '/'))) {
+      // Command palette: Ctrl/Cmd+K. Keep Ctrl+/ as the lightweight inline search.
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('sentinel:command-palette-open'))
+        return
+      }
+
+      if (e.ctrlKey && e.key === '/') {
         e.preventDefault()
         this.focusSearch()
         return
