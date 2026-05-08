@@ -170,7 +170,7 @@
                   <span class="visually-hidden">{{ accessibilityLabel(item) }}</span>
                 </span>
                 <span class="sidebar-link__meta">
-                  <span v-if="itemStatusTone(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
+                  <span v-if="itemStatusTone(item) && !badgeForItem(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
                   <span
                     v-if="badgeForItem(item)"
                     class="sidebar-counter-badge"
@@ -279,7 +279,7 @@
                   <span class="visually-hidden">{{ accessibilityLabel(item) }}</span>
                 </span>
                 <span class="sidebar-link__meta">
-                  <span v-if="itemStatusTone(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
+                  <span v-if="itemStatusTone(item) && !badgeForItem(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
                   <span
                     v-if="badgeForItem(item)"
                     class="sidebar-counter-badge"

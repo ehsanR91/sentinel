@@ -83,7 +83,8 @@ export default {
       paused: false,
       frozenSeries: [],
       selectedRange: lastEnabledRange(this.rangeOptions),
-      lockScale: false
+      lockScale: false,
+      currentTheme: 'dark'
     }
   },
   computed: {
@@ -189,7 +190,7 @@ export default {
           }
         },
         tooltip: {
-          theme: 'dark',
+          theme: this.currentTheme,
           shared: true,
           x: {
             formatter: (value, ctx) => this.xCategories[ctx.dataPointIndex] || value
@@ -214,7 +215,7 @@ export default {
             }
           }))
         },
-        theme: { mode: 'dark' }
+        theme: { mode: this.currentTheme }
       }
     }
   },
@@ -228,6 +229,21 @@ export default {
         }
       }
     }
+  },
+  mounted() {
+    this.currentTheme = document.documentElement.getAttribute('data-theme') || 'dark'
+    this._onStorageChange = (e) => {
+      if (e.key === 'sc_theme') this.currentTheme = e.newValue === 'light' ? 'light' : 'dark'
+    }
+    this._onThemeChange = (e) => {
+      this.currentTheme = e.detail || document.documentElement.getAttribute('data-theme') || 'dark'
+    }
+    window.addEventListener('storage', this._onStorageChange)
+    window.addEventListener('sc:theme-change', this._onThemeChange)
+  },
+  beforeUnmount() {
+    window.removeEventListener('storage', this._onStorageChange)
+    window.removeEventListener('sc:theme-change', this._onThemeChange)
   },
   methods: {
     formatValue(value) {

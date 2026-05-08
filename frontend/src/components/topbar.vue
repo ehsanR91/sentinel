@@ -369,7 +369,7 @@
               <Tooltip :label="displayName" as-child>
                 <span class="user-name">{{ displayName }}</span>
               </Tooltip>
-              <span class="user-role">{{ userRole }} · {{ presence.status }}</span>
+              <span class="user-role">{{ userRole }} · {{ presenceDisplayLabel }}</span>
             </span>
             <i class="mdi mdi-chevron-down d-none d-xl-inline" aria-hidden="true"></i>
           </button>
@@ -385,7 +385,7 @@
                 </Tooltip>
                 <span class="user-popover__meta-line">
                   <StatusDot :status="presence.status" />
-                  <span>{{ userRole }} · {{ presence.status }}</span>
+                  <span>{{ userRole }} · {{ presenceDisplayLabel }}</span>
                 </span>
                 <button type="button" class="user-popover__last-login" :title="lastLoginLabel" @click="openAuditForCurrentUser">
                   {{ lastLoginLabel }}
@@ -732,6 +732,10 @@ export default {
     }
   },
   computed: {
+    presenceDisplayLabel() {
+      const map = { online: 'Online', away: 'Away', dnd: 'DND' }
+      return map[this.presence?.status] || this.presence?.status || ''
+    },
     sidebarCollapsed() {
       return this.$store.state.layout.sidebarCollapsed
     },

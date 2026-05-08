@@ -57,8 +57,7 @@
       <div class="health-anchor__content">
         <p class="health-anchor__summary">{{ healthData.summary || 'Collecting posture data from the agent.' }}</p>
         <div class="health-anchor__meta-row">
-          <span>{{ statusLabel }}</span>
-          <span>{{ stale ? 'Stale' : `Updated ${relativeTimestamp}` }}</span>
+          <span class="health-anchor__posture-label">24h posture · {{ stale ? 'Stale' : `Updated ${relativeTimestamp}` }}</span>
         </div>
         <div class="health-anchor__history">
           <div class="health-anchor__history-label">24h posture</div>
@@ -82,7 +81,7 @@
           </div>
           <div v-if="!prioritizedIssues.length" class="health-anchor__empty">No active remediation items.</div>
           <div v-else class="health-anchor__issue-list">
-            <div v-for="issue in prioritizedIssues" :key="issue.name" class="health-anchor__issue-row">
+            <div v-for="issue in prioritizedIssues" :key="issue.name" class="health-anchor__issue-row" :class="{ 'is-critical': issue.status === 'critical' }">
               <div class="health-anchor__issue-copy">
                 <div class="health-anchor__issue-title-row">
                   <span class="health-anchor__issue-badge" :class="`health-anchor__issue-badge--${issue.status}`">{{ severityLabel(issue.status) }}</span>
@@ -422,9 +421,10 @@ export default {
 .health-anchor__issues-head,
 .health-anchor__history-label,
 .health-anchor__empty,
-.health-anchor__issue-message {
-  color: var(--text-secondary);
-  font-size: 12px;
+.health-anchor__issue-message,
+.health-anchor__posture-label {
+  color: var(--text-tertiary);
+  font-size: 11px;
 }
 
 .health-anchor__history svg {
@@ -454,18 +454,38 @@ export default {
 .health-anchor__issue-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .health-anchor__issue-row {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   justify-content: space-between;
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--dashboard-panel-border);
-  background: rgba(255, 255, 255, 0.04);
+  align-items: center;
+  min-height: 56px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+  position: relative;
+}
+
+.health-anchor__issue-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--state-warn);
+}
+
+.health-anchor__issue-row.is-critical::before {
+  background: var(--state-error);
+}
+
+.health-anchor__issue-row:first-child {
+  border-top: 1px solid var(--border-subtle);
 }
 
 .health-anchor__issue-copy {
@@ -560,10 +580,6 @@ export default {
   .health-anchor__body,
   .health-anchor__loading {
     grid-template-columns: 1fr;
-  }
-
-  .health-anchor__issue-row {
-    flex-direction: column;
   }
 }
 </style>

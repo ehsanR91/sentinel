@@ -274,7 +274,7 @@ export default {
   min-width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--border-subtle);
   display: grid;
   place-items: center;
   font-size: 10px;
@@ -287,7 +287,7 @@ export default {
 
 .service-health__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 14px;
 }
 
@@ -298,7 +298,9 @@ export default {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid var(--dashboard-panel-border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
+  position: relative;
+  overflow: hidden;
 }
 
 .service-health__tile--failed,
@@ -328,6 +330,10 @@ export default {
 .service-health__name {
   color: var(--text-primary);
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .service-health__subtext,
@@ -372,21 +378,55 @@ export default {
 .service-health__history-segment {
   height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--border-subtle);
 }
 
-.service-health__history-segment.is-up { background: rgba(58, 211, 138, 0.72); }
-.service-health__history-segment.is-down { background: rgba(255, 106, 106, 0.3); }
+.service-health__history-segment.is-up { background: var(--state-ok); opacity: 0.7; }
+.service-health__history-segment.is-down { background: var(--state-error); opacity: 0.45; }
 
 .service-health__tile-actions {
   margin-top: auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  transform: translateY(110%);
+  opacity: 0;
+  transition: transform 100ms ease, opacity 100ms ease;
+}
+
+.service-health__tile:hover .service-health__tile-actions,
+.service-health__tile:focus-within .service-health__tile-actions {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.service-health__tile--failed .service-health__tile-actions,
+.service-health__tile--stopped .service-health__tile-actions {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .service-health__tile-actions {
+    display: none;
+  }
+
+  .service-health__tile::after {
+    content: '\22EF';
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 16px;
+    color: var(--text-tertiary);
+    pointer-events: none;
+  }
 }
 
 .service-health__action {
   flex: 1 1 0;
   border-radius: 12px;
   border: 1px solid var(--dashboard-panel-border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-3);
   color: var(--text-secondary);
   padding: 8px 10px;
   display: inline-flex;
@@ -394,6 +434,13 @@ export default {
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.service-health__action:hover {
+  background: var(--accent-muted);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--dashboard-panel-border));
 }
 
 .service-health__empty {

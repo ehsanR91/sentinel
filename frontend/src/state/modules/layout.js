@@ -50,6 +50,7 @@ const mutations = {
       ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
       : theme
     document.documentElement.setAttribute('data-theme', resolved)
+    window.dispatchEvent(new CustomEvent('sc:theme-change', { detail: resolved }))
   }
 }
 

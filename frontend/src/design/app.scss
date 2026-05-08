@@ -9,10 +9,7 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(107, 168, 255, 0.08), transparent 28%),
-    radial-gradient(circle at top right, rgba(58, 211, 138, 0.06), transparent 26%),
-    var(--surface-0);
+  background: var(--surface-0);
   color: var(--text-primary);
   font-family: $font-family-sans-serif;
   font-size: $font-size-base;

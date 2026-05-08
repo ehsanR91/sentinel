@@ -1504,7 +1504,7 @@ export default {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--dashboard-panel-border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
@@ -1680,7 +1680,7 @@ export default {
 
 .dashboard-status-pill {
   border: 1px solid var(--dashboard-panel-border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border-radius: 16px;
   padding: 12px;
   text-align: left;
@@ -1694,7 +1694,7 @@ export default {
 .dashboard-status-pill:hover,
 .dashboard-status-pill:focus-visible {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-3);
   border-color: color-mix(in srgb, var(--accent) 26%, var(--dashboard-panel-border));
 }
 
@@ -1798,8 +1798,8 @@ export default {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  border: 1px solid var(--dashboard-panel-border);
-  background: rgba(8, 15, 27, 0.82);
+  border: 1px solid var(--border-default);
+  background: var(--surface-3);
   color: var(--text-secondary);
 }
 
@@ -1950,7 +1950,7 @@ export default {
   padding: 12px 14px;
   border-radius: 16px;
   border: 1px solid var(--dashboard-panel-border);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   text-align: left;
 }
 
@@ -1986,7 +1986,7 @@ export default {
   flex: 1 1 0;
   padding: 12px 14px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface-2);
   border: 1px solid var(--dashboard-panel-border);
   display: flex;
   flex-direction: column;
@@ -2058,7 +2058,7 @@ export default {
   z-index: 1050;
   display: grid;
   place-items: center;
-  background: rgba(8, 14, 24, 0.72);
+  background: color-mix(in srgb, var(--surface-0) 80%, transparent);
   backdrop-filter: blur(10px);
 }
 

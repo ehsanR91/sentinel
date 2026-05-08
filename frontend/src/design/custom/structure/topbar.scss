@@ -6,8 +6,8 @@
   left: $sidebar-width;
   right: 0;
   height: $topbar-height;
-  background: var(--sc-glass-bg);
-  border-bottom: 1px solid var(--sc-glass-border);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-default);
   backdrop-filter: blur(var(--sc-glass-blur));
   -webkit-backdrop-filter: blur(var(--sc-glass-blur));
   z-index: 1000;
@@ -36,23 +36,23 @@
   border-radius: 6px;
   border: none;
   background: transparent;
-  color: $sc-text-muted;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: $transition-base;
   position: relative;
 
   &:hover {
-    background: var(--sc-glass-bg-2);
-    color: $sc-text;
+    background: var(--border-subtle);
+    color: var(--text-primary);
   }
 
   .badge-dot {
     position: absolute;
     top: 5px; right: 5px;
     width: 7px; height: 7px;
-    background: $sc-red;
+    background: var(--state-error);
     border-radius: 50%;
-    border: 2px solid $sc-bg-topbar;
+    border: 2px solid var(--surface-1);
   }
 }
 
@@ -61,18 +61,18 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.72rem;
-  color: $sc-text-muted;
+  color: var(--text-secondary);
 
   .dot {
     width: 6px; height: 6px;
     border-radius: 50%;
-    background: $sc-green;
-    box-shadow: 0 0 6px $sc-green;
+    background: var(--state-ok);
+    box-shadow: 0 0 6px var(--state-ok);
     animation: pulse 2s infinite;
   }
 
   &.disconnected .dot {
-    background: $sc-red;
+    background: var(--state-error);
     box-shadow: none;
     animation: none;
   }
@@ -94,8 +94,8 @@
   transition: $transition-base;
 
   &:hover {
-    border-color: $sc-border;
-    background: var(--sc-glass-bg-2);
+    border-color: var(--border-default);
+    background: var(--border-subtle);
   }
 
   .user-avatar {
