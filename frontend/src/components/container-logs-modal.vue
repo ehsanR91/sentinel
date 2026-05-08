@@ -19,15 +19,21 @@
           </div>
         </div>
         <div class="clm-controls">
-          <button type="button" class="icon-btn" @click.stop="toggleMinimize" :title="modal.minimized ? 'Restore' : 'Minimize'">
-            <i :class="`mdi ${modal.minimized ? 'mdi-arrow-up-bold' : 'mdi-window-minimize'}`"></i>
-          </button>
-          <button type="button" class="icon-btn" @click.stop="toggleMaximize" :title="modal.maximized ? 'Restore' : 'Maximize'">
-            <i :class="`mdi ${modal.maximized ? 'mdi-window-restore' : 'mdi-window-maximize'}`"></i>
-          </button>
-          <button type="button" class="icon-btn text-danger" @click.stop="closeWindow" title="Close">
-            <i class="mdi mdi-close"></i>
-          </button>
+          <Tooltip :label="modal.minimized ? 'Restore window' : 'Minimize window'" as-child>
+            <button type="button" class="icon-btn" @click.stop="toggleMinimize">
+              <i :class="`mdi ${modal.minimized ? 'mdi-arrow-up-bold' : 'mdi-window-minimize'}`"></i>
+            </button>
+          </Tooltip>
+          <Tooltip :label="modal.maximized ? 'Restore size' : 'Maximize window'" as-child>
+            <button type="button" class="icon-btn" @click.stop="toggleMaximize">
+              <i :class="`mdi ${modal.maximized ? 'mdi-window-restore' : 'mdi-window-maximize'}`"></i>
+            </button>
+          </Tooltip>
+          <Tooltip label="Close log window" as-child>
+            <button type="button" class="icon-btn text-danger" @click.stop="closeWindow">
+              <i class="mdi mdi-close"></i>
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -78,26 +84,31 @@
                 <option :value="5000">5000</option>
                 <option :value="10000">10000</option>
               </select>
-              <button type="button" class="toolbar-button" @click="setTailAll" title="Tail all logs">All</button>
+              <Tooltip label="Tail all logs" description="Load the entire currently available log buffer for this container." variant="rich" as-child>
+                <button type="button" class="toolbar-button" @click="setTailAll">All</button>
+              </Tooltip>
             </div>
 
             <div class="toolbar-group toolbar-main">
-              <button
-                type="button"
-                class="toolbar-icon-btn"
-                :class="{ active: follow }"
-                @click="toggleFollow"
-                :title="follow ? 'Pause live streaming' : 'Resume live streaming'"
-              >
-                <i :class="`mdi ${follow ? 'mdi-play-circle' : 'mdi-pause-circle'}`"></i>
-              </button>
+              <Tooltip :label="follow ? 'Pause live streaming' : 'Resume live streaming'" as-child>
+                <button
+                  type="button"
+                  class="toolbar-icon-btn"
+                  :class="{ active: follow }"
+                  @click="toggleFollow"
+                >
+                  <i :class="`mdi ${follow ? 'mdi-play-circle' : 'mdi-pause-circle'}`"></i>
+                </button>
+              </Tooltip>
               <span class="clm-status-badge" :class="connectionClass">{{ connectionLabel }}</span>
             </div>
 
             <div class="toolbar-group toolbar-search-group">
-              <button type="button" class="toolbar-icon-btn" @click.stop.prevent="toggleSearch" title="Search logs">
-                <i class="mdi mdi-magnify"></i>
-              </button>
+              <Tooltip label="Search logs" as-child>
+                <button type="button" class="toolbar-icon-btn" @click.stop.prevent="toggleSearch">
+                  <i class="mdi mdi-magnify"></i>
+                </button>
+              </Tooltip>
               <div v-if="searchExpanded" class="search-popover">
                 <input
                   ref="searchInput"
@@ -109,20 +120,30 @@
                   @keydown.esc.prevent="closeSearch"
                 />
                 <div class="search-controls">
-                  <button type="button" class="toolbar-icon-btn" @click="prevMatch" :disabled="searchMatches===0" title="Previous match">
-                    <i class="mdi mdi-chevron-up"></i>
-                  </button>
-                  <button type="button" class="toolbar-icon-btn" @click="nextMatch" :disabled="searchMatches===0" title="Next match">
-                    <i class="mdi mdi-chevron-down"></i>
-                  </button>
+                  <Tooltip label="Previous match" as-child>
+                    <span class="d-inline-flex">
+                      <button type="button" class="toolbar-icon-btn" @click="prevMatch" :disabled="searchMatches===0">
+                        <i class="mdi mdi-chevron-up"></i>
+                      </button>
+                    </span>
+                  </Tooltip>
+                  <Tooltip label="Next match" as-child>
+                    <span class="d-inline-flex">
+                      <button type="button" class="toolbar-icon-btn" @click="nextMatch" :disabled="searchMatches===0">
+                        <i class="mdi mdi-chevron-down"></i>
+                      </button>
+                    </span>
+                  </Tooltip>
                   <span class="search-count">{{ searchMatchesLabel }}</span>
                 </div>
               </div>
             </div>
 
-            <button type="button" class="toolbar-icon-btn toolbar-more-btn" @click="toggleToolbarExpanded" :title="toolbarExpanded ? 'Collapse toolbar' : 'Expand toolbar'">
-              <i class="mdi" :class="toolbarExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
-            </button>
+            <Tooltip :label="toolbarExpanded ? 'Collapse toolbar' : 'Expand toolbar'" as-child>
+              <button type="button" class="toolbar-icon-btn toolbar-more-btn" @click="toggleToolbarExpanded">
+                <i class="mdi" :class="toolbarExpanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"></i>
+              </button>
+            </Tooltip>
           </div>
 
           <div v-if="toolbarExpanded" class="toolbar-row toolbar-expanded-row">
@@ -135,42 +156,62 @@
               <input id="clm-until-input" v-model="until" type="datetime-local" class="toolbar-input" @change="refreshLogs" />
             </div>
             <div class="toolbar-group toolbar-toggle-group">
-              <button type="button" class="toolbar-icon-btn" :class="{ active: searchRegex }" @click="searchRegex = !searchRegex" title="Regex search">
-                <i class="mdi mdi-code-tags"></i>
-              </button>
-              <button type="button" class="toolbar-icon-btn" :class="{ active: caseSensitive }" @click="caseSensitive = !caseSensitive" title="Case sensitive">
-                <i class="mdi mdi-format-letter-case"></i>
-              </button>
-              <button type="button" class="toolbar-icon-btn" :class="{ active: wholeWord }" @click="wholeWord = !wholeWord" title="Whole word match">
-                <i class="mdi mdi-target"></i>
-              </button>
+              <Tooltip label="Regex search" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: searchRegex }" @click="searchRegex = !searchRegex">
+                  <i class="mdi mdi-code-tags"></i>
+                </button>
+              </Tooltip>
+              <Tooltip label="Case sensitive" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: caseSensitive }" @click="caseSensitive = !caseSensitive">
+                  <i class="mdi mdi-format-letter-case"></i>
+                </button>
+              </Tooltip>
+              <Tooltip label="Whole word match" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: wholeWord }" @click="wholeWord = !wholeWord">
+                  <i class="mdi mdi-target"></i>
+                </button>
+              </Tooltip>
             </div>
             <div class="toolbar-group toolbar-toggle-group">
-              <button type="button" class="toolbar-icon-btn" :class="{ active: showStdout }" @click="showStdout = !showStdout" title="Show stdout">
-                <i class="mdi mdi-console"></i>
-              </button>
-              <button type="button" class="toolbar-icon-btn" :class="{ active: showStderr }" @click="showStderr = !showStderr" title="Show stderr">
-                <i class="mdi mdi-console-network"></i>
-              </button>
+              <Tooltip label="Show stdout" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: showStdout }" @click="showStdout = !showStdout">
+                  <i class="mdi mdi-console"></i>
+                </button>
+              </Tooltip>
+              <Tooltip label="Show stderr" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: showStderr }" @click="showStderr = !showStderr">
+                  <i class="mdi mdi-console-network"></i>
+                </button>
+              </Tooltip>
             </div>
             <div class="toolbar-group toolbar-toggle-group">
-              <button type="button" class="toolbar-icon-btn" :class="{ active: prettyPrint }" @click="prettyPrint = !prettyPrint" title="Pretty print">
-                <i class="mdi mdi-format-align-left"></i>
-              </button>
-              <button type="button" class="toolbar-icon-btn" :class="{ active: wrapLines }" @click="wrapLines = !wrapLines" title="Word wrap">
-                <i class="mdi mdi-arrow-split-vertical"></i>
-              </button>
-              <button type="button" class="toolbar-icon-btn" :class="{ active: showTimestamps }" @click="showTimestamps = !showTimestamps" title="Show timestamps">
-                <i class="mdi mdi-timer-outline"></i>
-              </button>
+              <Tooltip label="Pretty print" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: prettyPrint }" @click="prettyPrint = !prettyPrint">
+                  <i class="mdi mdi-format-align-left"></i>
+                </button>
+              </Tooltip>
+              <Tooltip label="Word wrap" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: wrapLines }" @click="wrapLines = !wrapLines">
+                  <i class="mdi mdi-arrow-split-vertical"></i>
+                </button>
+              </Tooltip>
+              <Tooltip label="Show timestamps" as-child>
+                <button type="button" class="toolbar-icon-btn" :class="{ active: showTimestamps }" @click="showTimestamps = !showTimestamps">
+                  <i class="mdi mdi-timer-outline"></i>
+                </button>
+              </Tooltip>
             </div>
             <div class="toolbar-group toolbar-actions-group">
-              <button type="button" class="toolbar-icon-btn" @click="clearView" title="Clear view">
-                <i class="mdi mdi-broom"></i>
-              </button>
-              <button type="button" class="toolbar-icon-btn" @click="downloadView" title="Download logs">
-                <i class="mdi mdi-download"></i>
-              </button>
+              <Tooltip label="Clear view" as-child>
+                <button type="button" class="toolbar-icon-btn" @click="clearView">
+                  <i class="mdi mdi-broom"></i>
+                </button>
+              </Tooltip>
+              <Tooltip label="Download logs" as-child>
+                <button type="button" class="toolbar-icon-btn" @click="downloadView">
+                  <i class="mdi mdi-download"></i>
+                </button>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -201,6 +242,7 @@
 
 <script>
 import api from '@/services/api'
+import Tooltip from '@/components/ui/tooltip.vue'
 
 const LINE_HEIGHT = 20
 const MAX_BUFFER_LINES = 50000
@@ -208,6 +250,7 @@ const SEARCH_DEBOUNCE_MS = 150
 
 export default {
   name: 'ContainerLogsModal',
+  components: { Tooltip },
   props: {
     modal: { type: Object, required: true },
     container: { type: Object, required: true }

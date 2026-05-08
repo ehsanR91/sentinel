@@ -54,9 +54,11 @@
             </select>
           </div>
           <div class="col-md-1">
-            <button class="btn btn-sm w-100 log-clear-btn" @click="clearLogs" title="Clear">
-              <i class="mdi mdi-delete-outline"></i>
-            </button>
+            <Tooltip label="Clear logs" description="Remove the current in-memory log buffer from this view." variant="rich" as-child>
+              <button class="btn btn-sm w-100 log-clear-btn" @click="clearLogs">
+                <i class="mdi mdi-delete-outline"></i>
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -132,12 +134,13 @@
 
 <script>
 import PageHeader from '@/components/page-header.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 
 const PAGE_SIZE = 100
 
 export default {
   name: 'LogsPage',
-  components: { PageHeader },
+  components: { PageHeader, Tooltip },
   data() {
     return {
       source: 'auth',

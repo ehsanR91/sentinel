@@ -35,15 +35,16 @@
           >
             <i class="mdi mdi-chevron-down" aria-hidden="true"></i>
           </button>
-          <button
-            type="button"
-            class="collapse-btn-edge d-none d-lg-inline-flex"
-            :title="effectiveCollapsed ? 'Expand sidebar (])' : 'Collapse sidebar ([)'"
-            :aria-label="effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-            @click="toggleCollapse"
-          >
-            <i class="mdi" :class="effectiveCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-left'" aria-hidden="true"></i>
-          </button>
+          <Tooltip :label="effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" :shortcut="effectiveCollapsed ? ']' : '['" as-child>
+            <button
+              type="button"
+              class="collapse-btn-edge d-none d-lg-inline-flex"
+              :aria-label="effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+              @click="toggleCollapse"
+            >
+              <i class="mdi" :class="effectiveCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-left'" aria-hidden="true"></i>
+            </button>
+          </Tooltip>
         </div>
 
         <div v-if="brandMenuOpen" class="sidebar-popover brand-popover" role="menu">
@@ -502,6 +503,7 @@ import api from '@/services/api'
 import appConfig from '@/app.config.json'
 import DetailDrawer from '@/components/ui/detail-drawer.vue'
 import StatusBadge from '@/components/ui/status-badge.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import {
   sidebarSections,
   flattenSidebarItems,
@@ -552,7 +554,7 @@ function formatRate(value) {
 
 export default {
   name: 'Sidebar',
-  components: { DetailDrawer, StatusBadge },
+  components: { DetailDrawer, StatusBadge, Tooltip },
   data() {
     return {
       badgeCounts: {

@@ -6,9 +6,11 @@
         <span v-if="elevated" class="badge me-2 d-flex align-items-center gap-1" style="background:rgba(240,64,64,0.15);color:#f04040;font-size:0.72rem;padding:4px 10px;border-radius:6px">
           <i class="mdi mdi-shield-alert"></i>
           High-Risk: {{ elevationCountdown }}s
-          <button class="btn btn-sm p-0 ms-1" style="color:#f04040;line-height:1" @click="revokeElevation" title="Disable high-risk mode">
-            <i class="mdi mdi-close"></i>
-          </button>
+          <Tooltip label="Disable high-risk mode" description="Immediately revoke elevated terminal permissions for this session." variant="rich" as-child>
+            <button class="btn btn-sm p-0 ms-1" style="color:#f04040;line-height:1" @click="revokeElevation">
+              <i class="mdi mdi-close"></i>
+            </button>
+          </Tooltip>
         </span>
         <button v-else class="btn btn-sm me-2" style="background:rgba(245,166,35,0.1);color:#f5a623;border:1px solid rgba(245,166,35,0.25);font-size:0.75rem" :disabled="checking2FA" @click="openUnlockModal">
           <i :class="`mdi ${checking2FA ? 'mdi-loading mdi-spin' : 'mdi-shield-key-outline'} me-1`"></i>Enable High-Risk Commands
@@ -424,10 +426,11 @@
 
 <script>
 import PageHeader from '@/components/page-header.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 
 export default {
   name: 'TerminalPage',
-  components: { PageHeader },
+  components: { PageHeader, Tooltip },
 
   data() {
     const userObj = (() => {

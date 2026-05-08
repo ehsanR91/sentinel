@@ -220,8 +220,10 @@
                   <td v-if="isVisible('reason')" class="reason-cell">
                     <CodeLabel :code="log.reason" />
                   </td>
-                  <td v-if="isVisible('device')" :title="log.user_agent || 'Unknown user agent'">
-                    {{ deviceLabel(log.user_agent) }}
+                  <td v-if="isVisible('device')">
+                    <Tooltip :label="deviceLabel(log.user_agent)" :description="log.user_agent || 'Unknown user agent'" variant="rich" as-child>
+                      <span class="d-inline-block w-100 text-truncate">{{ deviceLabel(log.user_agent) }}</span>
+                    </Tooltip>
                   </td>
                   <td>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -375,6 +377,7 @@ import DetailDrawer from '@/components/ui/detail-drawer.vue'
 import EmptyState from '@/components/ui/empty-state.vue'
 import ErrorState from '@/components/ui/error-state.vue'
 import TimeDisplay from '@/components/ui/time-display.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import UserChip from '@/components/ui/user-chip.vue'
 import IpChip from '@/components/ui/ip-chip.vue'
 import CodeLabel from '@/components/ui/code-label.vue'
@@ -407,6 +410,7 @@ export default {
     EmptyState,
     ErrorState,
     TimeDisplay,
+    Tooltip,
     UserChip,
     IpChip,
     CodeLabel

@@ -78,15 +78,15 @@
                 <span class="badge rounded-pill" :class="svc.healthClass" style="font-size:0.62rem">
                   {{ svc.statusText }}
                 </span>
-                <button
-                  v-if="svc.canForceStart"
-                  class="btn btn-sm"
-                  style="background:rgba(245,166,35,0.12);color:#f5a623;border:1px solid rgba(245,166,35,0.2);font-size:0.65rem;padding:4px 8px"
-                  @click.prevent="forceStartService(svc)"
-                  title="Force start {{ svc.label }}"
-                >
-                  <i class="mdi mdi-play-circle-outline me-1"></i>Start
-                </button>
+                <Tooltip v-if="svc.canForceStart" :label="`Force start ${svc.label}`" description="Attempt to start the service even when it is currently degraded or inactive." variant="rich" as-child>
+                  <button
+                    class="btn btn-sm"
+                    style="background:rgba(245,166,35,0.12);color:#f5a623;border:1px solid rgba(245,166,35,0.2);font-size:0.65rem;padding:4px 8px"
+                    @click.prevent="forceStartService(svc)"
+                  >
+                    <i class="mdi mdi-play-circle-outline me-1"></i>Start
+                  </button>
+                </Tooltip>
               </div>
             </div>
           </div>
@@ -129,11 +129,12 @@
 <script>
 import PageHeader from '@/components/page-header.vue'
 import StatCard   from '@/components/widgets/stat-card.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import api from '@/services/api'
 
 export default {
   name: 'SecurityPage',
-  components: { PageHeader, StatCard },
+  components: { PageHeader, StatCard, Tooltip },
 
   data() {
     return {

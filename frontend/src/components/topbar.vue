@@ -1,14 +1,15 @@
 <template>
   <div id="page-topbar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <div class="topbar-left">
-      <button
-        class="topbar-btn d-none d-lg-flex"
-        :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-        aria-label="Toggle sidebar"
-        @click="toggleCollapse"
-      >
-        <i class="mdi mdi-menu" aria-hidden="true"></i>
-      </button>
+      <Tooltip :label="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" :shortcut="sidebarCollapsed ? ']' : '['" as-child>
+        <button
+          class="topbar-btn d-none d-lg-flex"
+          aria-label="Toggle sidebar"
+          @click="toggleCollapse"
+        >
+          <i class="mdi mdi-menu" aria-hidden="true"></i>
+        </button>
+      </Tooltip>
       <button class="topbar-btn d-lg-none" aria-label="Toggle sidebar" @click="$emit('toggle-sidebar')">
         <i class="mdi mdi-menu" aria-hidden="true"></i>
       </button>
@@ -22,63 +23,65 @@
 
     <div class="topbar-right">
       <div class="topbar-system-cluster" role="group" aria-label="System status and actions">
-        <button
-          class="topbar-live-pill sc-focus-ring"
-          :class="{ 'is-offline': !wsConnected, 'is-paused': livePaused }"
-          :title="liveTooltip"
-          :aria-label="liveTooltip"
-          @click="toggleLiveState"
-        >
-          <StatusDot :status="wsConnected && !livePaused ? 'online' : 'offline'" />
-          <span>{{ liveLabel }}</span>
-        </button>
+        <Tooltip label="Live telemetry" :description="liveTooltip" variant="rich" as-child>
+          <button
+            class="topbar-live-pill sc-focus-ring"
+            :class="{ 'is-offline': !wsConnected, 'is-paused': livePaused }"
+            :aria-label="liveTooltip"
+            @click="toggleLiveState"
+          >
+            <StatusDot :status="wsConnected && !livePaused ? 'online' : 'offline'" />
+            <span>{{ liveLabel }}</span>
+          </button>
+        </Tooltip>
 
-        <button
-          v-if="updateAvailable"
-          class="topbar-btn"
-          title="Update available"
-          aria-label="Update available"
-          @click="refreshAppVersion"
-        >
-          <i class="mdi mdi-update" aria-hidden="true"></i>
-        </button>
-        <button
-          v-if="installAvailable"
-          class="topbar-btn"
-          title="Install SentinelCore"
-          aria-label="Install SentinelCore"
-          @click="onInstallClick"
-        >
-          <i class="mdi mdi-download" aria-hidden="true"></i>
-        </button>
-        <button
-          v-else-if="showIosInstallHint"
-          class="topbar-btn"
-          title="Add SentinelCore to Home Screen"
-          aria-label="Add SentinelCore to Home Screen"
-          @click="openInstallHelp"
-        >
-          <i class="mdi mdi-information-outline" aria-hidden="true"></i>
-        </button>
-        <button
-          v-if="lockPinSet"
-          class="topbar-btn"
-          title="Lock screen (Space)"
-          aria-label="Lock screen"
-          @click="lockScreen"
-        >
-          <i class="mdi mdi-lock-outline" aria-hidden="true"></i>
-        </button>
+        <Tooltip v-if="updateAvailable" label="Update available" description="Reload to apply the newest installed assets." variant="rich" as-child>
+          <button
+            class="topbar-btn"
+            aria-label="Update available"
+            @click="refreshAppVersion"
+          >
+            <i class="mdi mdi-update" aria-hidden="true"></i>
+          </button>
+        </Tooltip>
+        <Tooltip v-if="installAvailable" label="Install SentinelCore" description="Install the app for a standalone desktop-like launch experience." variant="rich" as-child>
+          <button
+            class="topbar-btn"
+            aria-label="Install SentinelCore"
+            @click="onInstallClick"
+          >
+            <i class="mdi mdi-download" aria-hidden="true"></i>
+          </button>
+        </Tooltip>
+        <Tooltip v-else-if="showIosInstallHint" label="Add to Home Screen" description="Safari requires the Share sheet to install this app on iOS." variant="rich" as-child>
+          <button
+            class="topbar-btn"
+            aria-label="Add SentinelCore to Home Screen"
+            @click="openInstallHelp"
+          >
+            <i class="mdi mdi-information-outline" aria-hidden="true"></i>
+          </button>
+        </Tooltip>
+        <Tooltip v-if="lockPinSet" label="Lock screen" description="Activate the secure lock overlay." shortcut="Space" variant="rich" as-child>
+          <button
+            class="topbar-btn"
+            aria-label="Lock screen"
+            @click="lockScreen"
+          >
+            <i class="mdi mdi-lock-outline" aria-hidden="true"></i>
+          </button>
+        </Tooltip>
 
         <div class="position-relative">
-          <button
-            class="topbar-btn topbar-btn--quick-mount d-none d-md-flex"
-            title="Quick Mount"
-            aria-label="Quick Mount"
-            @click="toggleQuickMount"
-          >
-            <i class="mdi mdi-lan-connect" aria-hidden="true"></i>
-          </button>
+          <Tooltip label="Quick Mount" description="Generate SSH tunnel commands for server-side web apps." variant="rich" as-child>
+            <button
+              class="topbar-btn topbar-btn--quick-mount d-none d-md-flex"
+              aria-label="Quick Mount"
+              @click="toggleQuickMount"
+            >
+              <i class="mdi mdi-lan-connect" aria-hidden="true"></i>
+            </button>
+          </Tooltip>
 
           <div v-if="showQuickMount" class="dropdown-menu dropdown-menu-end show quick-mount-panel" style="top:44px;right:0;position:absolute;min-width:420px;max-width:96vw;padding:0">
             <div class="d-flex align-items-center justify-content-between px-3 py-2" style="border-bottom:1px solid var(--sc-border, #1e2d4a)">
@@ -86,9 +89,11 @@
                 <i class="mdi mdi-lan-connect" style="color:#22d67c"></i> Quick Mount
               </span>
               <div class="d-flex align-items-center gap-2">
-                <button class="btn btn-sm p-0" style="color:#4a9eff;font-size:0.72rem" title="How Quick Mount works" @click="openQuickMountHelp">
-                  <i class="mdi mdi-help-circle-outline"></i>
-                </button>
+                <Tooltip label="Quick Mount help" description="See how local tunnel commands are constructed and used." variant="rich" as-child>
+                  <button class="btn btn-sm p-0" style="color:#4a9eff;font-size:0.72rem" @click="openQuickMountHelp">
+                    <i class="mdi mdi-help-circle-outline"></i>
+                  </button>
+                </Tooltip>
                 <button class="btn btn-sm p-0" style="color:#5a7499;font-size:0.72rem" :disabled="loadingTunnels" @click="refreshTunnelApps">
                   <i :class="`mdi mdi-refresh${loadingTunnels ? ' mdi-spin' : ''}`"></i>
                 </button>
@@ -210,18 +215,19 @@
         @after-open="handleAlertsOpened"
       >
         <template #trigger="{ toggle, triggerRef, triggerAttrs, open }">
-          <button
-            :ref="triggerRef"
-            class="topbar-btn topbar-btn--bell sc-focus-ring"
-            :class="{ 'is-active': open, 'has-critical-pulse': bellPulseActive }"
-            v-bind="triggerAttrs"
-            :title="`${unreadCount} unread alerts`"
-            aria-label="Alerts"
-            @click="toggle"
-          >
-            <i class="mdi mdi-bell-outline" aria-hidden="true"></i>
-            <span v-if="unreadCount" class="topbar-badge" :class="`topbar-badge--${alertBadgeTone}`">{{ badgeCountLabel }}</span>
-          </button>
+          <Tooltip label="Alerts" :description="`${unreadCount} unread alerts`" variant="rich" as-child>
+            <button
+              :ref="triggerRef"
+              class="topbar-btn topbar-btn--bell sc-focus-ring"
+              :class="{ 'is-active': open, 'has-critical-pulse': bellPulseActive }"
+              v-bind="triggerAttrs"
+              aria-label="Alerts"
+              @click="toggle"
+            >
+              <i class="mdi mdi-bell-outline" aria-hidden="true"></i>
+              <span v-if="unreadCount" class="topbar-badge" :class="`topbar-badge--${alertBadgeTone}`">{{ badgeCountLabel }}</span>
+            </button>
+          </Tooltip>
         </template>
 
         <div class="topbar-alerts" @click="noop">
@@ -364,7 +370,9 @@
           >
             <UserAvatar :name="displayName" :src="avatarUrl" :status="presence.status" size="md" />
             <span class="user-name-wrap d-none d-xl-flex">
-              <span class="user-name" :title="displayName">{{ displayName }}</span>
+              <Tooltip :label="displayName" as-child>
+                <span class="user-name">{{ displayName }}</span>
+              </Tooltip>
               <span class="user-role">{{ userRole }} · {{ presence.status }}</span>
             </span>
             <i class="mdi mdi-chevron-down d-none d-xl-inline" aria-hidden="true"></i>
@@ -376,7 +384,9 @@
             <div class="user-popover__hero">
               <UserAvatar :name="displayName" :src="avatarUrl" :status="presence.status" size="lg" />
               <div class="user-popover__meta">
-                <strong :title="displayName">{{ displayName }}</strong>
+                <Tooltip :label="displayName" as-child>
+                  <strong>{{ displayName }}</strong>
+                </Tooltip>
                 <span>{{ userRole }} · {{ presence.status }}</span>
                 <button type="button" class="user-popover__last-login" @click="openAuditForCurrentUser">
                   {{ lastLoginLabel }}
@@ -621,6 +631,7 @@
 import api from '@/services/api'
 import { pwaState, promptInstall, reloadApp } from '@/plugins/pwa'
 import Popover from '@/components/ui/popover.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import AppButton from '@/components/ui/app-button.vue'
 import EmptyState from '@/components/ui/empty-state.vue'
 import KbdHint from '@/components/ui/kbd-hint.vue'
@@ -672,6 +683,7 @@ export default {
   name: 'Topbar',
   components: {
     Popover,
+    Tooltip,
     AppButton,
     EmptyState,
     KbdHint,

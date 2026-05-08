@@ -42,9 +42,11 @@
                   <option value="deny">Deny</option>
                 </select>
                 <input v-model="ruleSearch" class="form-control form-control-sm" placeholder="Search…" style="width:140px" />
-                <button class="btn btn-sm" style="background:rgba(74,158,255,0.12);color:#4a9eff;font-size:0.72rem;padding:4px 8px" @click="loadRules" title="Refresh rules">
-                  <i class="mdi mdi-refresh"></i>
-                </button>
+                <Tooltip label="Refresh rules" as-child>
+                  <button class="btn btn-sm" style="background:rgba(74,158,255,0.12);color:#4a9eff;font-size:0.72rem;padding:4px 8px" @click="loadRules">
+                    <i class="mdi mdi-refresh"></i>
+                  </button>
+                </Tooltip>
               </div>
             </div>
             <div class="card-body p-0">
@@ -83,9 +85,16 @@
         <div class="card mb-3">
         <div class="card-header d-flex align-items-center justify-content-between">
         <h6><i class="mdi mdi-block-helper me-2" style="color:#f04040"></i>Quick Block IP</h6>
-        <i class="mdi mdi-information-outline text-muted" style="cursor:pointer;font-size:1.1rem"
-           title="Block single IPs, subnets (CIDR), or multiple IPs at once. Use commas or newlines to separate multiple IPs. Example: 192.168.1.1, 10.0.0.0/8"
-           @click.stop="showBulkBlockModal = true"></i>
+        <Tooltip
+          label="Bulk block help"
+          description="Block single IPs, subnets (CIDR), or multiple IPs at once. Use commas or newlines to separate multiple IPs. Example: 192.168.1.1, 10.0.0.0/8"
+          variant="rich"
+          as-child
+        >
+          <button type="button" class="btn p-0 border-0 bg-transparent text-muted" style="cursor:pointer;font-size:1.1rem" @click.stop="showBulkBlockModal = true" aria-label="Bulk block help">
+            <i class="mdi mdi-information-outline"></i>
+          </button>
+        </Tooltip>
         </div>
         <div class="card-body">
         <div class="mb-2">
@@ -136,9 +145,11 @@
           <h6><i class="mdi mdi-connection me-2" style="color:#22d3ee"></i>Active Connections</h6>
           <div class="d-flex align-items-center gap-2">
             <span style="font-size:0.75rem;color:#5a7499">{{ connections.length }} total</span>
-            <button class="btn btn-sm" style="background:rgba(74,158,255,0.12);color:#4a9eff;font-size:0.72rem;padding:4px 8px" @click="loadRules" title="Refresh connections">
-              <i class="mdi mdi-refresh"></i>
-            </button>
+            <Tooltip label="Refresh connections" as-child>
+              <button class="btn btn-sm" style="background:rgba(74,158,255,0.12);color:#4a9eff;font-size:0.72rem;padding:4px 8px" @click="loadRules">
+                <i class="mdi mdi-refresh"></i>
+              </button>
+            </Tooltip>
           </div>
         </div>
         <div class="card-body p-0" style="max-height:280px;overflow-y:auto">
@@ -245,11 +256,12 @@
 
 <script>
 import PageHeader from '@/components/page-header.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import api from '@/services/api'
 
 export default {
   name: 'FirewallPage',
-  components: { PageHeader },
+  components: { PageHeader, Tooltip },
   data() {
   return {
   loading: false,

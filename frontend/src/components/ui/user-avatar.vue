@@ -1,5 +1,5 @@
 <template>
-  <div class="sc-user-avatar" :class="sizeClass" :title="name">
+  <div class="sc-user-avatar" :class="sizeClass">
     <img
       v-if="!imageFailed && src"
       :src="src"

@@ -62,6 +62,11 @@
   --shadow-md: 0 16px 38px rgba(1, 8, 20, 0.28);
   --shadow-lg: 0 24px 70px rgba(1, 8, 20, 0.45);
   --shadow-glow-accent: 0 0 0 1px rgba(107, 168, 255, 0.24), 0 10px 30px rgba(107, 168, 255, 0.22);
+  --z-popover: 60;
+  --z-drawer: 50;
+  --z-modal: 70;
+  --z-tooltip: 80;
+  --z-toast: 90;
   --font-size-11: 11px;
   --font-size-12: 12px;
   --font-size-13: 13px;
@@ -112,6 +117,22 @@
   --transition-base: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   --transition-fast: all 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
   --transition-slow: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --tooltip-surface: rgba(28, 28, 30, 0.72);
+  --tooltip-border: rgba(255, 255, 255, 0.08);
+  --tooltip-inner-highlight: rgba(255, 255, 255, 0.04);
+  --tooltip-text: rgba(255, 255, 255, 0.92);
+  --tooltip-description: rgba(255, 255, 255, 0.65);
+  --tooltip-keycap-bg: rgba(255, 255, 255, 0.10);
+  --tooltip-keycap-border: rgba(255, 255, 255, 0.06);
+  --tooltip-keycap-text: rgba(255, 255, 255, 0.85);
+  --tooltip-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.4),
+    0 12px 24px -8px rgba(0, 0, 0, 0.5),
+    0 4px 8px -2px rgba(0, 0, 0, 0.3);
+  --tooltip-blur: blur(24px) saturate(180%);
+  --tooltip-radius-compact: 7px;
+  --tooltip-radius-rich: 10px;
+  --tooltip-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI Variable", system-ui, sans-serif;
   
   // Fonts
   --font-family-monospace: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -197,6 +218,27 @@
   
   // Transitions
   --transition-base: all 0.2s ease;
+  --z-popover: 60;
+  --z-drawer: 50;
+  --z-modal: 70;
+  --z-tooltip: 80;
+  --z-toast: 90;
+  --tooltip-surface: rgba(245, 245, 247, 0.78);
+  --tooltip-border: rgba(0, 0, 0, 0.06);
+  --tooltip-inner-highlight: rgba(255, 255, 255, 0.42);
+  --tooltip-text: rgba(15, 23, 42, 0.92);
+  --tooltip-description: rgba(15, 23, 42, 0.68);
+  --tooltip-keycap-bg: rgba(15, 23, 42, 0.08);
+  --tooltip-keycap-border: rgba(15, 23, 42, 0.06);
+  --tooltip-keycap-text: rgba(15, 23, 42, 0.82);
+  --tooltip-shadow:
+    0 0 0 0.5px rgba(15, 23, 42, 0.12),
+    0 12px 24px -8px rgba(15, 23, 42, 0.22),
+    0 4px 8px -2px rgba(15, 23, 42, 0.16);
+  --tooltip-blur: blur(24px) saturate(180%);
+  --tooltip-radius-compact: 7px;
+  --tooltip-radius-rich: 10px;
+  --tooltip-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI Variable", system-ui, sans-serif;
   
   // Fonts
   --font-family-monospace: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;

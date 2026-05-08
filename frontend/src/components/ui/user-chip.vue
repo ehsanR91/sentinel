@@ -1,17 +1,20 @@
 <template>
-  <button type="button" class="sc-chip sc-chip--interactive sc-focus-ring" :title="title" @click="$emit('click')">
-    <UserAvatar :name="user || 'Unknown'" :status="presence.status" size="sm" />
-    <span>{{ user || 'Unknown' }}</span>
-  </button>
+  <Tooltip :label="user || 'Unknown'" :description="tooltipDescription" variant="rich" as-child>
+    <button type="button" class="sc-chip sc-chip--interactive sc-focus-ring" @click="$emit('click')">
+      <UserAvatar :name="user || 'Unknown'" :status="presence.status" size="sm" />
+      <span>{{ user || 'Unknown' }}</span>
+    </button>
+  </Tooltip>
 </template>
 
 <script>
 import UserAvatar from './user-avatar.vue'
+import Tooltip from './tooltip.vue'
 import { getUserPresence, USER_PRESENCE_EVENT } from '@/utils/user-presence'
 
 export default {
   name: 'UserChip',
-  components: { UserAvatar },
+  components: { Tooltip, UserAvatar },
   props: {
     user: { type: String, default: '' },
     email: { type: String, default: '' },
@@ -25,13 +28,13 @@ export default {
     }
   },
   computed: {
-    title () {
+    tooltipDescription () {
       const lines = []
       if (this.user) lines.push(this.user)
       if (this.email) lines.push(this.email)
       if (this.role) lines.push(`Role: ${this.role}`)
       if (this.recentCount) lines.push(`Recent events: ${this.recentCount}`)
-      return lines.join('\n')
+      return lines.filter(line => line !== this.user).join('\n')
     }
   },
   watch: {

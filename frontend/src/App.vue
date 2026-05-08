@@ -1,75 +1,79 @@
 <template>
-  <RouterView v-slot="{ Component, route }">
-    <Transition :name="route.meta?.transition || 'app-shell'" mode="out-in">
-      <component :is="Component" />
+  <TooltipProvider>
+    <RouterView v-slot="{ Component, route }">
+      <Transition :name="route.meta?.transition || 'app-shell'" mode="out-in">
+        <component :is="Component" />
+      </Transition>
+    </RouterView>
+
+    <CommandPalette />
+    <div id="sc-tooltip-root"></div>
+
+    <Transition name="dash-preload">
+      <div
+        v-if="showDashboardPreload"
+        class="dash-preload"
+        role="status"
+        aria-live="polite"
+        aria-label="Loading dashboard"
+      >
+        <div class="dash-preload-orb"></div>
+        <div class="dash-preload-card">
+          <div class="dash-preload-logo">
+            <i class="mdi mdi-shield-half-full"></i>
+          </div>
+          <div class="dash-preload-title">Preparing SentinelCore</div>
+          <div class="dash-preload-subtitle">Syncing dashboard widgets and live telemetry</div>
+          <div class="dash-preload-bar" aria-hidden="true">
+            <span class="dash-preload-progress"></span>
+          </div>
+        </div>
+      </div>
     </Transition>
-  </RouterView>
 
-  <CommandPalette />
-
-  <Transition name="dash-preload">
-    <div
-      v-if="showDashboardPreload"
-      class="dash-preload"
-      role="status"
-      aria-live="polite"
-      aria-label="Loading dashboard"
-    >
-      <div class="dash-preload-orb"></div>
-      <div class="dash-preload-card">
-        <div class="dash-preload-logo">
-          <i class="mdi mdi-shield-half-full"></i>
-        </div>
-        <div class="dash-preload-title">Preparing SentinelCore</div>
-        <div class="dash-preload-subtitle">Syncing dashboard widgets and live telemetry</div>
-        <div class="dash-preload-bar" aria-hidden="true">
-          <span class="dash-preload-progress"></span>
+    <!-- Lock Screen Overlay -->
+    <Transition name="lock-fade">
+      <div v-if="locked" class="lock-screen" role="dialog" aria-modal="true" aria-label="Screen locked" @click.self="focusActiveDigit">
+        <div class="lock-card" :class="{ shake: pinError }" @click="focusActiveDigit">
+          <div class="lock-avatar">{{ userInitials }}</div>
+          <div class="lock-username">{{ username }}</div>
+          <div class="lock-subtitle">Screen locked — enter your 6-digit PIN</div>
+          <div class="lock-pin-boxes">
+            <input
+              v-for="i in 6"
+              :key="i"
+              :ref="el => { if (el) pinBoxRefs[i-1] = el }"
+              v-model="pinDigits[i-1]"
+              type="password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="1"
+              class="lock-pin-box"
+              :class="{ filled: pinDigits[i-1], error: pinError }"
+              autocomplete="off"
+              @input="onDigitInput(i-1)"
+              @keydown="onDigitKeydown($event, i-1)"
+              @paste.prevent="onPinPaste"
+              @focus="pinFocusIndex = i-1"
+            />
+          </div>
+          <div v-if="pinError" class="lock-error">
+            <i class="mdi mdi-alert-circle-outline"></i> Incorrect PIN — try again
+          </div>
+          <div v-else class="lock-hint">Enter digits to unlock</div>
         </div>
       </div>
-    </div>
-  </Transition>
-
-  <!-- Lock Screen Overlay -->
-  <Transition name="lock-fade">
-    <div v-if="locked" class="lock-screen" role="dialog" aria-modal="true" aria-label="Screen locked" @click.self="focusActiveDigit">
-      <div class="lock-card" :class="{ shake: pinError }" @click="focusActiveDigit">
-        <div class="lock-avatar">{{ userInitials }}</div>
-        <div class="lock-username">{{ username }}</div>
-        <div class="lock-subtitle">Screen locked — enter your 6-digit PIN</div>
-        <div class="lock-pin-boxes">
-          <input
-            v-for="i in 6"
-            :key="i"
-            :ref="el => { if (el) pinBoxRefs[i-1] = el }"
-            v-model="pinDigits[i-1]"
-            type="password"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            maxlength="1"
-            class="lock-pin-box"
-            :class="{ filled: pinDigits[i-1], error: pinError }"
-            autocomplete="off"
-            @input="onDigitInput(i-1)"
-            @keydown="onDigitKeydown($event, i-1)"
-            @paste.prevent="onPinPaste"
-            @focus="pinFocusIndex = i-1"
-          />
-        </div>
-        <div v-if="pinError" class="lock-error">
-          <i class="mdi mdi-alert-circle-outline"></i> Incorrect PIN — try again
-        </div>
-        <div v-else class="lock-hint">Enter digits to unlock</div>
-      </div>
-    </div>
-  </Transition>
+    </Transition>
+  </TooltipProvider>
 </template>
 
 <script>
 import CommandPalette from '@/components/command-palette.vue'
+import TooltipProvider from '@/components/ui/tooltip-provider.vue'
 
 export default {
   name: 'App',
-  components: { CommandPalette },
+  components: { CommandPalette, TooltipProvider },
   data() {
     return {
       locked: false,

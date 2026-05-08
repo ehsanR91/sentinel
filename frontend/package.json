@@ -18,6 +18,7 @@
     "core-js": "^3.49.0",
     "nprogress": "^0.2.0",
     "qrcode": "^1.5.4",
+    "reka-ui": "^2.9.7",
     "sweetalert2": "^11.12.0",
     "v-click-outside": "^3.2.0",
     "vue": "^3.5.13",
@@ -32,13 +33,13 @@
     "eslint": "^8.57.1",
     "eslint-plugin-vue": "^9.32.0",
     "pwa-asset-generator": "^8.1.4",
-    "sharp": "^0.32.3",
-    "vite-plugin-pwa": "^0.18.2",
-    "web-vitals": "^3.3.0",
-    "workbox-window": "^7.4.1",
     "sass": "^1.99.0",
     "sass-loader": "^14.2.1",
-    "vite": "^5.4.19"
+    "sharp": "^0.32.3",
+    "vite": "^5.4.19",
+    "vite-plugin-pwa": "^0.18.2",
+    "web-vitals": "^3.3.0",
+    "workbox-window": "^7.4.1"
   },
   "eslintConfig": {
     "root": true,
@@ -54,6 +55,17 @@
     ],
     "rules": {
       "vue/multi-word-component-names": "off",
+      "vue/no-restricted-syntax": [
+        "warn",
+        {
+          "selector": "VElement[rawName=/^[a-z]+(?:-[a-z]+)*$/] > VStartTag > VAttribute[directive=false][key.name='title']",
+          "message": "Use the shared Tooltip component instead of a native title attribute."
+        },
+        {
+          "selector": "VElement[rawName=/^[a-z]+(?:-[a-z]+)*$/] > VStartTag > VAttribute[directive=true][key.argument.name='title']",
+          "message": "Use the shared Tooltip component instead of a native title binding."
+        }
+      ],
       "no-inner-declarations": "off",
       "vue/no-reserved-component-names": "off",
       "vue/no-mutating-props": "off",

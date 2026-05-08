@@ -1,11 +1,15 @@
 <template>
-  <span class="sc-badge" :class="`sc-badge--${normalizedState}`" :title="title || label">
-    <i v-if="resolvedIcon" :class="resolvedIcon" aria-hidden="true"></i>
-    <span>{{ label }}</span>
-  </span>
+  <Tooltip :label="label" :description="tooltipDescription" :status="normalizedState" :variant="tooltipDescription ? 'rich' : 'default'" as-child>
+    <span class="sc-badge" :class="`sc-badge--${normalizedState}`">
+      <i v-if="resolvedIcon" :class="resolvedIcon" aria-hidden="true"></i>
+      <span>{{ label }}</span>
+    </span>
+  </Tooltip>
 </template>
 
 <script>
+import Tooltip from './tooltip.vue'
+
 const ICONS = {
   ok: 'mdi mdi-check-circle-outline',
   info: 'mdi mdi-information-outline',
@@ -18,6 +22,7 @@ const ICONS = {
 
 export default {
   name: 'StatusBadge',
+  components: { Tooltip },
   props: {
     state: { type: String, default: 'muted' },
     label: { type: String, required: true },
@@ -32,6 +37,11 @@ export default {
     },
     resolvedIcon () {
       return this.icon || ICONS[this.normalizedState]
+    },
+    tooltipDescription () {
+      const value = String(this.title || '').trim()
+      if (!value || value === this.label) return ''
+      return value
     }
   }
 }

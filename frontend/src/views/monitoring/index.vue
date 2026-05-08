@@ -167,7 +167,11 @@
               <td style="font-size:0.78rem;color:var(--sc-text);font-weight:600">{{ p.name }}</td>
               <td style="font-size:0.72rem;color:var(--sc-text-secondary)">{{ p.user }}</td>
               <td style="font-size:0.75rem;color:#f5a623">{{ p.reason }}</td>
-              <td class="font-mono" style="font-size:0.68rem;color:var(--sc-text-muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="p.cmd">{{ p.cmd }}</td>
+              <td class="font-mono" style="font-size:0.68rem;color:var(--sc-text-muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                <Tooltip :label="p.name" :description="p.cmd" variant="rich" as-child>
+                  <span class="d-inline-block w-100 text-truncate">{{ p.cmd }}</span>
+                </Tooltip>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -271,6 +275,7 @@
 
 <script>
 import PageHeader from '@/components/page-header.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import { mapGetters } from 'vuex'
 
 function sanitizeSeries(data = []) {
@@ -298,7 +303,7 @@ function fmtBytes (b) {
 
 export default {
   name: 'MonitoringPage',
-  components: { PageHeader },
+  components: { PageHeader, Tooltip },
 
   data() {
     return {

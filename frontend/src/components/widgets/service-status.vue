@@ -19,17 +19,23 @@
 
       <!-- Service tiles -->
       <div v-else class="service-grid">
-        <div
+        <Tooltip
           v-for="svc in displayedServices"
           :key="svc.name"
-          class="service-tile"
-          :class="svc.status"
-          :title="svc.name"
+          :label="svc.label"
+          :description="svc.name"
+          variant="rich"
+          as-child
         >
-          <i :class="svc.icon"></i>
-          <div class="svc-name">{{ svc.label }}</div>
-          <div class="svc-status">{{ statusLabel(svc.status) }}</div>
-        </div>
+          <div
+            class="service-tile"
+            :class="svc.status"
+          >
+            <i :class="svc.icon"></i>
+            <div class="svc-name">{{ svc.label }}</div>
+            <div class="svc-status">{{ statusLabel(svc.status) }}</div>
+          </div>
+        </Tooltip>
       </div>
 
     </div>
@@ -37,7 +43,7 @@
 </template>
 
 <script>
-import api from '@/services/api'
+import Tooltip from '@/components/ui/tooltip.vue'
 import config from '@/app.config.json'
 
 const ICONS = {
@@ -86,6 +92,7 @@ function mapService(svc) {
 
 export default {
   name: 'ServiceStatus',
+  components: { Tooltip },
   props: {
     compact: { type: Boolean, default: false }
   },

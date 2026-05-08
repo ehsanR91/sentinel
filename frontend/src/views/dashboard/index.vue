@@ -10,15 +10,21 @@
       <template #actions>
         <span v-if="isRefreshing" class="spinner-border spinner-border-sm text-info me-2" role="status"></span>
         <div class="btn-group btn-group-sm me-2">
-          <button class="btn" :class="layoutMode === 'flexible' ? 'btn-sc-primary' : 'btn-outline-secondary'" @click="setLayoutMode('flexible')" title="Flexible layout">
-            <i class="mdi mdi-application"></i>
-          </button>
-          <button class="btn" :class="layoutMode === 'compact' ? 'btn-sc-primary' : 'btn-outline-secondary'" @click="setLayoutMode('compact')" title="Compact layout">
-            <i class="mdi mdi-application-outline"></i>
-          </button>
-          <button class="btn btn-sc-primary" @click="refreshAll" title="Refresh all widgets">
-            <i class="mdi mdi-refresh"></i>
-          </button>
+          <Tooltip label="Flexible layout" as-child>
+            <button class="btn" :class="layoutMode === 'flexible' ? 'btn-sc-primary' : 'btn-outline-secondary'" @click="setLayoutMode('flexible')">
+              <i class="mdi mdi-application"></i>
+            </button>
+          </Tooltip>
+          <Tooltip label="Compact layout" as-child>
+            <button class="btn" :class="layoutMode === 'compact' ? 'btn-sc-primary' : 'btn-outline-secondary'" @click="setLayoutMode('compact')">
+              <i class="mdi mdi-application-outline"></i>
+            </button>
+          </Tooltip>
+          <Tooltip label="Refresh all widgets" as-child>
+            <button class="btn btn-sc-primary" @click="refreshAll">
+              <i class="mdi mdi-refresh"></i>
+            </button>
+          </Tooltip>
         </div>
       </template>
     </PageHeader>
@@ -37,9 +43,11 @@
       <template #item="{ element }">
         <div :class="element.colClass">
           <div class="widget-wrapper">
-            <div class="drag-handle" title="Drag to rearrange">
-              <i class="mdi mdi-drag-vertical"></i>
-            </div>
+            <Tooltip label="Drag to rearrange" as-child>
+              <div class="drag-handle">
+                <i class="mdi mdi-drag-vertical"></i>
+              </div>
+            </Tooltip>
             <StatCard
               v-if="element.id === 'cpu'"
               label="CPU Usage"
@@ -141,9 +149,11 @@
       <template #item="{ element }">
         <div :class="element.colClass">
           <div class="widget-wrapper">
-            <div class="drag-handle" title="Drag to rearrange">
-              <i class="mdi mdi-drag-vertical"></i>
-            </div>
+            <Tooltip label="Drag to rearrange" as-child>
+              <div class="drag-handle">
+                <i class="mdi mdi-drag-vertical"></i>
+              </div>
+            </Tooltip>
             <StatCard
               v-if="element.id === 'bans'"
               label="Active Bans"
@@ -197,9 +207,11 @@
     <div class="row g-3 mb-4">
       <div class="col-xl-6">
         <div class="widget-wrapper">
-          <div class="drag-handle" title="Drag to rearrange">
-            <i class="mdi mdi-drag-vertical"></i>
-          </div>
+          <Tooltip label="Drag to rearrange" as-child>
+            <div class="drag-handle">
+              <i class="mdi mdi-drag-vertical"></i>
+            </div>
+          </Tooltip>
           <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
               <h6><i class="mdi mdi-chip me-2" style="color:#4a9eff"></i>CPU Usage (last 60s)</h6>
@@ -213,9 +225,11 @@
       </div>
       <div class="col-xl-6">
         <div class="widget-wrapper">
-          <div class="drag-handle" title="Drag to rearrange">
-            <i class="mdi mdi-drag-vertical"></i>
-          </div>
+          <Tooltip label="Drag to rearrange" as-child>
+            <div class="drag-handle">
+              <i class="mdi mdi-drag-vertical"></i>
+            </div>
+          </Tooltip>
           <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
               <h6><i class="mdi mdi-swap-vertical me-2" style="color:#22d67c"></i>Network Traffic (last 60s)</h6>
@@ -243,9 +257,11 @@
       <template #item="{ element }">
         <div :class="widgetColClass">
           <div class="widget-wrapper h-100">
-            <div class="drag-handle" title="Drag to rearrange">
-              <i class="mdi mdi-drag-vertical"></i>
-            </div>
+            <Tooltip label="Drag to rearrange" as-child>
+              <div class="drag-handle">
+                <i class="mdi mdi-drag-vertical"></i>
+              </div>
+            </Tooltip>
             <HealthCheck   v-if="element.id === 'health'" class="h-100" />
             <AlertFeed    v-else-if="element.id === 'alerts'" class="h-100" :compact="layoutMode === 'compact'" />
             <ServiceStatus v-else-if="element.id === 'services'" class="h-100" :compact="layoutMode === 'compact'" />
@@ -285,6 +301,7 @@
 
 <script>
 import PageHeader    from '@/components/page-header.vue'
+import Tooltip       from '@/components/ui/tooltip.vue'
 import StatCard      from '@/components/widgets/stat-card.vue'
 import AlertFeed     from '@/components/widgets/alert-feed.vue'
 import ServiceStatus from '@/components/widgets/service-status.vue'
@@ -344,7 +361,7 @@ const CHART_OPTS_BASE = (color) => ({
 
 export default {
   name: 'DashboardPage',
-  components: { PageHeader, StatCard, AlertFeed, ServiceStatus, HealthCheck, draggable },
+  components: { PageHeader, Tooltip, StatCard, AlertFeed, ServiceStatus, HealthCheck, draggable },
 
   data() {
     const savedOrder = (() => {

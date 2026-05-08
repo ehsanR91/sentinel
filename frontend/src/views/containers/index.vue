@@ -83,27 +83,39 @@
                 <td class="font-mono" style="font-size:0.72rem;color:var(--sc-blue)">{{ c.ports || '—' }}</td>
                 <td>
                   <div class="d-flex gap-1 flex-wrap">
-                    <button class="btn btn-sm" style="background:rgba(34,214,124,0.1);color:#22d67c;padding:2px 7px;font-size:0.68rem" @click="startStop(c)" :title="c.status==='running'?'Stop':'Start'">
-                      <i :class="`mdi ${c.status==='running'?'mdi-stop':'mdi-play'}`"></i>
-                    </button>
-                    <button class="btn btn-sm" style="background:rgba(74,158,255,0.1);color:#4a9eff;padding:2px 7px;font-size:0.68rem" @click="restartContainer(c)" title="Restart">
-                      <i class="mdi mdi-restart"></i>
-                    </button>
-                    <button class="btn btn-sm" style="background:rgba(74,158,255,0.1);color:#4a9eff;padding:2px 7px;font-size:0.68rem" @click="viewLogs(c)" title="Logs">
-                      <i class="mdi mdi-text-box-outline"></i>
-                    </button>
-                    <template v-if="c.status === 'running' && parsePorts(c.ports).length">
-                      <button
-                        v-for="port in parsePorts(c.ports)"
-                        :key="port"
-                        class="btn btn-sm"
-                        style="background:rgba(245,166,35,0.1);color:#f5a623;padding:2px 7px;font-size:0.68rem;white-space:nowrap"
-                        :disabled="grantingPort === port"
-                        :title="`Grant temporary UFW access for your IP to port ${port}`"
-                        @click="grantAccess(c, port)"
-                      >
-                        <i :class="`mdi ${grantingPort === port ? 'mdi-loading mdi-spin' : 'mdi-shield-key-outline'} me-1`"></i>:{{ port }}
+                    <Tooltip :label="c.status==='running' ? 'Stop container' : 'Start container'" :description="c.name" as-child>
+                      <button class="btn btn-sm" style="background:rgba(34,214,124,0.1);color:#22d67c;padding:2px 7px;font-size:0.68rem" @click="startStop(c)">
+                        <i :class="`mdi ${c.status==='running'?'mdi-stop':'mdi-play'}`"></i>
                       </button>
+                    </Tooltip>
+                    <Tooltip label="Restart container" :description="c.name" as-child>
+                      <button class="btn btn-sm" style="background:rgba(74,158,255,0.1);color:#4a9eff;padding:2px 7px;font-size:0.68rem" @click="restartContainer(c)">
+                        <i class="mdi mdi-restart"></i>
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Open logs" :description="c.name" as-child>
+                      <button class="btn btn-sm" style="background:rgba(74,158,255,0.1);color:#4a9eff;padding:2px 7px;font-size:0.68rem" @click="viewLogs(c)">
+                        <i class="mdi mdi-text-box-outline"></i>
+                      </button>
+                    </Tooltip>
+                    <template v-if="c.status === 'running' && parsePorts(c.ports).length">
+                      <Tooltip
+                        v-for="port in parsePorts(c.ports)"
+                        :key="`grant-${c.id}-${port}`"
+                        :label="`Grant access :${port}`"
+                        :description="`Create a temporary UFW exception for your current IP on port ${port}.`"
+                        variant="rich"
+                        as-child
+                      >
+                        <button
+                          class="btn btn-sm"
+                          style="background:rgba(245,166,35,0.1);color:#f5a623;padding:2px 7px;font-size:0.68rem;white-space:nowrap"
+                          :disabled="grantingPort === port"
+                          @click="grantAccess(c, port)"
+                        >
+                          <i :class="`mdi ${grantingPort === port ? 'mdi-loading mdi-spin' : 'mdi-shield-key-outline'} me-1`"></i>:{{ port }}
+                        </button>
+                      </Tooltip>
                     </template>
                   </div>
                 </td>
@@ -165,26 +177,28 @@
         <div class="taskbar-title"><i class="mdi mdi-text-box-outline me-1"></i>Log windows</div>
         <div class="taskbar-items" role="toolbar" aria-label="Minimized log windows">
           <div v-for="modal in minimizedLogs" :key="modal.modalId" class="taskbar-pill-item">
-            <button
-              class="taskbar-pill"
-              @click="restoreLogModal(modal.modalId)"
-              @keydown.enter.prevent="restoreLogModal(modal.modalId)"
-              @keydown.space.prevent="restoreLogModal(modal.modalId)"
-              @keydown.esc.prevent="closeLogModal(modal.modalId)"
-              :title="`Restore ${modal.container.name} logs`"
-            >
-              <span class="pill-dot" :class="modal.container.status === 'running' ? 'online' : 'offline'"></span>
-              <span class="pill-text">{{ modal.container.name }}</span>
-              <small class="pill-subtitle">{{ modal.container.statusText || modal.container.status }}</small>
-            </button>
-            <button
-              type="button"
-              class="pill-close"
-              @click.stop="closeLogModal(modal.modalId)"
-              :title="`Close ${modal.container.name} logs`"
-            >
-              <i class="mdi mdi-close"></i>
-            </button>
+            <Tooltip :label="`Restore ${modal.container.name} logs`" as-child>
+              <button
+                class="taskbar-pill"
+                @click="restoreLogModal(modal.modalId)"
+                @keydown.enter.prevent="restoreLogModal(modal.modalId)"
+                @keydown.space.prevent="restoreLogModal(modal.modalId)"
+                @keydown.esc.prevent="closeLogModal(modal.modalId)"
+              >
+                <span class="pill-dot" :class="modal.container.status === 'running' ? 'online' : 'offline'"></span>
+                <span class="pill-text">{{ modal.container.name }}</span>
+                <small class="pill-subtitle">{{ modal.container.statusText || modal.container.status }}</small>
+              </button>
+            </Tooltip>
+            <Tooltip :label="`Close ${modal.container.name} logs`" as-child>
+              <button
+                type="button"
+                class="pill-close"
+                @click.stop="closeLogModal(modal.modalId)"
+              >
+                <i class="mdi mdi-close"></i>
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -206,11 +220,12 @@
 import PageHeader from '@/components/page-header.vue'
 import StatCard   from '@/components/widgets/stat-card.vue'
 import ContainerLogsModal from '@/components/container-logs-modal.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import api from '@/services/api'
 
 export default {
   name: 'ContainersPage',
-  components: { PageHeader, StatCard, ContainerLogsModal },
+  components: { PageHeader, StatCard, ContainerLogsModal, Tooltip },
   data() {
     return {
       loading: false,

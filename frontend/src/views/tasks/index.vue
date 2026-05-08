@@ -101,7 +101,11 @@
                 <div class="task-name">{{ t.name }}</div>
                 <div class="task-desc">{{ t.description || '—' }}</div>
               </td>
-              <td class="font-mono task-command" :title="t.command">{{ truncateCommand(t.command) }}</td>
+              <td class="font-mono task-command">
+                <Tooltip :label="t.name" :description="t.command" variant="rich" as-child>
+                  <span class="d-inline-block w-100 text-truncate">{{ truncateCommand(t.command) }}</span>
+                </Tooltip>
+              </td>
               <td class="task-meta">
                 <span class="badge badge-info me-1">{{ t.schedule_kind }}</span>
                 <span v-if="t.schedule_kind === 'interval'" class="font-mono">{{ t.schedule_expr }}s</span>
@@ -159,11 +163,12 @@
 <script>
 import PageHeader from '@/components/page-header.vue'
 import StatCard from '@/components/widgets/stat-card.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import api from '@/services/api'
 
 export default {
   name: 'TasksPage',
-  components: { PageHeader, StatCard },
+  components: { PageHeader, StatCard, Tooltip },
 
   data() {
     return {
