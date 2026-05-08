@@ -25,10 +25,22 @@ var (
 )
 
 func (h *Handlers) GetSecurityStatus(w http.ResponseWriter, r *http.Request) {
-	// Check which security tools are installed and running
+	// Check which security tools are installed and running using the shared
+	// managed service catalog so cron-based tools and timer units are resolved
+	// consistently with the Services page.
 	tools := []string{"ufw", "fail2ban", "crowdsec", "psad", "clamav-daemon",
 		"auditd", "apparmor", "docker", "aide", "rkhunter"}
-	services := monitoring.CheckServices(tools)
+	managed := buildManagedServices(tools)
+	services := make([]monitoring.ServiceStatus, 0, len(managed))
+	for _, svc := range managed {
+		services = append(services, monitoring.ServiceStatus{
+			Name:        svc.Name,
+			Label:       svc.Label,
+			ActiveState: svc.ActiveState,
+			SubState:    svc.SubState,
+			IsRunning:   svc.Running,
+		})
+	}
 
 	// Recent login stats
 	failed24h, _ := db.TotalRecentFailed(1440) // 24 hours, all IPs
@@ -39,7 +51,7 @@ func (h *Handlers) GetSecurityStatus(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"security_score": score,
-		"services":       services,
+		"services":       managed,
 		"failed_logins":  failed24h,
 		"active_bans":    len(bans),
 		"ufw_active":     isUFWActive(),

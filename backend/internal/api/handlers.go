@@ -400,21 +400,41 @@ var settingKeys = []string{
 	"secret_path", "gate_expiry_days",
 	"smtp_host", "smtp_port", "smtp_user", "smtp_pass", "alert_email",
 	"brute_force_threshold", "email_alerts_enabled",
+	"recaptcha_enabled", "recaptcha_site_key", "recaptcha_secret_key",
+	"ip_lookup_provider", "ipify_api_key",
 }
 
 func (h *Handlers) GetSettings(w http.ResponseWriter, r *http.Request) {
 	out := map[string]string{}
 	for _, k := range settingKeys {
-		if k == "smtp_pass" {
+		switch k {
+		case "smtp_pass", "recaptcha_secret_key", "ipify_api_key":
 			out[k] = ""
-			if db.GetSecretSetting("smtp_pass", "") != "" {
-				out["smtp_pass_configured"] = "1"
-			} else {
-				out["smtp_pass_configured"] = "0"
-			}
 			continue
+		default:
+			out[k] = db.GetSetting(k, "")
 		}
-		out[k] = db.GetSetting(k, "")
+	}
+	if db.GetSecretSetting("smtp_pass", "") != "" {
+		out["smtp_pass_configured"] = "1"
+	} else {
+		out["smtp_pass_configured"] = "0"
+	}
+	if db.GetSecretSetting("recaptcha_secret_key", "") != "" {
+		out["recaptcha_secret_key_configured"] = "1"
+	} else {
+		out["recaptcha_secret_key_configured"] = "0"
+	}
+	if db.GetSecretSetting("ipify_api_key", "") != "" {
+		out["ipify_api_key_configured"] = "1"
+	} else {
+		out["ipify_api_key_configured"] = "0"
+	}
+	if out["recaptcha_enabled"] == "" {
+		out["recaptcha_enabled"] = "false"
+	}
+	if out["ip_lookup_provider"] == "" {
+		out["ip_lookup_provider"] = "none"
 	}
 	// Fill env-based defaults for display
 	if out["secret_path"] == "" {
@@ -429,7 +449,7 @@ func (h *Handlers) GetSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
-	var body map[string]string
+	var body map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
@@ -438,10 +458,22 @@ func (h *Handlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	for _, k := range settingKeys {
 		allowed[k] = true
 	}
-	for k, v := range body {
+	for k, raw := range body {
 		if !allowed[k] {
 			continue
 		}
+		v := ""
+		switch typed := raw.(type) {
+		case string:
+			v = typed
+		case bool:
+			v = strconv.FormatBool(typed)
+		case float64:
+			v = strconv.FormatFloat(typed, 'f', -1, 64)
+		default:
+			v = fmt.Sprint(typed)
+		}
+
 		if k == "smtp_pass" {
 			if strings.TrimSpace(v) == "" {
 				continue
@@ -454,6 +486,27 @@ func (h *Handlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		if k == "recaptcha_secret_key" {
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+			if err := db.SetSecretSetting(k, strings.TrimSpace(v)); err != nil {
+				writeError(w, http.StatusInternalServerError, "could not store recaptcha secret")
+				return
+			}
+			continue
+		}
+
+		if k == "ipify_api_key" {
+			if strings.TrimSpace(v) == "" {
+				continue
+			}
+			if err := db.SetSecretSetting(k, strings.TrimSpace(v)); err != nil {
+				writeError(w, http.StatusInternalServerError, "could not store ipify api key")
+				return
+			}
+			continue
+		}
 		if err := db.SetSetting(k, v); err != nil {
 			writeError(w, http.StatusInternalServerError, "could not update settings")
 			return

@@ -111,8 +111,12 @@ func tailFile(path string, n int) ([]string, error) {
 // journalFallback reads logs from journalctl.
 func journalFallback(source string, n int) []string {
 	args := []string{"--no-pager", "-n", strconv.Itoa(n), "--output=short-iso"}
-	if unit, ok := journaldUnit[source]; ok && unit != "" {
-		args = append(args, "-u", unit)
+	if unit, ok := journaldUnit[source]; ok {
+		if unit != "" {
+			args = append(args, "-u", unit)
+		}
+	} else if source != "" {
+		args = append(args, "-u", source)
 	}
 	out, err := exec.Command("journalctl", args...).Output()
 	if err != nil {

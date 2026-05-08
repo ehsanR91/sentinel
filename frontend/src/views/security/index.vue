@@ -74,9 +74,20 @@
                 <div style="font-size:0.8rem;font-weight:600;color:var(--sc-text);font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ svc.label }}</div>
                 <div style="font-size:0.68rem;color:var(--sc-text-muted)">{{ svc.stateText }}</div>
               </div>
-              <span class="badge rounded-pill ms-2 flex-shrink-0" :class="svc.healthClass" style="font-size:0.62rem">
-                {{ svc.statusText }}
-              </span>
+              <div class="d-flex align-items-center gap-1">
+                <span class="badge rounded-pill" :class="svc.healthClass" style="font-size:0.62rem">
+                  {{ svc.statusText }}
+                </span>
+                <button
+                  v-if="svc.canForceStart"
+                  class="btn btn-sm"
+                  style="background:rgba(245,166,35,0.12);color:#f5a623;border:1px solid rgba(245,166,35,0.2);font-size:0.65rem;padding:4px 8px"
+                  @click.prevent="forceStartService(svc)"
+                  title="Force start {{ svc.label }}"
+                >
+                  <i class="mdi mdi-play-circle-outline me-1"></i>Start
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -163,13 +174,15 @@ export default {
         const activeState = svc.active_state || svc.ActiveState || 'inactive'
         const subState = svc.sub_state || svc.SubState || 'dead'
         const running = Boolean(svc.running ?? svc.IsRunning)
+        const installed = Boolean(svc.installed)
         const healthy = activeState === 'active' && (running || (subState === 'exited' && (name === 'ufw' || name === 'apparmor')))
         return {
           name,
           label,
           stateText: `${activeState}/${subState}`,
           statusText: healthy ? 'Healthy' : (activeState === 'active' ? 'Active' : 'Inactive'),
-          healthClass: healthy ? 'badge-online' : (activeState === 'active' ? 'badge-warning' : 'badge-offline')
+          healthClass: healthy ? 'badge-online' : (activeState === 'active' ? 'badge-warning' : 'badge-offline'),
+          canForceStart: installed && !healthy
         }
       })
     }
@@ -227,6 +240,25 @@ export default {
         return `${Math.floor(hrs / 24)}d ago`
       } catch {
         return ts
+      }
+    },
+
+    async forceStartService(svc) {
+      const result = await this.$swal({
+        title: `Force start ${svc.label}?`,
+        text: `This will attempt to start the ${svc.label} service unit.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Start',
+        confirmButtonColor: '#f5a623'
+      })
+      if (!result.isConfirmed) return
+      try {
+        await api.serviceAction(svc.name, 'start')
+        this.$swal({ toast: true, position: 'top-end', icon: 'success', title: `${svc.label} starting`, showConfirmButton: false, timer: 2000 })
+        await this.loadData()
+      } catch (err) {
+        this.$swal({ icon: 'error', title: 'Start failed', text: err.response?.data?.error || 'Could not start service' })
       }
     },
 

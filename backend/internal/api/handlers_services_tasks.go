@@ -27,6 +27,7 @@ type managedService struct {
 	Label       string `json:"label"`
 	Package     string `json:"package"`
 	Config      string `json:"config"`
+	Unit        string `json:"unit,omitempty"`
 	Running     bool   `json:"running"`
 	Installed   bool   `json:"installed"`
 	ActiveState string `json:"active_state"`
@@ -141,10 +142,11 @@ func (h *Handlers) GetManagedServices(w http.ResponseWriter, r *http.Request) {
 		keys = append(keys, name)
 	}
 	sort.Strings(keys)
+	writeJSON(w, http.StatusOK, buildManagedServices(keys))
+}
 
-	// Build a flat list of ALL unit names we need to query so monitoring
-	// can batch-check them in one pass.
-	unitNames := make([]string, 0, len(keys)*2)
+func buildManagedServices(keys []string) []managedService {
+	unitNames := make([]string, 0, len(keys)*3)
 	for _, name := range keys {
 		meta := serviceCatalog[name]
 		primary := name
@@ -164,59 +166,61 @@ func (h *Handlers) GetManagedServices(w http.ResponseWriter, r *http.Request) {
 		byUnit[st.Name] = st
 	}
 
-	// resolveUnit returns the best ServiceStatus for a catalog entry by trying
-	// primary unit, then AltUnits, falling back to an empty status.
-	resolveUnit := func(name string, meta serviceCatalogItem) monitoring.ServiceStatus {
-		candidates := []string{name}
-		if meta.Unit != "" {
-			candidates = []string{meta.Unit}
-		}
-		candidates = append(candidates, meta.AltUnits...)
-		if meta.TimerUnit != "" {
-			candidates = append(candidates, meta.TimerUnit)
-		}
-		// Prefer a loaded unit that is active-ish (active/failed/activating/etc.)
-		for _, u := range candidates {
-			if st, ok := byUnit[u]; ok && st.ActiveState != "inactive" && st.ActiveState != "" {
-				return st
-			}
-		}
-		// Otherwise return the first match even if inactive so the UI shows a real state
-		for _, u := range candidates {
-			if st, ok := byUnit[u]; ok {
-				return st
-			}
-		}
-		return monitoring.ServiceStatus{}
-	}
-
 	out := make([]managedService, 0, len(keys))
 	for _, name := range keys {
 		meta := serviceCatalog[name]
 		installed := serviceInstalled(name, meta)
-		st := resolveUnit(name, meta)
-		// For cron-based tools, "running" means the timer is active OR the
-		// binary is installed (they don't have a persistent active state).
+		st := resolveServiceStatus(name, meta, byUnit)
+
+		if meta.CronBased && installed && (st.ActiveState == "" || st.ActiveState == "inactive") {
+			st.ActiveState = "active"
+			st.SubState = "installed"
+		}
+
 		running := st.IsRunning
 		if meta.CronBased && installed {
 			running = st.ActiveState == "active" || installed
 		}
-		// Never show a service as running if it's not installed (prevents zombie units)
 		if !installed {
 			running = false
 		}
+
 		out = append(out, managedService{
 			Name:        name,
 			Label:       meta.Label,
 			Package:     meta.Package,
 			Config:      meta.Config,
+			Unit:        meta.Unit,
 			Running:     running,
 			Installed:   installed,
 			ActiveState: st.ActiveState,
 			SubState:    st.SubState,
 		})
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out
+}
+
+func resolveServiceStatus(name string, meta serviceCatalogItem, byUnit map[string]monitoring.ServiceStatus) monitoring.ServiceStatus {
+	candidates := []string{name}
+	if meta.Unit != "" {
+		candidates = []string{meta.Unit}
+	}
+	candidates = append(candidates, meta.AltUnits...)
+	if meta.TimerUnit != "" {
+		candidates = append(candidates, meta.TimerUnit)
+	}
+
+	for _, u := range candidates {
+		if st, ok := byUnit[u]; ok && st.ActiveState != "inactive" && st.ActiveState != "" {
+			return st
+		}
+	}
+	for _, u := range candidates {
+		if st, ok := byUnit[u]; ok {
+			return st
+		}
+	}
+	return monitoring.ServiceStatus{Name: name, Label: meta.Label, ActiveState: "inactive", SubState: "dead"}
 }
 
 func binaryExists(name string) bool {
@@ -398,7 +402,15 @@ func (h *Handlers) ServiceAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unsupported service")
 		return
 	}
-	allowed := map[string]bool{"start": true, "stop": true, "restart": true, "enable": true, "disable": true}
+	allowed := map[string]bool{
+		"start":     true,
+		"stop":      true,
+		"restart":   true,
+		"enable":    true,
+		"disable":   true,
+		"reinstall": true,
+		"uninstall": true,
+	}
 	if !allowed[action] {
 		writeError(w, http.StatusBadRequest, "unsupported action")
 		return
@@ -409,6 +421,45 @@ func (h *Handlers) ServiceAction(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
+
+	pkgParts := strings.Fields(meta.Package)
+	runApt := func(args ...string) (string, error) {
+		return runPrivilegedEnv(ctx, "apt-get", args...)
+	}
+
+	if action == "reinstall" {
+		if _, err := runApt(append([]string{"-y", "--reinstall", "install"}, pkgParts...)...); err != nil {
+			writeError(w, http.StatusBadGateway, "service reinstall failed: "+err.Error())
+			return
+		}
+		if meta.RequireBinary != "" && !binaryExists(meta.RequireBinary) {
+			writeError(w, http.StatusBadGateway, "service reinstall succeeded but required binary is missing")
+			return
+		}
+		_ = db.InsertAlert("service", "info", "services", fmt.Sprintf("reinstalled %s", name), "", "system")
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "action": action, "service": name})
+		return
+	}
+
+	if action == "uninstall" {
+		unitNames := []string{name}
+		if meta.Unit != "" {
+			unitNames = append([]string{meta.Unit}, unitNames...)
+		}
+		unitNames = append(unitNames, meta.AltUnits...)
+		for _, u := range unitNames {
+			if unitLoaded(u) {
+				_, _ = runPrivileged(ctx, "systemctl", "disable", "--now", u)
+			}
+		}
+		if _, err := runApt(append([]string{"-y", "remove", "--purge"}, pkgParts...)...); err != nil {
+			writeError(w, http.StatusBadGateway, "service uninstall failed: "+err.Error())
+			return
+		}
+		_ = db.InsertAlert("service", "info", "services", fmt.Sprintf("uninstalled %s", name), "", "system")
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "action": action, "service": name})
+		return
+	}
 
 	// Resolve to an existing unit name before executing actions.
 	// Avoid "zombie" behavior where systemctl reports about a unit that isn't loaded.
@@ -425,7 +476,12 @@ func (h *Handlers) ServiceAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if resolved == "" {
-		writeError(w, http.StatusBadRequest, "systemd unit not found for service")
+		pkgName := strings.Fields(meta.Package)[0]
+		hint := fmt.Sprintf("Make sure %s is installed and the unit exists. On the server run: sudo apt-get install %s && sudo systemctl daemon-reload && sudo systemctl start %s", pkgName, pkgName, name)
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "systemd unit not found for service",
+			"hint":  hint,
+		})
 		return
 	}
 

@@ -97,23 +97,49 @@
               <span class="badge category-badge" :class="getCategoryClass(s.name)">{{ getCategory(s.name) }}</span>
             </td>
             <td>
-              <span class="badge rounded-pill" :class="statusBadge(s)">{{ statusText(s) }}</span>
+              <span class="badge rounded-pill" :class="statusBadge(s)" :title="statusTooltip(s)">{{ statusLabel(s) }}</span>
             </td>
             <td class="font-mono sc-text-muted">{{ s.config || '—' }}</td>
             <td>
-              <div class="d-flex gap-1 flex-wrap">
-                <button class="btn btn-sm btn-install" :disabled="busy[s.name] || s.installed" @click="installService(s)">
+              <div class="d-flex gap-1 flex-wrap align-items-center">
+                <button v-if="!s.installed" class="btn btn-sm btn-install" :disabled="busy[s.name]" @click="installService(s)">
                   <i class="mdi mdi-package-down me-1"></i>Install
                 </button>
-                <button class="btn btn-sm btn-start" :disabled="busy[s.name] || !s.installed || isGhost(s)" :title="actionTitle(s, 'start')" @click="act(s, 'start')">
+                <button v-if="s.installed && !s.running && !isGhost(s)" class="btn btn-sm btn-start" :disabled="busy[s.name]" :title="actionTitle(s, 'start')" @click="act(s, 'start')">
                   Start
                 </button>
-                <button class="btn btn-sm btn-restart" :disabled="busy[s.name] || !s.installed || isGhost(s)" :title="actionTitle(s, 'restart')" @click="act(s, 'restart')">
+                <button v-if="s.installed && s.running" class="btn btn-sm btn-restart" :disabled="busy[s.name]" :title="actionTitle(s, 'restart')" @click="act(s, 'restart')">
                   Restart
                 </button>
-                <button class="btn btn-sm btn-stop" :disabled="busy[s.name] || !s.installed || isGhost(s)" :title="actionTitle(s, 'stop')" @click="act(s, 'stop')">
+                <button v-if="s.installed && s.running" class="btn btn-sm btn-stop" :disabled="busy[s.name]" :title="actionTitle(s, 'stop')" @click="act(s, 'stop')">
                   Stop
                 </button>
+                <button v-if="s.installed || isGhost(s)" class="btn btn-sm btn-logs" :disabled="busy[s.name]" @click="openServiceLogs(s)">
+                  <i class="mdi mdi-file-document-box-outline me-1"></i>Logs
+                </button>
+                <div v-if="s.installed" class="position-relative">
+                  <button class="btn btn-sm btn-more" :disabled="busy[s.name]" @click.stop="toggleActionMenu(s.name)">
+                    <i class="mdi mdi-dots-vertical"></i>
+                  </button>
+                  <div v-if="actionMenuOpen === s.name" class="service-action-menu shadow-sm">
+                    <button class="dropdown-item" @click.stop="act(s, 'restart')" :disabled="busy[s.name]">
+                      <i class="mdi mdi-restart me-1"></i>Restart
+                    </button>
+                    <button class="dropdown-item" @click.stop="act(s, s.running ? 'stop' : 'start')" :disabled="busy[s.name]">
+                      <i :class="`mdi mdi-${s.running ? 'stop' : 'play'} me-1`"></i>{{ s.running ? 'Stop' : 'Start' }}
+                    </button>
+                    <button class="dropdown-item" @click.stop="act(s, s.active_state === 'inactive' ? 'enable' : 'disable')" :disabled="busy[s.name]">
+                      <i :class="`mdi mdi-${s.active_state === 'inactive' ? 'toggle-switch' : 'toggle-switch-off'} me-1`"></i>{{ s.active_state === 'inactive' ? 'Enable' : 'Disable' }}
+                    </button>
+                    <div class="dropdown-divider"></div>
+                    <button class="dropdown-item" @click.stop="act(s, 'reinstall')" :disabled="busy[s.name]">
+                      <i class="mdi mdi-refresh-circle me-1"></i>Re-Install
+                    </button>
+                    <button class="dropdown-item text-danger" @click.stop="confirmUninstall(s)" :disabled="busy[s.name]">
+                      <i class="mdi mdi-delete-outline me-1"></i>Uninstall
+                    </button>
+                  </div>
+                </div>
               </div>
             </td>
           </tr>
@@ -138,6 +164,36 @@
       </div>
       <div class="mt-3 sc-text-muted">
         These values are stored in SentinelCore and can be consumed by automated service templates/playbooks.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Service Logs Modal -->
+<div v-if="showLogsModal" class="sc-modal-overlay" @click.self="closeLogsModal">
+  <div class="sc-modal-card logs-modal-card">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h6 class="mb-0">
+        <i class="mdi mdi-file-document-box-outline me-2" style="color:var(--sc-cyan)"></i>
+        Logs: {{ logService?.label || 'Service' }}
+      </h6>
+      <button class="btn btn-sm btn-sc-danger" @click="closeLogsModal">
+        <i class="mdi mdi-close"></i>
+      </button>
+    </div>
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+      <label class="form-label sc-form-label mb-0">Lines</label>
+      <input type="number" min="10" max="2000" step="10" v-model.number="logLineCount" class="form-control form-control-sm" style="width:90px" />
+      <button class="btn btn-sm btn-sc-primary" :disabled="logLoading" @click="loadServiceLogs">
+        <i :class="`mdi ${logLoading ? 'mdi-loading mdi-spin' : 'mdi-refresh'} me-1`"></i>Refresh
+      </button>
+      <span class="text-muted" style="font-size:0.78rem">Showing last {{ logLineCount }} lines</span>
+    </div>
+    <div class="log-output-card">
+      <pre class="log-output font-mono">{{ logLines.join('\n') }}</pre>
+      <div v-if="logLoading" class="log-loading-overlay">
+        <span class="spinner-border spinner-border-sm text-info"></span>
+        <span class="ms-2">Loading logs…</span>
       </div>
     </div>
   </div>
@@ -368,6 +424,12 @@ export default {
       installLogSeenCount: 0,
       installHintShown: false,
       installLogPollTimer: null,
+      showLogsModal: false,
+      logService: null,
+      logLines: [],
+      logLineCount: 50,
+      logLoading: false,
+      actionMenuOpen: null,
       // Config editor modal
       showConfigModal: false,
       configContent: '',
@@ -414,10 +476,12 @@ export default {
     }
   },
   async mounted() {
+    document.addEventListener('click', this.closeActionMenus)
     await this.loadAll()
   },
   beforeUnmount() {
     this.stopInstallLogPolling()
+    document.removeEventListener('click', this.closeActionMenus)
   },
   methods: {
     isGhost(s) {
@@ -445,19 +509,46 @@ export default {
     statusBadge(s) {
       if (this.isGhost(s)) return 'badge-ghost'
       if (!s.installed) return 'badge-warning'
-      if (s.running) return 'badge-online'
+      if (this.statusLabel(s) === 'Active') return 'badge-online'
+      if (this.statusLabel(s) === 'Disabled') return 'badge-warning'
       return 'badge-offline'
     },
-    statusText(s) {
-      if (this.isGhost(s)) return 'stale unit'
-      if (!s.installed) return 'not installed'
-      if (s.running) return 'running'
-      if (s.active_state) return `${s.active_state}:${s.sub_state}`
-      return 'stopped'
+    statusLabel(s) {
+      if (this.isGhost(s)) return 'Stale Unit'
+      if (!s.installed) return 'Not Installed'
+      if (s.running) return 'Active'
+      if (s.active_state === 'inactive') return 'Disabled'
+      return 'Exited'
+    },
+    statusTooltip(s) {
+      const label = this.statusLabel(s)
+      if (label === 'Active') return 'The service is installed and running fine.'
+      if (label === 'Disabled') return 'The service is installed but currently disabled.'
+      if (label === 'Exited') return 'The service is installed but currently not active; it may have stopped or failed.'
+      if (label === 'Not Installed') return 'The service package is not installed.'
+      return 'The service state is unavailable or inconsistent.'
     },
     prettyKey(key) {
       return key.replaceAll('_', ' ')
     },
+    async loadServices() {
+      try {
+        const sRes = await api.getManagedServices()
+        this.services = sRes.data || []
+      } catch (e) {
+        console.error('Failed to refresh services:', e)
+      }
+    },
+
+    async loadConfig() {
+      try {
+        const cRes = await api.getServiceConfig()
+        this.cfg = cRes.data || {}
+      } catch (e) {
+        console.error('Failed to load service config:', e)
+      }
+    },
+
     async loadAll() {
       this.loading = true
       try {
@@ -577,18 +668,6 @@ export default {
     clearInstallLogs() {
       this.installLogs = []
     },
-    async act(s, action) {
-      this.busy = { ...this.busy, [s.name]: true }
-      try {
-        await api.serviceAction(s.name, action)
-        this.$swal({ toast: true, position: 'top-end', icon: 'success', title: `${s.label}: ${action} success`, showConfirmButton: false, timer: 2000 })
-        await this.loadAll()
-      } catch (e) {
-        this.$swal({ icon: 'error', title: `${action} failed`, text: e.response?.data?.error || e.message })
-      } finally {
-        this.busy = { ...this.busy, [s.name]: false }
-      }
-    },
     async saveCfg() {
       this.cfgSaving = true
       try {
@@ -684,6 +763,73 @@ export default {
       this.verificationResult = null
       this.$swal({ toast: true, position: 'top-end', icon: 'success', title: 'Recommended settings applied', showConfirmButton: false, timer: 2000 })
     },
+    toggleActionMenu(name) {
+      this.actionMenuOpen = this.actionMenuOpen === name ? null : name
+    },
+    closeActionMenu() {
+      this.actionMenuOpen = null
+    },
+    closeActionMenus(e) {
+      if (!e.target.closest('.service-action-menu') && !e.target.closest('.btn-more')) {
+        this.closeActionMenu()
+      }
+    },
+    async confirmUninstall(s) {
+      const confirmed = await this.$swal({
+        title: `Uninstall ${s.label}?`,
+        text: `This will remove the package and stop the service unit.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Uninstall'
+      })
+      if (!confirmed.isConfirmed) return
+      await this.act(s, 'uninstall')
+    },
+    async act(s, action) {
+      this.busy = { ...this.busy, [s.name]: true }
+      try {
+        await api.serviceAction(s.name, action)
+        this.$swal({ toast: true, position: 'top-end', icon: 'success', title: `${s.label}: ${action} success`, showConfirmButton: false, timer: 2000 })
+        await this.loadServices()
+        this.closeActionMenu()
+      } catch (e) {
+        const error = e.response?.data?.error || e.detailedMessage || e.message || 'Unknown error'
+        const hint = e.response?.data?.hint || ''
+        const html = hint ? `<p>${error}</p><hr><p style="font-size:0.85rem;color:#c9d8f0">Suggested fix:</p><pre style="background:rgba(15,23,42,0.95);padding:10px;border-radius:8px;color:#f8fafc;font-size:0.82rem;white-space:pre-wrap;word-break:break-word">${hint}</pre>` : `<p>${error}</p>`
+        this.$swal({ icon: 'error', title: `${action} failed`, html, customClass: { popup: 'sc-swal-popup' }, width: 600 })
+      } finally {
+        this.busy = { ...this.busy, [s.name]: false }
+      }
+    },
+    async openServiceLogs(s) {
+      this.logService = s
+      this.logLines = []
+      this.logLineCount = 50
+      this.showLogsModal = true
+      await this.loadServiceLogs()
+    },
+
+    async loadServiceLogs() {
+      if (!this.logService) return
+      this.logLoading = true
+      try {
+        const source = this.logService.unit || this.logService.name
+        const { data } = await api.getLogs(source, this.logLineCount)
+        this.logLines = data.lines || []
+      } catch (e) {
+        this.logLines = [`Failed to load logs: ${e.response?.data?.error || e.message || 'unknown error'}`]
+      } finally {
+        this.logLoading = false
+      }
+    },
+
+    closeLogsModal() {
+      this.showLogsModal = false
+      this.logService = null
+      this.logLines = []
+      this.logLineCount = 50
+    },
+
     async saveConfig() {
       if (!this.selectedService || !this.configHasChanges) return
       this.savingConfig = true
@@ -816,6 +962,49 @@ export default {
   border-color: var(--sc-blue, #4a9eff) !important;
 }
 
+.btn-more {
+  background: transparent !important;
+  color: var(--sc-text-muted, #5a7499) !important;
+  border: 1px solid var(--sc-border, #2a3f5f) !important;
+  padding: 2px 8px !important;
+  font-size: 0.75rem !important;
+}
+
+.service-action-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1000;
+  min-width: 190px;
+  background: var(--sc-bg-card, #0d1b2a);
+  border: 1px solid var(--sc-border, #1e2d4a);
+  border-radius: 10px;
+  padding: 0.35rem 0;
+}
+
+.service-action-menu .dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  color: var(--sc-text, #e2ecff);
+  background: transparent;
+  border: none;
+  text-align: left;
+}
+
+.service-action-menu .dropdown-item:hover {
+  background: rgba(74,158,255,0.08);
+}
+
+.service-action-menu .dropdown-divider {
+  height: 1px;
+  margin: 0.35rem 0;
+  background: rgba(255,255,255,0.08);
+  border: none;
+}
+
 /* Config editor button */
 .service-config-btn {
   background: transparent !important;
@@ -912,6 +1101,50 @@ export default {
   background: var(--sc-bg-secondary);
   padding: 0.75rem;
   font-size: 0.78rem;
+}
+
+.logs-modal-card {
+  width: min(840px, 95vw) !important;
+  max-height: 90vh;
+}
+
+.log-output-card {
+  position: relative;
+  min-height: 360px;
+  max-height: 60vh;
+  overflow: hidden;
+  background: rgba(var(--sc-border-rgb, 30, 45, 74), 0.45);
+  border: 1px solid var(--sc-border);
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.log-output {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--sc-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: calc(60vh - 2rem);
+  overflow-y: auto;
+}
+
+.log-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--sc-text);
+  font-size: 0.9rem;
+  gap: 0.5rem;
+  z-index: 10;
+}
+
+.sc-swal-popup {
+  max-width: 640px !important;
 }
 
 .service-install-log-line {

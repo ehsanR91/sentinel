@@ -63,6 +63,60 @@
         </div>
       </div>
 
+      <!-- Third-Party Integrations -->
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header"><h6><i class="mdi mdi-api me-2" style="color:#a78bfa"></i>Third-Party Integrations</h6></div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label">Enable reCAPTCHA for Login</label>
+              <div class="form-check form-switch">
+                <input v-model="settings.recaptcha_enabled" class="form-check-input" type="checkbox" />
+                <label class="form-check-label" style="font-size:0.8rem;color:#8aa4c8">Require reCAPTCHA verification on the login screen</label>
+              </div>
+            </div>
+            <div v-if="settings.recaptcha_enabled">
+              <div class="mb-3">
+                <label class="form-label">reCAPTCHA Site Key</label>
+                <input v-model="settings.recaptcha_site_key" class="form-control font-mono" placeholder="Your reCAPTCHA site key" />
+              </div>
+              <div class="mb-3">
+                <label class="form-label">reCAPTCHA Secret Key</label>
+                <input v-model="settings.recaptcha_secret_key" type="password" class="form-control font-mono" placeholder="Leave empty to keep configured secret" />
+                <div style="font-size:0.72rem;color:#5a7499;margin-top:4px">
+                  <span v-if="settings.recaptcha_secret_key_configured === '1' || settings.recaptcha_secret_key_configured === 1">Secret configured.</span>
+                  <span v-else>No secret configured yet.</span>
+                </div>
+              </div>
+            </div>
+            <div class="sc-divider my-3"></div>
+            <div class="mb-3">
+              <label class="form-label">IP Lookup Provider</label>
+              <select v-model="settings.ip_lookup_provider" class="form-select">
+                <option value="none">Disabled</option>
+                <option value="ipify">ipify</option>
+                <option value="ip-api">ip-api</option>
+              </select>
+              <div style="font-size:0.72rem;color:#5a7499;margin-top:4px">Used for reverse IP lookup in Audit Logs and IP search features.</div>
+            </div>
+            <div v-if="settings.ip_lookup_provider === 'ipify'" class="mb-3">
+              <label class="form-label">ipify API Key</label>
+              <input v-model="settings.ipify_api_key" type="password" class="form-control font-mono" placeholder="Enter your ipify API key" />
+              <div style="font-size:0.72rem;color:#5a7499;margin-top:4px">
+                <span v-if="settings.ipify_api_key_configured === '1' || settings.ipify_api_key_configured === 1">API key configured.</span>
+                <span v-else>Optional for premium ipify usage and higher lookup limits.</span>
+              </div>
+            </div>
+            <div v-else-if="settings.ip_lookup_provider === 'ip-api'" class="mb-3" style="font-size:0.72rem;color:#5a7499">
+              ip-api does not require an API key for basic lookups, but may be subject to public rate limits.
+            </div>
+            <button class="btn btn-sc-primary btn-sm" @click="saveSettings">
+              <i class="mdi mdi-content-save me-1"></i> Save Integration Settings
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 2FA Setup -->
       <div class="col-lg-4">
         <div class="card h-100">
@@ -357,6 +411,13 @@ export default {
         smtp_user: '',
         smtp_pass: '',
         alert_email: '',
+        recaptcha_enabled: false,
+        recaptcha_site_key: '',
+        recaptcha_secret_key: '',
+        recaptcha_secret_key_configured: '0',
+        ip_lookup_provider: 'none',
+        ipify_api_key: '',
+        ipify_api_key_configured: '0',
         secrets_key_path: '',
         last_master_key_rotation: ''
       },
@@ -403,7 +464,20 @@ export default {
         const api = (await import('@/services/api')).default
         const { data } = await api.getSettings()
         Object.assign(this.settings, data)
+        this.normalizeBooleanSettings()
+        if (!this.settings.ip_lookup_provider) {
+          this.settings.ip_lookup_provider = 'none'
+        }
       } catch (_) {}
+    },
+    normalizeBooleanSettings() {
+      const boolKeys = ['tls', 'email_alerts_enabled', 'recaptcha_enabled']
+      boolKeys.forEach(key => {
+        const value = this.settings[key]
+        if (typeof value === 'string') {
+          this.settings[key] = value === 'true' || value === '1'
+        }
+      })
     },
 
     async loadMe() {
@@ -418,7 +492,12 @@ export default {
       try {
         const api = (await import('@/services/api')).default
         // Only send valid setting keys to backend
-        const validKeys = ['secret_path', 'gate_expiry_days', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'alert_email', 'brute_force_threshold', 'email_alerts_enabled']
+        const validKeys = [
+          'secret_path', 'gate_expiry_days', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'alert_email',
+          'brute_force_threshold', 'email_alerts_enabled',
+          'recaptcha_enabled', 'recaptcha_site_key', 'recaptcha_secret_key',
+          'ip_lookup_provider', 'ipify_api_key'
+        ]
         const settingsToSend = {}
         validKeys.forEach(key => {
           if (this.settings[key] !== undefined) {

@@ -228,7 +228,7 @@
             >
               <i :class="severityIcon(alert.severity)" :style="`color:${severityColor(alert.severity)};font-size:1rem;margin-top:2px`"></i>
               <div style="flex:1;min-width:0">
-                <div style="font-size:0.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ alert.message }}</div>
+                <div style="font-size:0.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ formatAlertMessage(alert.message) }}</div>
                 <div style="font-size:0.68rem;color:#5a7499">{{ timeAgo(alert.ts) }}</div>
               </div>
               <i v-if="!alert.read" class="mdi mdi-circle-small" style="color:#4a9eff;font-size:0.6rem"></i>
@@ -518,6 +518,12 @@ export default {
       } finally {
         this.loadingAlerts = false
       }
+    },
+    formatAlertMessage(message) {
+      if (!message || typeof message !== 'string') return message
+      return message
+        .replace(/^\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\s*/, '')
+        .trimStart()
     },
     severityIcon(s) {
       if (s === 'critical') return 'mdi mdi-shield-alert'

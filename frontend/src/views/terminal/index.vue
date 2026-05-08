@@ -101,6 +101,10 @@
             <i class="mdi mdi-content-copy"></i>
             <span>Copy</span>
           </div>
+          <div class="context-menu-item" @click="openCopySelectionModal">
+            <i class="mdi mdi-clipboard-text"></i>
+            <span>Copy Selection</span>
+          </div>
           <div class="context-menu-item" @click="pasteText">
             <i class="mdi mdi-content-paste"></i>
             <span>Paste</span>
@@ -279,6 +283,41 @@
             </button>
             <button class="btn btn-sm" style="background:rgba(90,116,153,0.1);color:#5a7499" @click="closeUnlockModal">
               Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Copy Selection Modal -->
+    <div v-if="showSelectionModal" class="modal-backdrop-custom" @click.self="closeSelectionModal">
+      <div class="modal-card-custom" style="max-width:520px">
+        <div class="modal-header-custom">
+          <h6 class="mb-0 d-flex align-items-center gap-2">
+            <i class="mdi mdi-clipboard-text" style="color:#4a9eff;font-size:1.1rem"></i>
+            Copy Selection
+          </h6>
+          <button class="btn btn-sm p-0" style="color:#5a7499" @click="closeSelectionModal">
+            <i class="mdi mdi-close"></i>
+          </button>
+        </div>
+        <div class="modal-body-custom">
+          <p style="font-size:0.82rem;color:#8aa4c8;margin-bottom:1rem">
+            Review the selected terminal text below, then copy it manually or use the Select all button.
+          </p>
+          <textarea
+            ref="copySelectionTextarea"
+            class="form-control"
+            style="min-height:180px;font-family:monospace;resize:vertical"
+            readonly
+            :value="selectionTextareaText"
+          ></textarea>
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <button class="btn btn-sm" style="background:rgba(74,158,255,0.12);color:#4a9eff;border:1px solid rgba(74,158,255,0.2)" @click="selectAllSelectionText" :disabled="!selectionTextareaText">
+              <i class="mdi mdi-select-all me-1"></i>Select all
+            </button>
+            <button class="btn btn-sm" style="background:rgba(90,116,153,0.1);color:#5a7499" @click="closeSelectionModal">
+              Close
             </button>
           </div>
         </div>
@@ -464,7 +503,9 @@ export default {
 
       // Clipboard fallback
       showCopyFallbackModal: false,
-      fallbackTextareaText: ''
+      fallbackTextareaText: '',
+      showSelectionModal: false,
+      selectionTextareaText: ''
     }
   },
 
@@ -500,7 +541,7 @@ export default {
         this.connecting = false
         const idx = this.termLines.findIndex(l => l.text === 'Connecting to server…')
         if (idx !== -1) this.termLines.splice(idx, 1)
-        this.$nextTick(() => { this.$refs.termInput?.focus(); this.scrollBottom() })
+        this.$nextTick(() => { this.$refs.termInput?.focus({ preventScroll: true }); this.scrollBottom() })
       }
 
       ws.onmessage = (evt) => {
@@ -665,10 +706,11 @@ export default {
       const cmd = this.currentInput.trim()
       if (!cmd || !this.connected) return
 
+      const wasAtBottom = this.isScrolledToBottom()
       this.commandHistory.push(cmd)
       this.historyIdx = -1
       this.currentInput = ''
-      this.autoScroll = true
+      this.autoScroll = wasAtBottom
 
       if (cmd === 'clear') {
         this.termLines = []
@@ -677,7 +719,6 @@ export default {
       }
 
       this.sendCommand(cmd)
-      this.$nextTick(() => this.$refs.termInput?.focus({ preventScroll: true }))
     },
 
     sendCommand(cmd) {
@@ -752,6 +793,12 @@ export default {
       this.$refs.termInput?.focus({ preventScroll: true })
     },
 
+    isScrolledToBottom() {
+      const el = this.$refs.termOutput
+      if (!el) return true
+      return el.scrollTop + el.clientHeight >= el.scrollHeight - 28
+    },
+
     scrollBottom() {
       if (!this.autoScroll) return
       this.$refs.termBottom?.scrollIntoView({ behavior: 'smooth' })
@@ -818,8 +865,8 @@ export default {
       // Don't show if clicking on input
       if (e.target.tagName === 'INPUT') return
 
-      const menuWidth = 180
-      const menuHeight = 120
+      const menuWidth = 200
+      const menuHeight = 150
       this.contextMenu.left = Math.min(e.clientX, window.innerWidth - menuWidth - 12)
       this.contextMenu.top = Math.min(e.clientY, window.innerHeight - menuHeight - 12)
       this.contextMenu.visible = true
@@ -869,6 +916,29 @@ export default {
         this.showCopyFallbackModal = true
         this.contextMenu.visible = false
       }
+    },
+
+    openCopySelectionModal() {
+      const selection = window.getSelection?.()?.toString?.() || ''
+      this.selectionTextareaText = selection.trim()
+      this.showSelectionModal = true
+      this.contextMenu.visible = false
+      this.$nextTick(() => {
+        if (this.selectionTextareaText && this.$refs.copySelectionTextarea) {
+          this.$refs.copySelectionTextarea.select()
+        }
+      })
+    },
+
+    selectAllSelectionText() {
+      if (this.$refs.copySelectionTextarea) {
+        this.$refs.copySelectionTextarea.select()
+      }
+    },
+
+    closeSelectionModal() {
+      this.showSelectionModal = false
+      this.selectionTextareaText = ''
     },
 
     async pasteText() {
