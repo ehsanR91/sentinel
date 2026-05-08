@@ -382,6 +382,7 @@ func (h *Handlers) Disable2FA(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not disable 2FA")
 		return
 	}
+	_ = h.recordAuditEvent(r, "auth.2fa.disabled", user.Username, "totp disabled for current account", true)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "disabled"})
 }
 
@@ -564,7 +565,7 @@ func (h *Handlers) GetSuspiciousProcesses(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handlers) GetServices(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, monitoring.CheckServices(h.cfg.WatchedServices))
+	writeJSON(w, http.StatusOK, buildManagedServices(h.cfg.WatchedServices))
 }
 
 func (h *Handlers) GetDiskUsageTree(w http.ResponseWriter, r *http.Request) {
@@ -1069,6 +1070,7 @@ func (h *Handlers) SaveLockPin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.recordAuditEvent(r, "lock_pin.saved", strconv.FormatInt(userID, 10), fmt.Sprintf("enabled=%t", req.Enabled), true)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -1090,6 +1092,7 @@ func (h *Handlers) ClearLockPin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.recordAuditEvent(r, "lock_pin.cleared", strconv.FormatInt(userID, 10), "lock pin removed", true)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -32,6 +32,7 @@ type managedService struct {
 	Installed   bool   `json:"installed"`
 	ActiveState string `json:"active_state"`
 	SubState    string `json:"sub_state"`
+	Status      string `json:"status"`
 }
 
 // Service installation state for tracking background installations
@@ -185,19 +186,48 @@ func buildManagedServices(keys []string) []managedService {
 			running = false
 		}
 
+		unitName := st.Name
+		if unitName == "" {
+			switch {
+			case meta.Unit != "":
+				unitName = meta.Unit
+			case meta.TimerUnit != "":
+				unitName = meta.TimerUnit
+			default:
+				unitName = name
+			}
+		}
+
 		out = append(out, managedService{
 			Name:        name,
 			Label:       meta.Label,
 			Package:     meta.Package,
 			Config:      meta.Config,
-			Unit:        meta.Unit,
+			Unit:        unitName,
 			Running:     running,
 			Installed:   installed,
 			ActiveState: st.ActiveState,
 			SubState:    st.SubState,
+			Status:      managedServiceStatus(installed, running, st),
 		})
 	}
 	return out
+}
+
+func managedServiceStatus(installed, running bool, st monitoring.ServiceStatus) string {
+	if !installed {
+		return "missing"
+	}
+	if st.ActiveState == "failed" || st.SubState == "failed" {
+		return "failed"
+	}
+	if running {
+		return "active"
+	}
+	if st.ActiveState == "inactive" || st.ActiveState == "" {
+		return "inactive"
+	}
+	return st.ActiveState
 }
 
 func resolveServiceStatus(name string, meta serviceCatalogItem, byUnit map[string]monitoring.ServiceStatus) monitoring.ServiceStatus {

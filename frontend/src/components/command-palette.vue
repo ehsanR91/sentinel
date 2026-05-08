@@ -68,6 +68,47 @@ function includesQuery(value, query) {
   return String(value || '').toLowerCase().includes(query)
 }
 
+function routeBoost(route, liveSummary, failingServices) {
+  if (route === '/alerts') {
+    return Math.min(48, Number(liveSummary.unreadAlerts || 0) * 4)
+  }
+  if (route === '/security') {
+    return Math.min(36, Number(liveSummary.activeBans || 0) * 6)
+  }
+  if (route === '/services') {
+    return Math.min(30, Number(failingServices || 0) * 6)
+  }
+  return 0
+}
+
+function scoreItem(item, query, recentRoutes, liveSummary, failingServices) {
+  const normalizedQuery = query.trim().toLowerCase()
+  const label = String(item.label || '').toLowerCase()
+  const description = String(item.description || '').toLowerCase()
+  const meta = String(item.meta || '').toLowerCase()
+  const keywords = Array.isArray(item.keywords) ? item.keywords.map(keyword => String(keyword).toLowerCase()) : []
+  let score = routeBoost(item.route, liveSummary, failingServices)
+
+  if (!normalizedQuery) {
+    score += item.group === 'Recent' ? 120 : 40
+  } else {
+    if (label === normalizedQuery) score += 180
+    if (label.startsWith(normalizedQuery)) score += 130
+    if (label.includes(normalizedQuery)) score += 90
+    if (description.includes(normalizedQuery)) score += 30
+    if (meta.includes(normalizedQuery)) score += 45
+    if (keywords.some(keyword => keyword.startsWith(normalizedQuery))) score += 55
+    if (keywords.some(keyword => keyword.includes(normalizedQuery))) score += 25
+  }
+
+  const recentIndex = recentRoutes.indexOf(item.route)
+  if (recentIndex >= 0) {
+    score += Math.max(6, 30 - recentIndex * 4)
+  }
+
+  return score
+}
+
 export default {
   name: 'CommandPalette',
   data() {
@@ -86,12 +127,19 @@ export default {
     }
   },
   computed: {
+    liveSummary() {
+      return this.$store.getters['metrics/liveSummary'] || { unreadAlerts: 0, activeBans: 0 }
+    },
+    failingServices() {
+      const services = this.$store.getters['metrics/services'] || []
+      return services.filter(service => service.status && service.status !== 'active').length
+    },
     navigationItems() {
       return navigationSearchEntries().map(item => ({
         key: `nav-${item.id}`,
         label: item.label,
         description: item.sectionLabel,
-        meta: item.route,
+        meta: this.routeMeta(item.route),
         icon: item.icon,
         route: item.route,
         group: 'Navigation',
@@ -123,21 +171,13 @@ export default {
       }))
     },
     filteredNavigationItems() {
-      const query = this.query.trim().toLowerCase()
-      if (!query) return this.navigationItems.slice(0, 10)
-      return this.navigationItems.filter(item => {
-        return includesQuery(item.label, query) || includesQuery(item.meta, query) || item.keywords.some(keyword => includesQuery(keyword, query))
-      })
+      return this.rankItems(this.navigationItems, 10)
     },
     filteredSettingsItems() {
-      const query = this.query.trim().toLowerCase()
-      if (!query) return this.settingsItems.slice(0, 5)
-      return this.settingsItems.filter(item => includesQuery(item.label, query) || item.keywords.some(keyword => includesQuery(keyword, query)))
+      return this.rankItems(this.settingsItems, 5)
     },
     filteredRecentItems() {
-      const query = this.query.trim().toLowerCase()
-      if (!query) return this.recentItems.slice(0, 6)
-      return this.recentItems.filter(item => includesQuery(item.label, query) || includesQuery(item.meta, query))
+      return this.rankItems(this.recentItems, 6)
     },
     groupedResults() {
       const groups = [
@@ -199,6 +239,33 @@ export default {
     window.clearTimeout(this.searchTimer)
   },
   methods: {
+    routeMeta(route) {
+      if (route === '/alerts' && this.liveSummary.unreadAlerts) {
+        return `${route} · ${this.liveSummary.unreadAlerts} unread`
+      }
+      if (route === '/security' && this.liveSummary.activeBans) {
+        return `${route} · ${this.liveSummary.activeBans} active bans`
+      }
+      if (route === '/services' && this.failingServices) {
+        return `${route} · ${this.failingServices} degraded`
+      }
+      return route
+    },
+    rankItems(items, limit) {
+      const query = this.query.trim().toLowerCase()
+      const recentRoutes = this.recentPages.map(item => item.route)
+      return items
+        .filter(item => {
+          if (!query) return true
+          return includesQuery(item.label, query) || includesQuery(item.description, query) || includesQuery(item.meta, query) || item.keywords.some(keyword => includesQuery(keyword, query))
+        })
+        .map(item => ({
+          ...item,
+          score: scoreItem(item, query, recentRoutes, this.liveSummary, this.failingServices)
+        }))
+        .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label))
+        .slice(0, limit)
+    },
     openPalette() {
       this.open = true
       this.query = ''

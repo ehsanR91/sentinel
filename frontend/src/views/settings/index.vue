@@ -200,35 +200,41 @@
                 <SettingRow
                   row-id="security-ip-allowlist"
                   label="IP allowlist"
-                  description="Model CIDR entries ahead of agent-side enforcement."
-                  status-label="Awaiting agent support"
-                  status-state="warn"
+                  description="Restrict agent access to specific IP or CIDR ranges."
+                  :status-label="form.ip_allowlist_enabled ? `${serializeAllowlistEntries(form.ip_allowlist_entries).length} entries` : 'Disabled'"
+                  :status-state="form.ip_allowlist_enabled ? 'ok' : 'muted'"
                   :highlighted="isHighlighted('security-ip-allowlist')"
-                  footnote="The current backend does not expose an enforceable allowlist key yet, so this remains a design-preview row."
-                  disabled
+                  footnote="Loopback access is always retained so the local host cannot lock itself out."
                 >
-                  <TextAreaField
-                    input-id="settings-allowlist-preview"
-                    :model-value="allowlistPreview"
-                    readonly
-                    :rows="4"
-                  />
+                  <div class="settings-stack-md">
+                    <ToggleSwitch input-id="settings-allowlist-enabled" v-model="form.ip_allowlist_enabled" label="Enforce allowlist on agent requests" />
+                    <KeyValueList v-model="form.ip_allowlist_entries" empty-text="No IP or CIDR entries configured." />
+                  </div>
                 </SettingRow>
               </SettingsSection>
             </div>
 
             <div id="security-tls" class="settings-anchor" data-subsection="TLS">
-              <SettingsSection title="TLS / HTTPS" description="Current transport posture and the missing fields required for agent-side certificate management." heading-id="settings-security-tls" eyebrow="Transport">
+              <SettingsSection title="TLS / HTTPS" description="Persist certificate paths and renewal posture for the managed endpoint." heading-id="settings-security-tls" eyebrow="Transport">
                 <SettingRow
                   row-id="security-tls"
                   label="Transport security"
-                  description="TLS configuration is not currently writable through the settings API."
-                  status-label="Runtime only"
-                  status-state="muted"
+                  description="Store the certificate bundle used by the managed TLS edge."
+                  :status-label="form.tls_enabled ? 'Enabled' : 'Disabled'"
+                  :status-state="form.tls_enabled ? 'ok' : 'muted'"
                   :highlighted="isHighlighted('security-tls')"
-                  footnote="Expose certificate path, key path, and renewal controls in the agent before turning this into a writable toggle."
+                  footnote="These settings are persisted on the agent and audited when changed."
                 >
-                  <ToggleSwitch input-id="settings-tls" :model-value="false" label="Agent-side TLS controls not yet exposed" disabled />
+                  <div class="settings-stack-md">
+                    <ToggleSwitch input-id="settings-tls-enabled" v-model="form.tls_enabled" label="Enable agent-side TLS configuration" />
+                    <div class="settings-grid-two">
+                      <SelectField input-id="settings-tls-mode" v-model="form.tls_mode" :options="tlsModeOptions" />
+                      <ToggleSwitch input-id="settings-tls-auto-renew" v-model="form.tls_auto_renew" label="Auto-renew certificates" />
+                      <TextField input-id="settings-tls-cert-path" v-model="form.tls_cert_path" placeholder="/etc/ssl/certs/sentinel.pem" @blur="touchField('tls_cert_path')" />
+                      <TextField input-id="settings-tls-key-path" v-model="form.tls_key_path" placeholder="/etc/ssl/private/sentinel.key" @blur="touchField('tls_key_path')" />
+                      <TextField input-id="settings-tls-server-name" v-model="form.tls_server_name" placeholder="sentinel.example.com" @blur="touchField('tls_server_name')" />
+                    </div>
+                  </div>
                 </SettingRow>
               </SettingsSection>
             </div>
@@ -355,17 +361,18 @@
             </div>
 
             <div id="notifications-routing" class="settings-anchor" data-subsection="Routing Rules">
-              <SettingsSection title="Routing Rules" description="The current backend only supports email delivery. Telegram, webhook, and Slack routing are held as explicit future gaps." heading-id="settings-notifications-routing" eyebrow="Expansion">
+              <SettingsSection title="Routing Rules" description="Persist alert routing rules as structured JSON for email, webhook, Slack, and Telegram channels." heading-id="settings-notifications-routing" eyebrow="Expansion">
                 <SettingRow
                   row-id="notifications-routing"
                   label="Channel routing"
-                  description="Map alert classes to delivery channels."
-                  status-label="Unsupported today"
-                  status-state="warn"
+                  description="Each route requires an id, name, severity, channel, target, and enabled flag."
+                  status-label="Agent-backed"
+                  status-state="info"
                   :highlighted="isHighlighted('notifications-routing')"
-                  footnote="The current agent exposes SMTP only. Use this row as the future routing handoff."
+                  :error="errorFor('notification_routes_text')"
+                  footnote="The mailer currently sends email directly; additional channels are now stored and auditable for future delivery workers."
                 >
-                  <TextAreaField input-id="settings-routing-preview" :model-value="routingPreview" readonly :rows="4" />
+                  <TextAreaField input-id="settings-routing-json" v-model="form.notification_routes_text" :rows="10" @blur="touchField('notification_routes_text')" />
                 </SettingRow>
               </SettingsSection>
             </div>
@@ -486,16 +493,16 @@
                   status-label="Enabled"
                   status-state="ok"
                   :highlighted="isHighlighted('master-key-status')"
-                  footnote="Key rotation and restore flows require dedicated backend endpoints before they can be executed safely from this page."
+                  footnote="Key rotation is now exposed through the agent and recorded in the audit log."
                 >
                   <div class="settings-stack-md">
                     <TextField input-id="settings-master-key-path" :model-value="form.secrets_key_path || 'Not configured'" readonly />
-                    <button type="button" class="settings-inline-link" @click="openHelp('Master key rotation', `Last rotated: ${formatRotationTime(form.last_master_key_rotation)}. The agent currently exposes the timestamp but not a rotate endpoint.`)">
+                    <button type="button" class="settings-inline-link" @click="openHelp('Master key rotation', `Last rotated: ${formatRotationTime(form.last_master_key_rotation)}. Rotating the master key re-encrypts stored secret settings with a fresh key.`)">
                       Last rotated: {{ formatRotationTime(form.last_master_key_rotation) }}
                     </button>
                     <div class="settings-inline-actions">
                       <AppButton variant="secondary" size="sm" icon="mdi mdi-database-export" label="Backup database" @click="downloadDb" />
-                      <AppButton variant="ghost" size="sm" icon="mdi mdi-timer-sand" label="Rotate endpoint not exposed" disabled />
+                      <AppButton variant="danger" size="sm" icon="mdi mdi-key-change" label="Rotate master key" @click="requestMasterKeyRotation" />
                     </div>
                   </div>
                 </SettingRow>
@@ -623,6 +630,20 @@
     <DetailDrawer v-model="helpDrawerOpen" :title="helpDrawer.title || 'Help'" subtitle="Settings guidance">
       <div class="settings-help-copy">{{ helpDrawer.body }}</div>
     </DetailDrawer>
+
+    <DetailDrawer v-model="confirmDrawerOpen" :title="confirmDrawer.title || 'Confirm action'" :subtitle="confirmDrawer.subtitle || 'Review before proceeding'" @update:model-value="handleConfirmDrawerVisibility">
+      <div class="settings-confirm-copy">{{ confirmDrawer.body }}</div>
+      <div v-if="confirmDrawer.expectedValue || confirmDrawer.inputLabel" class="settings-stack-sm">
+        <label class="settings-confirm-label" for="settings-confirm-input">{{ confirmDrawer.inputLabel || 'Confirmation value' }}</label>
+        <input id="settings-confirm-input" v-model.trim="confirmDrawer.inputValue" class="settings-confirm-input sc-focus-ring" :placeholder="confirmDrawer.inputPlaceholder || ''">
+      </div>
+      <template #footer>
+        <div class="settings-inline-actions w-100 justify-content-between">
+          <AppButton variant="ghost" size="sm" label="Cancel" @click="closeConfirmDrawer" />
+          <AppButton :variant="confirmDrawer.variant || 'danger'" size="sm" :loading="confirmBusy" :label="confirmDrawer.confirmLabel || 'Confirm'" @click="executeConfirmAction" />
+        </div>
+      </template>
+    </DetailDrawer>
   </div>
 </template>
 
@@ -718,8 +739,63 @@ function normalizeRemoteSettings(data = {}) {
     ip_lookup_provider: data.ip_lookup_provider || 'none',
     ipify_api_key: data.ipify_api_key || '',
     ipify_api_key_configured: data.ipify_api_key_configured || '0',
+    tls_enabled: normalizeBoolean(data.tls_enabled),
+    tls_mode: data.tls_mode || 'terminated',
+    tls_cert_path: data.tls_cert_path || '',
+    tls_key_path: data.tls_key_path || '',
+    tls_server_name: data.tls_server_name || '',
+    tls_auto_renew: normalizeBoolean(data.tls_auto_renew),
+    ip_allowlist_enabled: normalizeBoolean(data.ip_allowlist_enabled),
+    ip_allowlist_entries: Array.isArray(data.ip_allowlist_entries)
+      ? data.ip_allowlist_entries.map(entry => (typeof entry === 'string' ? { value: entry, label: '' } : { value: entry.value || '', label: entry.label || '' }))
+      : [],
+    notification_routes_text: typeof data.notification_routes_text === 'string' ? data.notification_routes_text : '[]',
     secrets_key_path: data.secrets_key_path || '',
     last_master_key_rotation: data.last_master_key_rotation || ''
+  }
+}
+
+function serializeAllowlist(entries = []) {
+  return entries
+    .map(entry => (typeof entry === 'string' ? entry : entry?.value))
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+}
+
+function prettyRoutes(routes = []) {
+  return JSON.stringify(Array.isArray(routes) ? routes : [], null, 2)
+}
+
+function parseRoutesText(value) {
+  const parsed = JSON.parse(value || '[]')
+  return Array.isArray(parsed) ? parsed : []
+}
+
+function comparableRemoteState(form = {}) {
+  return {
+    alert_email: form.alert_email || '',
+    brute_force_threshold: Number(form.brute_force_threshold || 0),
+    email_alerts_enabled: normalizeBoolean(form.email_alerts_enabled),
+    smtp_host: form.smtp_host || '',
+    smtp_port: form.smtp_port || '',
+    smtp_user: form.smtp_user || '',
+    smtp_pass: form.smtp_pass || '',
+    secret_path: form.secret_path || '',
+    gate_expiry_days: serializeGateDuration(form.gate_expiry),
+    recaptcha_enabled: normalizeBoolean(form.recaptcha_enabled),
+    recaptcha_site_key: form.recaptcha_site_key || '',
+    recaptcha_secret_key: form.recaptcha_secret_key || '',
+    ip_lookup_provider: form.ip_lookup_provider || 'none',
+    ipify_api_key: form.ipify_api_key || '',
+    tls_enabled: normalizeBoolean(form.tls_enabled),
+    tls_mode: form.tls_mode || 'terminated',
+    tls_cert_path: form.tls_cert_path || '',
+    tls_key_path: form.tls_key_path || '',
+    tls_server_name: form.tls_server_name || '',
+    tls_auto_renew: normalizeBoolean(form.tls_auto_renew),
+    ip_allowlist_enabled: normalizeBoolean(form.ip_allowlist_enabled),
+    ip_allowlist_entries: JSON.stringify(serializeAllowlist(form.ip_allowlist_entries)),
+    notification_routes_text: prettyRoutes(parseRoutesText(form.notification_routes_text || '[]'))
   }
 }
 
@@ -793,8 +869,24 @@ export default {
       conflictDrawerOpen: false,
       helpDrawerOpen: false,
       helpDrawer: { title: '', body: '' },
+      confirmDrawerOpen: false,
+      confirmBusy: false,
+      confirmDrawer: {
+        kind: '',
+        title: '',
+        subtitle: '',
+        body: '',
+        confirmLabel: '',
+        variant: 'danger',
+        inputLabel: '',
+        inputPlaceholder: '',
+        inputValue: '',
+        expectedValue: ''
+      },
       conflictDiffs: [],
       pendingRemoteState: null,
+      pendingNavigationDecision: null,
+      pendingImportFile: null,
       observer: null,
       pendingJumpTarget: '',
       themeOptions: [
@@ -812,6 +904,10 @@ export default {
         { label: 'Warnings and above', value: 'warn' },
         { label: 'Errors and above', value: 'error' },
         { label: 'Critical only', value: 'critical' }
+      ],
+      tlsModeOptions: [
+        { label: 'Terminated TLS', value: 'terminated' },
+        { label: 'TLS Passthrough', value: 'passthrough' }
       ],
       ipProviderOptions: [
         { label: 'Disabled', value: 'none' },
@@ -883,6 +979,27 @@ export default {
         ipify_api_key: this.form.ipify_api_key
       }
     },
+    tlsPayload() {
+      return {
+        enabled: !!this.form.tls_enabled,
+        mode: this.form.tls_mode,
+        cert_path: this.form.tls_cert_path,
+        key_path: this.form.tls_key_path,
+        server_name: this.form.tls_server_name,
+        auto_renew: !!this.form.tls_auto_renew
+      }
+    },
+    allowlistPayload() {
+      return {
+        enabled: !!this.form.ip_allowlist_enabled,
+        entries: serializeAllowlist(this.form.ip_allowlist_entries)
+      }
+    },
+    notificationRoutesPayload() {
+      return {
+        routes: parseRoutesText(this.form.notification_routes_text || '[]')
+      }
+    },
     localPayload() {
       return {
         ui_theme_default: this.form.ui_theme_default,
@@ -907,6 +1024,15 @@ export default {
       if (this.form.email_alerts_enabled) {
         if (!this.form.smtp_host.trim()) errors.smtp_host = 'SMTP host is required when email delivery is enabled.'
         if (!this.form.smtp_port.trim()) errors.smtp_port = 'SMTP port is required when email delivery is enabled.'
+      }
+      if (this.form.tls_enabled) {
+        if (!this.form.tls_cert_path.trim()) errors.tls_cert_path = 'Certificate path is required when TLS is enabled.'
+        if (!this.form.tls_key_path.trim()) errors.tls_key_path = 'Key path is required when TLS is enabled.'
+      }
+      try {
+        parseRoutesText(this.form.notification_routes_text || '[]')
+      } catch {
+        errors.notification_routes_text = 'Notification routing must be valid JSON array syntax.'
       }
       if (!/^[a-z0-9][a-z0-9-]*$/i.test(this.form.secret_path || '')) {
         errors.secret_path = 'Use letters, numbers, and dashes only.'
@@ -935,16 +1061,41 @@ export default {
         ['integrations-recaptcha-site', 'recaptcha_site_key', 'reCAPTCHA site key', 'Settings > Integrations > reCAPTCHA'],
         ['integrations-recaptcha-secret', 'recaptcha_secret_key', 'reCAPTCHA secret key', 'Settings > Integrations > reCAPTCHA'],
         ['integrations-ip-provider', 'ip_lookup_provider', 'IP lookup provider', 'Settings > Integrations > IP Intelligence'],
-        ['integrations-ipify-key', 'ipify_api_key', 'ipify API key', 'Settings > Integrations > IP Intelligence']
+        ['integrations-ipify-key', 'ipify_api_key', 'ipify API key', 'Settings > Integrations > IP Intelligence'],
+        ['security-tls-enabled', 'tls_enabled', 'TLS enabled', 'Settings > Security > TLS'],
+        ['security-tls-mode', 'tls_mode', 'TLS mode', 'Settings > Security > TLS'],
+        ['security-tls-cert-path', 'tls_cert_path', 'TLS certificate path', 'Settings > Security > TLS'],
+        ['security-tls-key-path', 'tls_key_path', 'TLS key path', 'Settings > Security > TLS'],
+        ['security-tls-server-name', 'tls_server_name', 'TLS server name', 'Settings > Security > TLS'],
+        ['security-tls-auto-renew', 'tls_auto_renew', 'TLS auto renew', 'Settings > Security > TLS'],
+        ['security-allowlist-enabled', 'ip_allowlist_enabled', 'IP allowlist enabled', 'Settings > Security > Login Protection'],
+        ['notifications-routing-json', 'notification_routes_text', 'Notification routing', 'Settings > Notifications > Routing Rules']
       ]
 
       remoteEntries.forEach(([id, key, label, breadcrumb]) => {
         const current = key === 'gate_expiry' ? serializeGateDuration(this.form.gate_expiry) : this.form[key]
-        const baseline = key === 'gate_expiry' ? serializeGateDuration(this.remoteBaseline.gate_expiry) : this.remoteBaseline[key]
+        const baseline = key === 'gate_expiry'
+          ? serializeGateDuration(this.remoteBaseline.gate_expiry)
+          : key === 'notification_routes_text'
+            ? prettyRoutes(parseRoutesText(this.remoteBaseline.notification_routes_text || '[]'))
+            : this.remoteBaseline[key]
         if (JSON.stringify(current) !== JSON.stringify(baseline)) {
           changes.push({ id, key, label, breadcrumb, oldValue: baseline, newValue: current })
         }
       })
+
+      const allowlistCurrent = JSON.stringify(serializeAllowlist(this.form.ip_allowlist_entries))
+      const allowlistBaseline = JSON.stringify(serializeAllowlist(this.remoteBaseline.ip_allowlist_entries))
+      if (allowlistCurrent !== allowlistBaseline) {
+        changes.push({
+          id: 'security-ip-allowlist-values',
+          key: 'ip_allowlist_entries',
+          label: 'IP allowlist entries',
+          breadcrumb: 'Settings > Security > Login Protection',
+          oldValue: allowlistBaseline,
+          newValue: allowlistCurrent
+        })
+      }
 
       const localEntries = [
         ['general-theme', 'ui_theme_default', 'Default theme', 'Settings > General > Preferences'],
@@ -975,24 +1126,13 @@ export default {
       return this.pruneWizard.table === 'alerts' ? this.dbStats.alerts : this.dbStats.login_attempts
     },
     rawSettingsPreview() {
-      return JSON.stringify({ ...this.remotePayload, ...this.localPayload }, null, 2)
-    },
-    routingPreview() {
-      return [
-        'Brute-force activity -> Email only',
-        `Delivery threshold -> ${this.form.email_severity}`,
-        `Quiet hours -> ${this.form.email_quiet_start} to ${this.form.email_quiet_end}`,
-        'Telegram / Webhook / Slack routes require backend support.'
-      ].join('\n')
-    },
-    allowlistPreview() {
-      return [
-        '# Example only',
-        '10.0.0.0/24 -> office LAN',
-        '203.0.113.18/32 -> bastion host',
-        '',
-        'Agent-side enforcement is not exposed by the current backend.'
-      ].join('\n')
+      return JSON.stringify({
+        ...this.remotePayload,
+        tls: this.tlsPayload,
+        ip_allowlist: this.allowlistPayload,
+        notification_routing: this.notificationRoutesPayload,
+        ...this.localPayload
+      }, null, 2)
     },
     dangerItems() {
       return [
@@ -1019,6 +1159,14 @@ export default {
           actionLabel: 'Regenerate',
           variant: 'danger',
           badge: { label: 'High risk', state: 'critical' }
+        },
+        {
+          id: 'rotate-master-key',
+          label: 'Rotate master key',
+          description: 'Generate a fresh encryption key and re-encrypt protected settings.',
+          actionLabel: 'Rotate key',
+          variant: 'danger',
+          badge: { label: 'Critical risk', state: 'critical' }
         },
         {
           id: 'restart-daemon',
@@ -1090,13 +1238,27 @@ export default {
     async bootstrap() {
       this.loading = true
       try {
-        const [settingsResponse, meResponse, dbStatsResponse, lockResponse] = await Promise.allSettled([
+        const [settingsResponse, meResponse, dbStatsResponse, lockResponse, tlsResponse, allowlistResponse, routingResponse] = await Promise.allSettled([
           api.getSettings(),
           api.getMe(),
           api.getDbStats(),
-          api.getLockSettings()
+          api.getLockSettings(),
+          api.getTlsSettings(),
+          api.getIpAllowlist(),
+          api.getNotificationRouting()
         ])
-        const remote = normalizeRemoteSettings(settingsResponse.status === 'fulfilled' ? settingsResponse.value.data : {})
+        const remote = normalizeRemoteSettings({
+          ...(settingsResponse.status === 'fulfilled' ? settingsResponse.value.data : {}),
+          tls_enabled: tlsResponse.status === 'fulfilled' ? tlsResponse.value.data?.enabled : false,
+          tls_mode: tlsResponse.status === 'fulfilled' ? tlsResponse.value.data?.mode : 'terminated',
+          tls_cert_path: tlsResponse.status === 'fulfilled' ? tlsResponse.value.data?.cert_path : '',
+          tls_key_path: tlsResponse.status === 'fulfilled' ? tlsResponse.value.data?.key_path : '',
+          tls_server_name: tlsResponse.status === 'fulfilled' ? tlsResponse.value.data?.server_name : '',
+          tls_auto_renew: tlsResponse.status === 'fulfilled' ? tlsResponse.value.data?.auto_renew : false,
+          ip_allowlist_enabled: allowlistResponse.status === 'fulfilled' ? allowlistResponse.value.data?.enabled : false,
+          ip_allowlist_entries: allowlistResponse.status === 'fulfilled' ? allowlistResponse.value.data?.entries || [] : [],
+          notification_routes_text: routingResponse.status === 'fulfilled' ? prettyRoutes(routingResponse.value.data?.routes || []) : '[]'
+        })
         const local = localPrefsFromStorage()
         this.form = { ...remote, ...local }
         this.remoteBaseline = clone(remote)
@@ -1181,29 +1343,151 @@ export default {
       event.preventDefault()
       event.returnValue = ''
     },
+    openConfirmDrawer(config = {}) {
+      this.confirmDrawer = {
+        kind: config.kind || '',
+        title: config.title || 'Confirm action',
+        subtitle: config.subtitle || 'Review before proceeding',
+        body: config.body || '',
+        confirmLabel: config.confirmLabel || 'Confirm',
+        variant: config.variant || 'danger',
+        inputLabel: config.inputLabel || '',
+        inputPlaceholder: config.inputPlaceholder || '',
+        inputValue: '',
+        expectedValue: config.expectedValue || ''
+      }
+      this.confirmDrawerOpen = true
+    },
+    handleConfirmDrawerVisibility(value) {
+      if (!value) {
+        this.closeConfirmDrawer()
+        return
+      }
+      this.confirmDrawerOpen = value
+    },
+    closeConfirmDrawer() {
+      this.confirmDrawerOpen = false
+      if (this.confirmDrawer.kind === 'discard-navigation' && this.pendingNavigationDecision) {
+        this.pendingNavigationDecision(false)
+        this.pendingNavigationDecision = null
+      }
+      this.confirmBusy = false
+      this.confirmDrawer = {
+        kind: '',
+        title: '',
+        subtitle: '',
+        body: '',
+        confirmLabel: '',
+        variant: 'danger',
+        inputLabel: '',
+        inputPlaceholder: '',
+        inputValue: '',
+        expectedValue: ''
+      }
+      this.pendingImportFile = null
+    },
+    async executeConfirmAction() {
+      if (this.confirmDrawer.expectedValue && this.confirmDrawer.inputValue !== this.confirmDrawer.expectedValue) {
+        return
+      }
+      this.confirmBusy = true
+      try {
+        if (this.confirmDrawer.kind === 'discard-navigation') {
+          const next = this.pendingNavigationDecision
+          this.pendingNavigationDecision = null
+          this.confirmDrawerOpen = false
+          next?.()
+          return
+        }
+        if (this.confirmDrawer.kind === 'prune-db') {
+          this.pruning = true
+          try {
+            const days = serializeGateDuration(this.pruneWizard.retention)
+            await api.pruneDb(this.pruneWizard.table, Number(days))
+            await this.loadDbStats()
+          } finally {
+            this.pruning = false
+          }
+        }
+        if (this.confirmDrawer.kind === 'import-db' && this.pendingImportFile) {
+          this.importing = true
+          try {
+            const formData = new FormData()
+            formData.append('db', this.pendingImportFile)
+            await api.importDb(formData)
+            await this.loadDbStats()
+          } finally {
+            this.importing = false
+            this.$refs.dbImportInput.value = ''
+          }
+        }
+        if (this.confirmDrawer.kind === 'disable-2fa') {
+          await api.disable2fa(this.confirmDrawer.inputValue)
+          this.me.totp_enabled = false
+        }
+        if (this.confirmDrawer.kind === 'remove-lock-pin') {
+          await api.clearLockPin()
+          this.lockPinSet = false
+          this.lockEnabled = false
+        }
+        if (this.confirmDrawer.kind === 'regenerate-secret-path') {
+          this.generateSecretPath()
+          await this.saveAll(true)
+        }
+        if (this.confirmDrawer.kind === 'rotate-master-key') {
+          const { data } = await api.rotateMasterKey()
+          this.form.last_master_key_rotation = data?.last_master_key_rotation || this.form.last_master_key_rotation
+          await this.bootstrap()
+        }
+      } finally {
+        this.closeConfirmDrawer()
+      }
+    },
     confirmNavigation(next) {
       if (!this.hasDirtyChanges) {
         next()
         return
       }
-      const shouldLeave = window.confirm('You have unsaved settings changes. Press OK to discard them or Cancel to stay on this page.')
-      if (shouldLeave) {
-        next()
-      } else {
-        next(false)
-      }
+      this.pendingNavigationDecision = next
+      this.openConfirmDrawer({
+        kind: 'discard-navigation',
+        title: 'Discard unsaved changes?',
+        subtitle: 'Navigation will drop the current draft',
+        body: 'You have unsaved settings changes. Discard them to leave this page, or cancel to stay and continue editing.',
+        confirmLabel: 'Discard changes',
+        variant: 'danger'
+      })
     },
     async saveAll(force = false) {
       this.isSaving = true
       this.saveState = 'saving'
       try {
         if (!force) {
-          const { data } = await api.getSettings()
-          const latest = normalizeRemoteSettings(data)
-          const remoteConflicts = Object.keys(this.remotePayload).filter(key => {
-            const baseline = key === 'gate_expiry_days' ? serializeGateDuration(this.remoteBaseline.gate_expiry) : (this.remoteBaseline[key] ?? '')
-            const latestValue = key === 'gate_expiry_days' ? serializeGateDuration(latest.gate_expiry) : (latest[key] ?? '')
-            const draftValue = this.remotePayload[key]
+          const [settingsRes, tlsRes, allowlistRes, routingRes] = await Promise.all([
+            api.getSettings(),
+            api.getTlsSettings(),
+            api.getIpAllowlist(),
+            api.getNotificationRouting()
+          ])
+          const latest = normalizeRemoteSettings({
+            ...settingsRes.data,
+            tls_enabled: tlsRes.data?.enabled,
+            tls_mode: tlsRes.data?.mode,
+            tls_cert_path: tlsRes.data?.cert_path,
+            tls_key_path: tlsRes.data?.key_path,
+            tls_server_name: tlsRes.data?.server_name,
+            tls_auto_renew: tlsRes.data?.auto_renew,
+            ip_allowlist_enabled: allowlistRes.data?.enabled,
+            ip_allowlist_entries: allowlistRes.data?.entries || [],
+            notification_routes_text: prettyRoutes(routingRes.data?.routes || [])
+          })
+          const baselineComparable = comparableRemoteState(this.remoteBaseline)
+          const latestComparable = comparableRemoteState(latest)
+          const draftComparable = comparableRemoteState(this.form)
+          const remoteConflicts = Object.keys(draftComparable).filter(key => {
+            const baseline = baselineComparable[key]
+            const latestValue = latestComparable[key]
+            const draftValue = draftComparable[key]
             return JSON.stringify(baseline) !== JSON.stringify(latestValue) && JSON.stringify(baseline) !== JSON.stringify(draftValue)
           })
 
@@ -1235,10 +1519,18 @@ export default {
         if (Object.keys(payload).length) {
           await api.updateSettings(payload)
         }
+        const dirtyKeys = new Set(this.dirtyFields.map(change => change.key))
+        if (['tls_enabled', 'tls_mode', 'tls_cert_path', 'tls_key_path', 'tls_server_name', 'tls_auto_renew'].some(key => dirtyKeys.has(key))) {
+          await api.updateTlsSettings(this.tlsPayload)
+        }
+        if (dirtyKeys.has('ip_allowlist_enabled') || dirtyKeys.has('ip_allowlist_entries')) {
+          await api.updateIpAllowlist(this.allowlistPayload)
+        }
+        if (dirtyKeys.has('notification_routes_text')) {
+          await api.updateNotificationRouting(this.notificationRoutesPayload)
+        }
         localStorage.setItem(LOCAL_PREFS_KEY, JSON.stringify(this.localPayload))
-        this.remoteBaseline = clone(normalizeRemoteSettings({ ...this.remoteBaseline, ...payload, gate_expiry_days: payload.gate_expiry_days || serializeGateDuration(this.form.gate_expiry) }))
-        this.localBaseline = clone(this.localPayload)
-        this.form = { ...this.form, ...this.localPayload, ...this.remoteBaseline }
+        await this.bootstrap()
         this.saveState = 'saved'
       } catch (error) {
         console.error('Settings save failed:', error)
@@ -1341,16 +1633,14 @@ export default {
       }
     },
     async doPrune() {
-      const confirmed = window.confirm(`Prune ${this.pruneWizard.table} records older than ${this.pruneWizard.retention.value} ${this.pruneWizard.retention.unit}?`)
-      if (!confirmed) return
-      this.pruning = true
-      try {
-        const days = serializeGateDuration(this.pruneWizard.retention)
-        await api.pruneDb(this.pruneWizard.table, Number(days))
-        await this.loadDbStats()
-      } finally {
-        this.pruning = false
-      }
+      this.openConfirmDrawer({
+        kind: 'prune-db',
+        title: 'Queue prune?',
+        subtitle: 'This deletes retained records',
+        body: `Prune ${this.pruneWizard.table} records older than ${this.pruneWizard.retention.value} ${this.pruneWizard.retention.unit}. This action cannot be undone.`,
+        confirmLabel: 'Prune records',
+        variant: 'danger'
+      })
     },
     async downloadDb() {
       const { data } = await api.exportDb()
@@ -1364,48 +1654,75 @@ export default {
     async importDb(event) {
       const file = event.target.files?.[0]
       if (!file) return
-      const confirmed = window.confirm('Importing a database replaces the current one. Continue?')
-      if (!confirmed) {
-        this.$refs.dbImportInput.value = ''
-        return
-      }
-      this.importing = true
-      try {
-        const formData = new FormData()
-        formData.append('db', file)
-        await api.importDb(formData)
-        await this.loadDbStats()
-      } finally {
-        this.importing = false
-        this.$refs.dbImportInput.value = ''
-      }
+      this.pendingImportFile = file
+      this.openConfirmDrawer({
+        kind: 'import-db',
+        title: 'Replace database?',
+        subtitle: 'Import will overwrite the current database',
+        body: `Importing ${file.name} replaces the current SentinelCore database snapshot. Export a backup first if you may need to roll back.`,
+        confirmLabel: 'Import database',
+        variant: 'danger'
+      })
     },
     async runDangerAction(item) {
       if (item.id === 'disable-2fa') {
         if (!this.me.totp_enabled) return
-        const code = window.prompt('Enter your current 2FA code to disable 2FA')
-        if (!code) return
-        await api.disable2fa(code)
-        this.me.totp_enabled = false
+        this.openConfirmDrawer({
+          kind: 'disable-2fa',
+          title: 'Disable 2FA?',
+          subtitle: 'This reduces account protection',
+          body: 'Enter your current six digit TOTP code to confirm that you want to disable two-factor authentication for this operator account.',
+          confirmLabel: 'Disable 2FA',
+          variant: 'danger',
+          inputLabel: 'Current TOTP code',
+          inputPlaceholder: '123456'
+        })
         return
       }
       if (item.id === 'remove-lock-pin') {
         if (!this.lockPinSet) return
-        const confirmed = window.confirm('Remove the lock screen PIN?')
-        if (!confirmed) return
-        await api.clearLockPin()
-        this.lockPinSet = false
-        this.lockEnabled = false
+        this.openConfirmDrawer({
+          kind: 'remove-lock-pin',
+          title: 'Remove lock PIN?',
+          subtitle: 'Local workstation protection will be disabled',
+          body: 'Removing the lock screen PIN disables the local unlock check for this account until a new PIN is set.',
+          confirmLabel: 'Remove PIN',
+          variant: 'danger'
+        })
         return
       }
       if (item.id === 'regenerate-secret-path') {
-        const phrase = window.prompt(`Type ${this.runtimeHostname} to regenerate the secret path`) || ''
-        if (phrase !== this.runtimeHostname) return
-        this.generateSecretPath()
-        await this.saveAll(true)
+        this.openConfirmDrawer({
+          kind: 'regenerate-secret-path',
+          title: 'Regenerate secret path?',
+          subtitle: 'The existing hidden entry URL will stop working',
+          body: `Type ${this.runtimeHostname} to confirm that you want to invalidate the current secret link gate path and generate a new one.`,
+          confirmLabel: 'Regenerate path',
+          variant: 'danger',
+          inputLabel: `Type ${this.runtimeHostname} to continue`,
+          inputPlaceholder: this.runtimeHostname,
+          expectedValue: this.runtimeHostname
+        })
+        return
+      }
+      if (item.id === 'rotate-master-key') {
+        this.requestMasterKeyRotation()
         return
       }
       this.openHelp('Unavailable action', 'The current agent does not expose a safe restart or factory-reset endpoint yet.')
+    },
+    requestMasterKeyRotation() {
+      this.openConfirmDrawer({
+        kind: 'rotate-master-key',
+        title: 'Rotate master key?',
+        subtitle: 'Secret settings will be re-encrypted',
+        body: 'This generates a fresh master key, re-encrypts stored secret settings, and records the rotation in the audit log. Back up the database first if you need rollback coverage.',
+        confirmLabel: 'Rotate key',
+        variant: 'danger'
+      })
+    },
+    serializeAllowlistEntries(entries) {
+      return serializeAllowlist(entries)
     }
   }
 }
@@ -1440,12 +1757,23 @@ export default {
 .settings-toolbar__description,
 .settings-inline-note,
 .settings-help-copy,
+.settings-confirm-copy,
+.settings-confirm-label,
 .settings-drawer-row p,
 .settings-stat-card span,
 .settings-upload-button,
 .settings-inline-link {
   color: var(--text-secondary);
   font-size: var(--font-size-13);
+}
+
+.settings-confirm-input {
+  min-height: 44px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  padding: 0.75rem 0.9rem;
 }
 
 .settings-nav {

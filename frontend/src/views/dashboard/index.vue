@@ -454,6 +454,53 @@ function safeLocalState() {
   }
 }
 
+function defaultDashboardState() {
+  return {
+    layoutEditMode: false,
+    activePreset: 'operator',
+    auxRefreshSec: 60,
+    kpiWidgets: DEFAULT_KPI_WIDGETS,
+    hiddenKpis: [],
+    sectionWidgets: DEFAULT_SECTION_WIDGETS,
+    hiddenSections: []
+  }
+}
+
+function normalizeWidgetState(entries, fallback) {
+  const source = Array.isArray(entries) ? entries : fallback
+  const normalized = source
+    .map(entry => (typeof entry === 'string' ? { id: entry } : entry))
+    .filter(entry => entry && typeof entry.id === 'string' && entry.id)
+  return normalized.length ? normalized : fallback
+}
+
+function normalizeIdList(entries, fallback = []) {
+  if (!Array.isArray(entries)) return fallback
+  return [...new Set(entries.filter(entry => typeof entry === 'string' && entry))]
+}
+
+function normalizeDashboardState(rawState, fallbackState = defaultDashboardState()) {
+  const source = rawState && typeof rawState === 'object' ? rawState : {}
+  const kpiWidgets = normalizeWidgetState(source.kpiWidgets, fallbackState.kpiWidgets)
+  const sectionWidgets = normalizeWidgetState(source.sectionWidgets, fallbackState.sectionWidgets)
+  const allKpiIds = DEFAULT_KPI_WIDGETS.map(item => item.id)
+  const allSectionIds = DEFAULT_SECTION_WIDGETS.map(item => item.id)
+  const activePreset = PRESETS[source.activePreset] ? source.activePreset : fallbackState.activePreset
+  const auxRefreshSec = [30, 60, 120].includes(Number(source.auxRefreshSec))
+    ? Number(source.auxRefreshSec)
+    : Number(fallbackState.auxRefreshSec || 60)
+
+  return {
+    layoutEditMode: typeof source.layoutEditMode === 'boolean' ? source.layoutEditMode : !!fallbackState.layoutEditMode,
+    activePreset,
+    auxRefreshSec,
+    kpiWidgets,
+    hiddenKpis: normalizeIdList(source.hiddenKpis, allKpiIds.filter(id => !kpiWidgets.some(widget => widget.id === id))),
+    sectionWidgets,
+    hiddenSections: normalizeIdList(source.hiddenSections, allSectionIds.filter(id => !sectionWidgets.some(widget => widget.id === id)))
+  }
+}
+
 function fmtBytes(bytes) {
   const value = Number(bytes || 0)
   if (value >= 1024 ** 4) return `${(value / 1024 ** 4).toFixed(1)} TB`
@@ -592,7 +639,7 @@ export default {
     draggable
   },
   data() {
-    const saved = safeLocalState()
+    const saved = normalizeDashboardState(safeLocalState())
     return {
       breadcrumbs: [{ text: 'Dashboard', active: true, icon: 'mdi mdi-view-dashboard' }],
       layoutEditMode: !!saved.layoutEditMode,
@@ -632,6 +679,7 @@ export default {
       healthLoading: false,
       lastLoadedAt: 0,
       refreshTimer: null,
+      persistLayoutTimer: null,
       derivedHistory: {
         activeBans: [],
         failedLogins: [],
@@ -860,6 +908,7 @@ export default {
   async mounted() {
     document.addEventListener('fullscreenchange', this.onFullscreenChange)
     this.$store.dispatch('metrics/startLive')
+    await this.loadDashboardState()
     this.scheduleRefreshTimer()
     await this.loadAll()
     this.registerPullToRefresh()
@@ -871,6 +920,10 @@ export default {
     if (this.cleanerTimer) {
       clearInterval(this.cleanerTimer)
       this.cleanerTimer = null
+    }
+    if (this.persistLayoutTimer) {
+      clearTimeout(this.persistLayoutTimer)
+      this.persistLayoutTimer = null
     }
   },
   methods: {
@@ -884,8 +937,8 @@ export default {
     formatRateValue(value) {
       return fmtRate(value)
     },
-    persistDashboardState() {
-      localStorage.setItem(DASHBOARD_STATE_KEY, JSON.stringify({
+    buildDashboardStatePayload() {
+      return {
         layoutEditMode: this.layoutEditMode,
         activePreset: this.activePreset,
         auxRefreshSec: this.auxRefreshSec,
@@ -893,7 +946,45 @@ export default {
         hiddenKpis: this.hiddenKpis,
         sectionWidgets: this.sectionWidgets,
         hiddenSections: this.hiddenSections
-      }))
+      }
+    },
+    async loadDashboardState() {
+      const fallback = normalizeDashboardState(safeLocalState())
+      if (!this.$store.getters['auth/loggedIn']) {
+        Object.assign(this, fallback)
+        return
+      }
+      try {
+        const api = (await import('@/services/api')).default
+        const { data } = await api.getDashboardLayout()
+        const normalized = normalizeDashboardState(data, fallback)
+        Object.assign(this, normalized)
+        localStorage.setItem(DASHBOARD_STATE_KEY, JSON.stringify(normalized))
+      } catch {
+        Object.assign(this, fallback)
+      }
+    },
+    scheduleDashboardPersist(payload) {
+      if (this.persistLayoutTimer) {
+        clearTimeout(this.persistLayoutTimer)
+      }
+      this.persistLayoutTimer = window.setTimeout(() => {
+        this.saveDashboardState(payload)
+      }, 250)
+    },
+    async saveDashboardState(payload) {
+      if (!this.$store.getters['auth/loggedIn']) return
+      try {
+        const api = (await import('@/services/api')).default
+        await api.saveDashboardLayout(payload)
+      } catch {
+        // Keep local fallback even when roaming persistence fails.
+      }
+    },
+    persistDashboardState() {
+      const payload = this.buildDashboardStatePayload()
+      localStorage.setItem(DASHBOARD_STATE_KEY, JSON.stringify(payload))
+      this.scheduleDashboardPersist(payload)
     },
     applyPreset(presetKey) {
       const preset = PRESETS[presetKey] || PRESETS.operator
@@ -1326,7 +1417,10 @@ export default {
 .dashboard-page {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   gap: 18px;
+  padding-inline: clamp(2px, 0.35vw, 6px);
   padding-bottom: 18px;
   background:
     radial-gradient(circle at top left, rgba(107, 168, 255, 0.08), transparent 32%),
@@ -1913,6 +2007,7 @@ export default {
 @media (max-width: 640px) {
   .dashboard-page {
     gap: 14px;
+    padding-inline: 0;
   }
 
   .dashboard-panel,

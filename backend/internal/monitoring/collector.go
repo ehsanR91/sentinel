@@ -49,11 +49,13 @@ type SystemSnapshot struct {
 	Load15 float64 `json:"load15"`
 
 	// Host
-	Uptime   uint64 `json:"uptime"`
-	Hostname string `json:"hostname"`
-	OS       string `json:"os"`
-	Kernel   string `json:"kernel"`
-	Platform string `json:"platform"`
+	Uptime       uint64 `json:"uptime"`
+	Hostname     string `json:"hostname"`
+	OS           string `json:"os"`
+	Kernel       string `json:"kernel"`
+	Platform     string `json:"platform"`
+	UnreadAlerts int    `json:"unread_alerts"`
+	ActiveBans   int    `json:"active_bans"`
 
 	Timestamp int64 `json:"ts"`
 }

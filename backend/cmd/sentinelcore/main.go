@@ -90,7 +90,14 @@ func main() {
 		ticker := time.NewTicker(time.Duration(cfg.MetricsInterval) * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			hub.Broadcast("system.metrics", collector.Latest())
+			snapshot := *collector.Latest()
+			if unread, err := db.UnreadAlertCount(); err == nil {
+				snapshot.UnreadAlerts = unread
+			}
+			if bans, err := db.GetBruteForceBans(cfg.BruteForceThreshold, 1440); err == nil {
+				snapshot.ActiveBans = len(bans)
+			}
+			hub.Broadcast("system.metrics", snapshot)
 		}
 	}()
 
@@ -144,6 +151,7 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(api.SecurityHeaders)
+	r.Use(api.IPAllowlist())
 
 	// ── Secret link gate (wraps EVERYTHING below) ──────────────────────────────
 	r.Use(api.GateMiddleware(cfg.JWTSecret))
@@ -193,6 +201,7 @@ func main() {
 		r.Get("/api/v1/docker/containers/{id}/stats", h.GetContainerStats)
 		r.Get("/api/v1/logs", h.GetLogs)
 		r.Get("/api/v1/alerts", h.GetAlerts)
+		r.Get("/api/v1/alerts/count", h.GetAlertCount)
 		r.Put("/api/v1/alerts/{id}/read", h.MarkAlertRead)
 		r.Put("/api/v1/alerts/read", h.MarkAlertsRead)
 		r.Get("/api/v1/audit-logs", h.GetAuditLogs)
@@ -214,6 +223,9 @@ func main() {
 		r.Get("/api/v1/updates", h.GetUpdates)
 		r.Get("/api/v1/updates/logs", h.GetUpdateLogs)
 		r.Get("/api/v1/settings", h.GetSettings)
+		r.Get("/api/v1/settings/tls", h.GetTLSSettings)
+		r.Get("/api/v1/settings/ip-allowlist", h.GetIPAllowlist)
+		r.Get("/api/v1/settings/notification-routing", h.GetNotificationRouting)
 	})
 
 	// ── Admin-only routes (60s timeout, admin role required) ──────────────────
@@ -224,6 +236,10 @@ func main() {
 
 		// Settings mutations
 		r.Put("/api/v1/settings", h.UpdateSettings)
+		r.Put("/api/v1/settings/tls", h.UpdateTLSSettings)
+		r.Put("/api/v1/settings/ip-allowlist", h.UpdateIPAllowlist)
+		r.Put("/api/v1/settings/notification-routing", h.UpdateNotificationRouting)
+		r.Post("/api/v1/settings/master-key/rotate", h.RotateMasterKey)
 
 		// Security mutations
 		r.Delete("/api/v1/security/bans/{ip}", h.Unban)

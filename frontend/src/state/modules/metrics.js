@@ -6,8 +6,10 @@ const NUMERIC_SNAP_KEYS = [
   'ram_used', 'ram_total', 'swap_used', 'swap_total',
   'disk_used', 'disk_total', 'disk_free',
   'net_rx_rate', 'net_tx_rate', 'net_rx_total', 'net_tx_total',
-  'load1', 'load5', 'load15', 'uptime'
+  'load1', 'load5', 'load15', 'uptime', 'unread_alerts', 'active_bans'
 ]
+
+let subscriptionsRegistered = false
 
 function emptySnap () {
   return {
@@ -18,6 +20,7 @@ function emptySnap () {
     partitions: [],
     net_rx_rate: 0, net_tx_rate: 0, net_rx_total: 0, net_tx_total: 0,
     load1: 0, load5: 0, load15: 0,
+    unread_alerts: 0, active_bans: 0,
     uptime: 0, hostname: '', os: '', kernel: '', platform: '',
     ts: 0
   }
@@ -66,7 +69,11 @@ export default {
     lastMetricTs: 0,
     wsConnected: false,
     processes: [],
-    services: []
+    services: [],
+    liveSummary: {
+      unreadAlerts: 0,
+      activeBans: 0
+    }
   }),
 
   mutations: {
@@ -88,6 +95,10 @@ export default {
       state.netRxHistory = [...state.netRxHistory.slice(1), rxPoint]
       state.netTxHistory = [...state.netTxHistory.slice(1), txPoint]
       state.lastMetricTs = sanitizedSnap.ts || Math.floor(Date.now() / 1000)
+      state.liveSummary = {
+        unreadAlerts: sanitizedSnap.unread_alerts || 0,
+        activeBans: sanitizedSnap.active_bans || 0
+      }
 
       if (import.meta.env.DEV) {
         assertFiniteHistory(state.cpuHistory, 'cpuHistory')
@@ -100,20 +111,32 @@ export default {
     },
     SET_WS_CONNECTED (state, val) { state.wsConnected = val },
     SET_PROCESSES (state, list) { state.processes = list },
-    SET_SERVICES (state, list) { state.services = list }
+    SET_SERVICES (state, list) { state.services = list },
+    RESET_LIVE_SUMMARY (state) {
+      state.liveSummary = {
+        unreadAlerts: 0,
+        activeBans: 0
+      }
+    }
   },
 
   actions: {
     startLive ({ commit }) {
+      if (!subscriptionsRegistered) {
+        ws.on('system.metrics', payload => {
+          commit('SET_SNAP', payload)
+        })
+
+        ws.onStatus(connected => {
+          commit('SET_WS_CONNECTED', connected)
+          if (!connected) {
+            commit('RESET_LIVE_SUMMARY')
+          }
+        })
+        subscriptionsRegistered = true
+      }
+
       ws.connect()
-
-      ws.on('system.metrics', payload => {
-        commit('SET_SNAP', payload)
-      })
-
-      ws.onStatus(connected => {
-        commit('SET_WS_CONNECTED', connected)
-      })
     },
 
     stopLive () {
@@ -148,6 +171,7 @@ export default {
     lastMetricTs: s => s.lastMetricTs,
     wsConnected: s => s.wsConnected,
     processes: s => s.processes,
-    services: s => s.services
+    services: s => s.services,
+    liveSummary: s => s.liveSummary
   }
 }

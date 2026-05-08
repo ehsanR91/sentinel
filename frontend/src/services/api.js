@@ -182,6 +182,13 @@ export default {
   // Settings
   getSettings: () => api.get('/settings'),
   updateSettings: (settings) => api.put('/settings', settings),
+  getTlsSettings: () => api.get('/settings/tls'),
+  updateTlsSettings: (settings) => api.put('/settings/tls', settings),
+  getIpAllowlist: () => api.get('/settings/ip-allowlist'),
+  updateIpAllowlist: (settings) => api.put('/settings/ip-allowlist', settings),
+  getNotificationRouting: () => api.get('/settings/notification-routing'),
+  updateNotificationRouting: (settings) => api.put('/settings/notification-routing', settings),
+  rotateMasterKey: () => api.post('/settings/master-key/rotate'),
 
   // DB Admin
   getDbStats: () => api.get('/db/stats'),

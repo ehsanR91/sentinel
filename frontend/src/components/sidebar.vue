@@ -609,6 +609,9 @@ export default {
     wsConnected() {
       return this.$store.getters['metrics/wsConnected']
     },
+    liveSummary() {
+      return this.$store.getters['metrics/liveSummary'] || { unreadAlerts: 0, activeBans: 0 }
+    },
     snap() {
       return this.$store.getters['metrics/snap'] || {}
     },
@@ -707,6 +710,18 @@ export default {
         window.setTimeout(() => {
           this.reconnectPulse = false
         }, 1200)
+        this.applyLiveSummary()
+      }
+      if (!isConnected) {
+        this.fetchBadgeCounts()
+      }
+    },
+    liveSummary: {
+      deep: true,
+      handler() {
+        if (this.wsConnected) {
+          this.applyLiveSummary()
+        }
       }
     },
     searchQuery() {
@@ -725,8 +740,6 @@ export default {
         })
       }
     })
-
-    this.refreshTimer = window.setInterval(this.fetchBadgeCounts, appConfig.pollIntervalMs)
     this.healthTimer = window.setInterval(this.refreshHealth, Math.max(15000, appConfig.pollIntervalMs))
     window.addEventListener('resize', this.handleResize, { passive: true })
     document.addEventListener('keydown', this.onGlobalKeyDown)
@@ -1073,6 +1086,12 @@ export default {
         if (err.response?.status !== 401) {
           console.error('Failed to fetch sidebar counts:', err)
         }
+      }
+    },
+    applyLiveSummary() {
+      this.badgeCounts = {
+        alerts: Number(this.liveSummary.unreadAlerts || 0),
+        security: Number(this.liveSummary.activeBans || 0)
       }
     },
     async refreshHealth() {

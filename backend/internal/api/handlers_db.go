@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/ehsanR91/sentinelcore/internal/db"
@@ -36,7 +37,7 @@ func (h *Handlers) ImportDB(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "failed to parse upload")
 		return
 	}
-	file, _, err := r.FormFile("db")
+	file, header, err := r.FormFile("db")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "missing db file in form")
 		return
@@ -64,6 +65,8 @@ func (h *Handlers) ImportDB(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to replace database")
 		return
 	}
+
+	_ = h.recordAuditEvent(r, "db.import", header.Filename, "database snapshot replaced", true)
 
 	writeJSON(w, http.StatusOK, map[string]any{"message": "database imported successfully"})
 }
@@ -104,5 +107,6 @@ func (h *Handlers) PruneDB(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	affected, _ = result.RowsAffected()
+	_ = h.recordAuditEvent(r, "db.prune", req.Type, "deleted="+strconv.FormatInt(affected, 10), true)
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": affected})
 }

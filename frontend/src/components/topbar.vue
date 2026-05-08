@@ -215,7 +215,7 @@
         @after-open="handleAlertsOpened"
       >
         <template #trigger="{ toggle, triggerRef, triggerAttrs, open }">
-          <Tooltip label="Alerts" :description="`${unreadCount} unread alerts`" variant="rich" as-child>
+          <Tooltip label="Alerts" :description="`${bellUnreadCount} unread alerts`" variant="rich" as-child>
             <button
               :ref="triggerRef"
               class="topbar-btn topbar-btn--bell sc-focus-ring"
@@ -225,7 +225,7 @@
               @click="toggle"
             >
               <i class="mdi mdi-bell-outline" aria-hidden="true"></i>
-              <span v-if="unreadCount" class="topbar-badge" :class="`topbar-badge--${alertBadgeTone}`">{{ badgeCountLabel }}</span>
+              <span v-if="bellUnreadCount" class="topbar-badge" :class="`topbar-badge--${alertBadgeTone}`">{{ badgeCountLabel }}</span>
             </button>
           </Tooltip>
         </template>
@@ -755,6 +755,9 @@ export default {
     wsConnected() {
       return this.$store.getters['metrics/wsConnected']
     },
+    liveSummary() {
+      return this.$store.getters['metrics/liveSummary'] || { unreadAlerts: 0, activeBans: 0 }
+    },
     metricsSnap() {
       return this.$store.getters['metrics/snap'] || {}
     },
@@ -853,13 +856,17 @@ export default {
     unreadCount() {
       return this.visibleAlerts.filter(alert => !alert.read).length
     },
+    bellUnreadCount() {
+      return this.wsConnected ? Number(this.liveSummary.unreadAlerts || 0) : this.unreadCount
+    },
     badgeCountLabel() {
-      return this.unreadCount >= 10 ? '9+' : String(this.unreadCount)
+      return this.bellUnreadCount >= 10 ? '9+' : String(this.bellUnreadCount)
     },
     alertBadgeTone() {
       const unread = this.visibleAlerts.filter(alert => !alert.read)
       if (unread.some(alert => ['emergency', 'critical'].includes(alert.severity))) return 'critical'
       if (unread.some(alert => alert.severity === 'warning')) return 'warn'
+      if (this.bellUnreadCount > 0) return 'warn'
       return 'neutral'
     },
     visibleAlerts() {
@@ -1005,7 +1012,7 @@ export default {
         this.persistCurrentServerMeta()
       }
     },
-    unreadCount(value, oldValue) {
+    bellUnreadCount(value, oldValue) {
       if (value !== oldValue) {
         this.alertAnnouncement = `${value} unread alerts`
       }
@@ -1017,7 +1024,6 @@ export default {
     this.loadMountClientIp()
     this.loadProfileContext()
     this.syncAlerts(true)
-    this.scheduleAlertPolling()
     this.handleKeyboardShortcuts = event => this.onGlobalKeydown(event)
     document.addEventListener('keydown', this.handleKeyboardShortcuts)
     document.addEventListener('pointerdown', this.onGlobalPointerDown, true)
@@ -1270,12 +1276,7 @@ export default {
       this.$nextTick(() => {
         this.alertViewportHeight = this.$refs.alertList?.clientHeight || 360
       })
-      if (!this.alerts.length) {
-        this.syncAlerts(true)
-      }
-    },
-    scheduleAlertPolling() {
-      this.alertPollTimer = window.setInterval(() => this.syncAlerts(false), 30000)
+      this.syncAlerts(true)
     },
     isRuleSuppressed(alert) {
       const rule = alertRuleKey(alert)

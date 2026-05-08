@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,15 @@ func (h *Handlers) GetAlerts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, alerts)
+}
+
+func (h *Handlers) GetAlertCount(w http.ResponseWriter, r *http.Request) {
+	count, err := db.UnreadAlertCount()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"count": count})
 }
 
 func (h *Handlers) MarkAlertRead(w http.ResponseWriter, r *http.Request) {
@@ -85,6 +95,7 @@ func (h *Handlers) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
 		Success   bool   `json:"success"`
 		Reason    string `json:"reason"`
 		UserAgent string `json:"user_agent"`
+		Kind      string `json:"kind,omitempty"`
 		Ts        int64  `json:"ts"`
 	}
 	var out []auditRow
@@ -95,6 +106,27 @@ func (h *Handlers) GetAuditLogs(w http.ResponseWriter, r *http.Request) {
 			a.Success = succ == 1
 			out = append(out, a)
 		}
+	}
+	auditEvents, err := db.ListAuditEvents(limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "db error")
+		return
+	}
+	for _, event := range auditEvents {
+		out = append(out, auditRow{
+			ID:        event.ID,
+			Username:  event.Username,
+			IP:        event.IP,
+			Success:   event.Success,
+			Reason:    event.Action,
+			UserAgent: strings.TrimSpace(strings.Join([]string{event.Target, event.Details}, " · ")),
+			Kind:      "audit",
+			Ts:        event.Ts,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Ts > out[j].Ts })
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	if out == nil {
 		out = []auditRow{}
@@ -332,18 +364,25 @@ func (h *Handlers) GetDashboardLayout(w http.ResponseWriter, r *http.Request) {
 	userID := int64(userIDFloat)
 
 	row := db.DB().QueryRow(`
-		SELECT widgets, layout_mode
+		SELECT widgets, layout_mode, state_json
 		FROM dashboard_layout
 		WHERE user_id = ?
 	`, userID)
 
-	var widgetsStr, layoutMode string
-	if err := row.Scan(&widgetsStr, &layoutMode); err != nil {
+	var widgetsStr, layoutMode, stateJSON string
+	if err := row.Scan(&widgetsStr, &layoutMode, &stateJSON); err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"widgets":    nil,
 			"layoutMode": "flexible",
 		})
 		return
+	}
+	if strings.TrimSpace(stateJSON) != "" && strings.TrimSpace(stateJSON) != "{}" {
+		var state map[string]any
+		if err := json.Unmarshal([]byte(stateJSON), &state); err == nil && len(state) > 0 {
+			writeJSON(w, http.StatusOK, state)
+			return
+		}
 	}
 
 	var widgets []map[string]any
@@ -377,33 +416,55 @@ func (h *Handlers) SaveDashboardLayout(w http.ResponseWriter, r *http.Request) {
 		Widgets    []map[string]any `json:"widgets"`
 		LayoutMode string           `json:"layoutMode"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var raw map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
+	widgets := req.Widgets
+	if value, ok := raw["widgets"].([]any); ok {
+		widgets = make([]map[string]any, 0, len(value))
+		for _, item := range value {
+			if row, ok := item.(map[string]any); ok {
+				widgets = append(widgets, row)
+			}
+		}
+	}
+	req.LayoutMode, _ = raw["layoutMode"].(string)
+	if req.LayoutMode == "" {
+		if preset, ok := raw["activePreset"].(string); ok && preset != "" {
+			req.LayoutMode = preset
+		}
+	}
+	if req.LayoutMode == "" {
+		req.LayoutMode = "flexible"
+	}
 
-	widgetsJSON, err := json.Marshal(req.Widgets)
+	widgetsJSON, err := json.Marshal(widgets)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "encoding error")
+		return
+	}
+	stateJSON, err := json.Marshal(raw)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "encoding error")
 		return
 	}
 
-	if req.LayoutMode == "" {
-		req.LayoutMode = "flexible"
-	}
-
 	_, err = db.DB().Exec(`
-		INSERT INTO dashboard_layout (user_id, widgets, layout_mode)
-		VALUES (?, ?, ?)
+		INSERT INTO dashboard_layout (user_id, widgets, layout_mode, state_json)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			widgets = excluded.widgets,
-			layout_mode = excluded.layout_mode
-	`, userID, string(widgetsJSON), req.LayoutMode)
+			layout_mode = excluded.layout_mode,
+			state_json = excluded.state_json
+	`, userID, string(widgetsJSON), req.LayoutMode, string(stateJSON))
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "db error")
 		return
 	}
+	_ = h.recordAuditEvent(r, "dashboard.layout.update", "dashboard", "Updated dashboard layout profile", true)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

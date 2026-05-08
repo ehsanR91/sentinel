@@ -59,6 +59,17 @@ func migrate() error {
 			ts         INTEGER NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_login_ip_ts ON login_attempts(ip, ts)`,
+		`CREATE TABLE IF NOT EXISTS audit_events (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			username   TEXT    NOT NULL DEFAULT '',
+			ip         TEXT    NOT NULL DEFAULT '',
+			action     TEXT    NOT NULL,
+			target     TEXT    NOT NULL DEFAULT '',
+			details    TEXT    NOT NULL DEFAULT '',
+			success    INTEGER NOT NULL DEFAULT 1,
+			ts         INTEGER NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_audit_events_ts ON audit_events(ts DESC)`,
 		`CREATE TABLE IF NOT EXISTS settings (
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL
@@ -124,7 +135,40 @@ func migrate() error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	if err := ensureColumn("dashboard_layout", "state_json", `ALTER TABLE dashboard_layout ADD COLUMN state_json TEXT NOT NULL DEFAULT '{}'`); err != nil {
+		return fmt.Errorf("migrate dashboard layout state_json: %w", err)
+	}
 	return nil
+}
+
+func ensureColumn(table, column, alterSQL string) error {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			columnType string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &pk); err != nil {
+			return err
+		}
+		if strings.EqualFold(name, column) {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = db.Exec(alterSQL)
+	return err
 }
 
 // SeedAdmin creates the initial admin user if the users table is empty.

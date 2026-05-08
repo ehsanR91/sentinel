@@ -2,10 +2,13 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	jwt "github.com/golang-jwt/jwt/v5"
+
+	"github.com/ehsanR91/sentinelcore/internal/db"
 )
 
 type contextKey string
@@ -133,4 +136,22 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func IPAllowlist() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if db.GetSetting("ip_allowlist_enabled", "false") != "true" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			entries := []string{}
+			_ = json.Unmarshal([]byte(db.GetSetting("ip_allowlist_entries", "[]")), &entries)
+			if ipMatchesAllowlist(clientIP(r), entries) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			writeError(w, http.StatusForbidden, "client IP is not in the configured allowlist")
+		})
+	}
 }
