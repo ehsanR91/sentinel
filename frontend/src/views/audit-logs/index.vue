@@ -544,6 +544,12 @@ export default {
     }
   },
   watch: {
+    '$route.query': {
+      deep: true,
+      handler (query) {
+        this.applyRouteFilters(query)
+      }
+    },
     searchQuery () {
       clearTimeout(this.searchTimer)
       this.searchTimer = setTimeout(() => {
@@ -563,6 +569,7 @@ export default {
     }
   },
   mounted () {
+    this.applyRouteFilters(this.$route.query)
     this.applyDatePreset(this.datePreset)
     this.loadAuditLogs()
     this.loadUsers()
@@ -571,6 +578,26 @@ export default {
     clearTimeout(this.searchTimer)
   },
   methods: {
+    applyRouteFilters (query = {}) {
+      const nextUser = typeof query.user === 'string' ? query.user.trim() : ''
+      const nextSearch = typeof query.search === 'string' ? query.search.trim() : ''
+      const nextResult = query.result === 'success' || query.result === 'failure' ? query.result : ''
+      const nextRange = typeof query.range === 'string' ? query.range : ''
+
+      this.filterUser = nextUser
+      this.searchQuery = nextSearch
+      this.debouncedSearch = nextSearch
+      this.filterResult = nextResult
+
+      if (nextRange && ['15m', '1h', '6h', '24h', '7d', 'all', 'custom'].includes(nextRange)) {
+        this.applyDatePreset(nextRange)
+      }
+
+      if (nextRange === 'custom') {
+        this.customStart = typeof query.start === 'string' ? query.start : ''
+        this.customEnd = typeof query.end === 'string' ? query.end : ''
+      }
+    },
     async loadAuditLogs () {
       this.loading = true
       this.errorMessage = ''

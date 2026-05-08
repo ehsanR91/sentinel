@@ -1,361 +1,594 @@
 <template>
   <div id="page-topbar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <div class="topbar-left">
-      <!-- Desktop collapse toggle -->
-      <button class="topbar-btn d-none d-lg-flex" @click="toggleCollapse" :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'" aria-label="Toggle sidebar" tabindex="0">
-        <i class="mdi mdi-menu" style="font-size:1.1rem" aria-hidden="true"></i>
+      <button
+        class="topbar-btn d-none d-lg-flex"
+        :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+        aria-label="Toggle sidebar"
+        @click="toggleCollapse"
+      >
+        <i class="mdi mdi-menu" aria-hidden="true"></i>
       </button>
-      <!-- Mobile menu toggle -->
-      <button class="topbar-btn d-lg-none" @click="$emit('toggle-sidebar')" aria-label="Toggle sidebar" tabindex="0">
-        <i class="mdi mdi-menu" style="font-size:1.2rem" aria-hidden="true"></i>
+      <button class="topbar-btn d-lg-none" aria-label="Toggle sidebar" @click="$emit('toggle-sidebar')">
+        <i class="mdi mdi-menu" aria-hidden="true"></i>
       </button>
 
-      <!-- Breadcrumb -->
-      <nav aria-label="breadcrumb" class="d-none d-md-flex align-items-center">
-        <span class="text-muted" style="font-size:0.8rem">
-          <i class="mdi mdi-slash-forward" style="font-size:0.7rem;opacity:0.4"></i>
-          {{ currentPage }}
-        </span>
+      <nav aria-label="Breadcrumb" class="topbar-breadcrumb d-none d-md-flex">
+        <span class="topbar-breadcrumb__prefix">SentinelCore</span>
+        <i class="mdi mdi-chevron-right" aria-hidden="true"></i>
+        <span class="topbar-breadcrumb__current">{{ currentPage }}</span>
       </nav>
     </div>
 
     <div class="topbar-right">
-      <!-- WS connection status -->
-      <div class="ws-status me-2" :class="{ disconnected: !wsConnected }">
-        <div class="dot"></div>
-        <span class="d-none d-md-inline">{{ wsConnected ? 'Live' : 'Offline' }}</span>
-      </div>
-
-      <!-- Theme switcher -->
-      <div class="position-relative" v-click-outside="() => showThemeMenu = false">
-        <button class="topbar-btn" @click="showThemeMenu = !showThemeMenu" title="Switch theme" data-dropdown-trigger aria-label="Switch theme" tabindex="0">
-          <i class="mdi" :class="themeIcon" style="font-size:1.1rem" aria-hidden="true"></i>
-        </button>
-        <div v-show="showThemeMenu" class="dropdown-menu dropdown-menu-end show" style="min-width:160px;top:44px;right:0;position:absolute">
-          <a
-            v-for="t in themeOptions"
-            :key="t.value"
-            href="#"
-            class="dropdown-item d-flex align-items-center gap-2"
-            :class="{ active: currentThemePref === t.value }"
-            @click.prevent="setTheme(t.value)"
-            :aria-label="`Switch to ${t.label} theme`"
-          >
-            <i :class="t.icon" style="font-size:1rem;width:18px" aria-hidden="true"></i>
-            <span>{{ t.label }}</span>
-            <i v-if="currentThemePref === t.value" class="mdi mdi-check ms-auto" style="color:#4a9eff" aria-hidden="true"></i>
-          </a>
-        </div>
-      </div>
-
-      <button
-        v-if="updateAvailable"
-        class="topbar-btn"
-        title="New version available — reload"
-        aria-label="Update available"
-        tabindex="0"
-        @click="refreshAppVersion"
-      >
-        <i class="mdi mdi-update" style="font-size:1.1rem"></i>
-      </button>
-      <button
-        v-if="installAvailable"
-        class="topbar-btn"
-        title="Install SentinelCore"
-        aria-label="Install SentinelCore"
-        tabindex="0"
-        @click="onInstallClick"
-      >
-        <i class="mdi mdi-download" style="font-size:1.1rem"></i>
-      </button>
-      <button
-        v-else-if="showIosInstallHint"
-        class="topbar-btn"
-        title="Add SentinelCore to Home Screen"
-        aria-label="Add to Home Screen"
-        tabindex="0"
-        @click="openInstallHelp"
-      >
-        <i class="mdi mdi-information-outline" style="font-size:1.1rem"></i>
-      </button>
-
-      <!-- Lock screen button -->
-      <button
-        v-if="lockPinSet"
-        class="topbar-btn"
-        title="Lock screen (Space)"
-        aria-label="Lock screen"
-        tabindex="0"
-        @click="lockScreen"
-      >
-        <i class="mdi mdi-lock-outline" style="font-size:1.1rem"></i>
-      </button>
-
-      <!-- Quick Mount -->
-      <div class="position-relative" v-click-outside="() => showQuickMount = false">
+      <div class="topbar-system-cluster" role="group" aria-label="System status and actions">
         <button
-          class="topbar-btn d-none d-md-flex align-items-center justify-content-center"
-          style="width:36px;height:36px;border-radius:8px;background:rgba(34,214,124,0.06);border:1px solid rgba(34,214,124,0.18);color:#22d67c"
-          @click="toggleQuickMount"
-          title="Quick Mount — SSH port forward a server app to your machine"
-          aria-label="Quick Mount"
-          data-dropdown-trigger
+          class="topbar-live-pill sc-focus-ring"
+          :class="{ 'is-offline': !wsConnected, 'is-paused': livePaused }"
+          :title="liveTooltip"
+          :aria-label="liveTooltip"
+          @click="toggleLiveState"
         >
-          <i class="mdi mdi-lan-connect" style="font-size:1rem"></i>
+          <StatusDot :status="wsConnected && !livePaused ? 'online' : 'offline'" />
+          <span>{{ liveLabel }}</span>
         </button>
 
-        <div v-show="showQuickMount" class="dropdown-menu dropdown-menu-end show quick-mount-panel" style="top:44px;right:0;position:absolute;min-width:420px;max-width:96vw;padding:0">
-          <!-- Header -->
-          <div class="d-flex align-items-center justify-content-between px-3 py-2" style="border-bottom:1px solid var(--sc-border, #1e2d4a)">
-            <span style="font-weight:600;font-size:0.82rem;display:flex;align-items:center;gap:6px">
-              <i class="mdi mdi-lan-connect" style="color:#22d67c"></i> Quick Mount
-            </span>
-            <div class="d-flex align-items-center gap-2">
-              <button class="btn btn-sm p-0" style="color:#4a9eff;font-size:0.72rem" @click="openQuickMountHelp" title="How Quick Mount works">
-                <i class="mdi mdi-help-circle-outline"></i>
-              </button>
-              <button class="btn btn-sm p-0" style="color:#5a7499;font-size:0.72rem" @click="refreshTunnelApps" :disabled="loadingTunnels">
-                <i :class="`mdi mdi-refresh${loadingTunnels ? ' mdi-spin' : ''}`"></i>
-              </button>
-              <button class="btn btn-sm p-0" style="color:#5a7499" @click="showQuickMount=false"><i class="mdi mdi-close"></i></button>
-            </div>
-          </div>
+        <button
+          v-if="updateAvailable"
+          class="topbar-btn"
+          title="Update available"
+          aria-label="Update available"
+          @click="refreshAppVersion"
+        >
+          <i class="mdi mdi-update" aria-hidden="true"></i>
+        </button>
+        <button
+          v-if="installAvailable"
+          class="topbar-btn"
+          title="Install SentinelCore"
+          aria-label="Install SentinelCore"
+          @click="onInstallClick"
+        >
+          <i class="mdi mdi-download" aria-hidden="true"></i>
+        </button>
+        <button
+          v-else-if="showIosInstallHint"
+          class="topbar-btn"
+          title="Add SentinelCore to Home Screen"
+          aria-label="Add SentinelCore to Home Screen"
+          @click="openInstallHelp"
+        >
+          <i class="mdi mdi-information-outline" aria-hidden="true"></i>
+        </button>
+        <button
+          v-if="lockPinSet"
+          class="topbar-btn"
+          title="Lock screen (Space)"
+          aria-label="Lock screen"
+          @click="lockScreen"
+        >
+          <i class="mdi mdi-lock-outline" aria-hidden="true"></i>
+        </button>
 
-          <!-- SSH connection settings -->
-          <div class="px-3 py-2" style="background:rgba(74,158,255,0.04);border-bottom:1px solid var(--sc-border, #1e2d4a);font-size:0.72rem">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span style="color:#5a7499;white-space:nowrap">SSH user</span>
-              <input v-model="mountSshUser" type="text" class="form-control form-control-sm" style="width:90px;height:24px;font-size:0.72rem;font-family:monospace;padding:1px 6px" :placeholder="detectedSshUser || 'user'" />
-              <span style="color:#5a7499;white-space:nowrap">port</span>
-              <input v-model="mountSshPort" type="text" class="form-control form-control-sm" style="width:55px;height:24px;font-size:0.72rem;font-family:monospace;padding:1px 6px" :placeholder="String(detectedSshPort || 22)" />
-              <span style="color:#5a7499;white-space:nowrap">host</span>
-              <input v-model="mountSshHost" type="text" class="form-control form-control-sm" style="width:130px;height:24px;font-size:0.72rem;font-family:monospace;padding:1px 6px" :placeholder="detectedSshHost || serverHost" />
-            </div>
-            <div class="mt-1" style="font-size:0.65rem;color:#5a7499">
-              Auto-detected: <code style="color:#8aa4c8">{{ effectiveSshUser }}</code>@<code style="color:#8aa4c8">{{ effectiveSshHost }}</code> -p <code style="color:#8aa4c8">{{ effectiveSshPort }}</code>
-              <span v-if="detectedSshUserSource" style="margin-left:6px;opacity:0.85">({{ detectedSshUserSource }})</span>
-            </div>
-          </div>
+        <div class="position-relative">
+          <button
+            class="topbar-btn topbar-btn--quick-mount d-none d-md-flex"
+            title="Quick Mount"
+            aria-label="Quick Mount"
+            @click="toggleQuickMount"
+          >
+            <i class="mdi mdi-lan-connect" aria-hidden="true"></i>
+          </button>
 
-          <!-- App list -->
-          <div style="max-height:360px;overflow-y:auto;padding:8px 0">
-            <div v-if="loadingTunnels" class="text-center py-4" style="font-size:0.78rem;color:#5a7499">
-              <span class="spinner-border spinner-border-sm me-1"></span>Detecting apps…
+          <div v-if="showQuickMount" class="dropdown-menu dropdown-menu-end show quick-mount-panel" style="top:44px;right:0;position:absolute;min-width:420px;max-width:96vw;padding:0">
+            <div class="d-flex align-items-center justify-content-between px-3 py-2" style="border-bottom:1px solid var(--sc-border, #1e2d4a)">
+              <span style="font-weight:600;font-size:0.82rem;display:flex;align-items:center;gap:6px">
+                <i class="mdi mdi-lan-connect" style="color:#22d67c"></i> Quick Mount
+              </span>
+              <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm p-0" style="color:#4a9eff;font-size:0.72rem" title="How Quick Mount works" @click="openQuickMountHelp">
+                  <i class="mdi mdi-help-circle-outline"></i>
+                </button>
+                <button class="btn btn-sm p-0" style="color:#5a7499;font-size:0.72rem" :disabled="loadingTunnels" @click="refreshTunnelApps">
+                  <i :class="`mdi mdi-refresh${loadingTunnels ? ' mdi-spin' : ''}`"></i>
+                </button>
+                <button class="btn btn-sm p-0" style="color:#5a7499" @click="showQuickMount = false"><i class="mdi mdi-close"></i></button>
+              </div>
             </div>
-            <div v-else-if="!tunnelApps.length" class="text-center py-4 px-3" style="font-size:0.78rem;color:#5a7499">
-              <i class="mdi mdi-lan-disconnect d-block mb-1" style="font-size:1.4rem;opacity:0.4"></i>
-              No web-accessible apps detected.<br>
-              <span style="font-size:0.68rem">Grafana, Portainer, Prometheus, Netdata etc. will appear here when running.</span>
+
+            <div class="px-3 py-2" style="background:rgba(74,158,255,0.04);border-bottom:1px solid var(--sc-border, #1e2d4a);font-size:0.72rem">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span style="color:#5a7499;white-space:nowrap">SSH user</span>
+                <input v-model="mountSshUser" type="text" class="form-control form-control-sm" style="width:90px;height:24px;font-size:0.72rem;font-family:monospace;padding:1px 6px" :placeholder="detectedSshUser || 'user'">
+                <span style="color:#5a7499;white-space:nowrap">port</span>
+                <input v-model="mountSshPort" type="text" class="form-control form-control-sm" style="width:55px;height:24px;font-size:0.72rem;font-family:monospace;padding:1px 6px" :placeholder="String(detectedSshPort || 22)">
+                <span style="color:#5a7499;white-space:nowrap">host</span>
+                <input v-model="mountSshHost" type="text" class="form-control form-control-sm" style="width:130px;height:24px;font-size:0.72rem;font-family:monospace;padding:1px 6px" :placeholder="detectedSshHost || serverHost">
+              </div>
+              <div class="mt-1" style="font-size:0.65rem;color:#5a7499">
+                Auto-detected: <code style="color:#8aa4c8">{{ effectiveSshUser }}</code>@<code style="color:#8aa4c8">{{ effectiveSshHost }}</code> -p <code style="color:#8aa4c8">{{ effectiveSshPort }}</code>
+                <span v-if="detectedSshUserSource" style="margin-left:6px;opacity:0.85">({{ detectedSshUserSource }})</span>
+              </div>
             </div>
-            <template v-else>
-              <!-- Group by category -->
-              <div v-for="cat in mountCategories" :key="cat">
-                <div class="px-3 py-1" style="font-size:0.65rem;font-weight:600;color:#5a7499;text-transform:uppercase;letter-spacing:.06em">{{ cat }}</div>
-                <div
-                  v-for="app in tunnelApps.filter(a => a.category === cat)"
-                  :key="`${app.name}-${app.port}`"
-                  class="d-flex align-items-center justify-content-between px-3 py-2 quick-mount-row"
-                >
-                  <div class="d-flex align-items-center gap-2" style="min-width:0">
-                    <i :class="`mdi ${app.icon}`" :style="`color:${app.color};font-size:1.05rem;flex-shrink:0`"></i>
-                    <div style="min-width:0">
-                      <div style="font-size:0.78rem;font-weight:500;color:var(--sc-text, #c9d8f0)">{{ app.name }}</div>
-                      <code style="font-size:0.65rem;color:#5a7499">localhost:{{ app.port }} → server:{{ app.port }}</code>
+
+            <div style="max-height:360px;overflow-y:auto;padding:8px 0">
+              <div v-if="loadingTunnels" class="text-center py-4" style="font-size:0.78rem;color:#5a7499">
+                <span class="spinner-border spinner-border-sm me-1"></span>Detecting apps…
+              </div>
+              <div v-else-if="!tunnelApps.length" class="text-center py-4 px-3" style="font-size:0.78rem;color:#5a7499">
+                <i class="mdi mdi-lan-disconnect d-block mb-1" style="font-size:1.4rem;opacity:0.4"></i>
+                No web-accessible apps detected.<br>
+                <span style="font-size:0.68rem">Grafana, Portainer, Prometheus, Netdata and similar apps appear here when running.</span>
+              </div>
+              <template v-else>
+                <div v-for="cat in mountCategories" :key="cat">
+                  <div class="px-3 py-1" style="font-size:0.65rem;font-weight:600;color:#5a7499;text-transform:uppercase;letter-spacing:.06em">{{ cat }}</div>
+                  <div
+                    v-for="app in tunnelApps.filter(a => a.category === cat)"
+                    :key="`${app.name}-${app.port}`"
+                    class="d-flex align-items-center justify-content-between px-3 py-2 quick-mount-row"
+                  >
+                    <div class="d-flex align-items-center gap-2" style="min-width:0">
+                      <i :class="`mdi ${app.icon}`" :style="`color:${app.color};font-size:1.05rem;flex-shrink:0`"></i>
+                      <div style="min-width:0">
+                        <div style="font-size:0.78rem;font-weight:500;color:var(--sc-text, #c9d8f0)">{{ app.name }}</div>
+                        <code style="font-size:0.65rem;color:#5a7499">localhost:{{ app.port }} → server:{{ app.port }}</code>
+                      </div>
+                      <span class="badge ms-1" :style="`background:rgba(${app.source==='docker'?'36,150,237':'34,214,124'},0.1);color:${app.source==='docker'?'#2496ed':'#22d67c'};font-size:0.58rem;padding:1px 5px`">{{ app.source }}</span>
                     </div>
-                    <span class="badge ms-1" :style="`background:rgba(${app.source==='docker'?'36,150,237':'34,214,124'},0.1);color:${app.source==='docker'?'#2496ed':'#22d67c'};font-size:0.58rem;padding:1px 5px`">{{ app.source }}</span>
-                  </div>
-                  <div class="d-flex align-items-center gap-1 ms-2">
-                    <button
-                      class="btn btn-sm flex-shrink-0"
-                      style="background:rgba(245,166,35,0.08);color:#f5a623;border:1px solid rgba(245,166,35,0.2);font-size:0.65rem;white-space:nowrap;padding:2px 8px"
-                      :disabled="grantingPort === app.port"
-                      @click="grantAccess(app)"
-                      title="Grant browser access for your IP (choose duration)"
-                    >
-                      <i :class="`mdi mdi-${grantingPort===app.port?'loading mdi-spin':'shield-key-outline'} me-1`"></i>Grant Access
-                    </button>
-                    <button
-                      class="btn btn-sm flex-shrink-0"
-                      :style="`background:rgba(34,214,124,0.07);color:${mountCopied===app.name+app.port?'#22d67c':'#5a7499'};border:1px solid rgba(34,214,124,0.15);font-size:0.65rem;white-space:nowrap;padding:2px 8px`"
-                      @click="copyMount(app)"
-                    >
-                      <i :class="`mdi mdi-${mountCopied===app.name+app.port?'check':'content-copy'} me-1`"></i>{{ mountCopied === app.name+app.port ? 'Copied!' : 'Copy' }}
-                    </button>
+                    <div class="d-flex align-items-center gap-1 ms-2">
+                      <button
+                        class="btn btn-sm flex-shrink-0"
+                        style="background:rgba(245,166,35,0.08);color:#f5a623;border:1px solid rgba(245,166,35,0.2);font-size:0.65rem;white-space:nowrap;padding:2px 8px"
+                        :disabled="grantingPort === app.port"
+                        @click="grantAccess(app)"
+                      >
+                        <i :class="`mdi mdi-${grantingPort===app.port?'loading mdi-spin':'shield-key-outline'} me-1`"></i>Grant Access
+                      </button>
+                      <button
+                        class="btn btn-sm flex-shrink-0"
+                        :style="`background:rgba(34,214,124,0.07);color:${mountCopied===app.name+app.port?'#22d67c':'#5a7499'};border:1px solid rgba(34,214,124,0.15);font-size:0.65rem;white-space:nowrap;padding:2px 8px`"
+                        @click="copyMount(app)"
+                      >
+                        <i :class="`mdi mdi-${mountCopied===app.name+app.port?'check':'content-copy'} me-1`"></i>{{ mountCopied === app.name + app.port ? 'Copied!' : 'Copy' }}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </template>
-          </div>
+              </template>
+            </div>
 
-          <!-- Footer hint -->
-          <div class="px-3 py-2" style="border-top:1px solid var(--sc-border, #1e2d4a);font-size:0.67rem;color:#5a7499">
-            <i class="mdi mdi-information-outline me-1"></i>Run the copied command on <strong style="color:#8aa4c8">your local machine</strong>, then open <code style="color:#4a9eff">http://localhost:&lt;port&gt;</code> in your browser.
+            <div class="px-3 py-2" style="border-top:1px solid var(--sc-border, #1e2d4a);font-size:0.67rem;color:#5a7499">
+              <i class="mdi mdi-information-outline me-1"></i>Run the copied command on <strong style="color:#8aa4c8">your local machine</strong>, then open <code style="color:#4a9eff">http://localhost:&lt;port&gt;</code>.
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Global Search -->
-      <div class="position-relative me-2 d-none d-md-block">
+      <div class="position-relative me-1 d-none d-md-block topbar-search">
         <div class="search-input-wrapper">
           <i class="mdi mdi-magnify search-icon"></i>
           <input
             v-model="searchQuery"
             type="text"
             class="search-input"
-            placeholder="Search..."
+            placeholder="Search…"
             @focus="showSearchResults = true"
             @keydown.esc="showSearchResults = false; searchQuery = ''"
-            @keydown.down="navigateSearch(1)"
-            @keydown.up="navigateSearch(-1)"
-            @keydown.enter="selectSearchResult"
-          />
+            @keydown.down.prevent="navigateSearch(1)"
+            @keydown.up.prevent="navigateSearch(-1)"
+            @keydown.enter.prevent="selectSearchResult"
+          >
         </div>
-        <div v-show="showSearchResults && searchResults.length > 0" class="search-results-dropdown">
-          <div class="search-results-header">
-            <span>Quick Navigation</span>
-          </div>
-          <div v-for="(result, idx) in searchResults" :key="idx"
-               class="search-result-item"
-               :class="{ active: searchActiveIndex === idx }"
-               @click="navigateToSearchResult(result)"
-               @mouseenter="searchActiveIndex = idx">
-            <i :class="result.icon"></i>
+        <div v-if="showSearchResults && searchResults.length > 0" class="search-results-dropdown">
+          <div class="search-results-header">Quick Navigation</div>
+          <button
+            v-for="(result, idx) in searchResults"
+            :key="`${result.group}-${result.route}`"
+            type="button"
+            class="search-result-item"
+            :class="{ active: searchActiveIndex === idx }"
+            @mouseenter="searchActiveIndex = idx"
+            @click="navigateToSearchResult(result)"
+          >
+            <i :class="result.icon || 'mdi mdi-compass-outline'"></i>
             <span>{{ result.label }}</span>
-            <span class="search-result-path">{{ result.path }}</span>
-          </div>
-          <div v-if="searchQuery && searchResults.length === 0" class="search-no-results">
-            No results found for "{{ searchQuery }}"
-          </div>
+            <span class="search-result-path">{{ result.group }}</span>
+          </button>
         </div>
       </div>
 
-      <!-- Notifications -->
-      <div class="position-relative" v-click-outside="() => showNotifs = false">
-        <button class="topbar-btn" @click="toggleNotifs" data-dropdown-trigger aria-label="Notifications" tabindex="0">
-          <i class="mdi mdi-bell-outline" style="font-size:1.1rem" aria-hidden="true"></i>
-          <span v-if="unreadCount > 0" class="badge-dot"></span>
-        </button>
+      <Popover
+        :model-value="openPopover === 'alerts'"
+        title="Alerts"
+        subtitle="Realtime feed"
+        :width="460"
+        :max-width="520"
+        panel-class="topbar-popover topbar-popover--alerts"
+        body-class="topbar-popover__body"
+        @update:modelValue="setPopoverState('alerts', $event)"
+        @after-open="handleAlertsOpened"
+      >
+        <template #trigger="{ toggle, triggerRef, triggerAttrs, open }">
+          <button
+            :ref="triggerRef"
+            class="topbar-btn topbar-btn--bell sc-focus-ring"
+            :class="{ 'is-active': open, 'has-critical-pulse': bellPulseActive }"
+            v-bind="triggerAttrs"
+            :title="`${unreadCount} unread alerts`"
+            aria-label="Alerts"
+            @click="toggle"
+          >
+            <i class="mdi mdi-bell-outline" aria-hidden="true"></i>
+            <span v-if="unreadCount" class="topbar-badge" :class="`topbar-badge--${alertBadgeTone}`">{{ badgeCountLabel }}</span>
+          </button>
+        </template>
 
-        <div v-show="showNotifs" class="dropdown-menu dropdown-menu-end show alert-dropdown">
-          <div class="d-flex align-items-center justify-content-between px-3 py-2">
-            <span style="font-weight:600;font-size:0.8rem">Alerts</span>
-            <div class="d-flex gap-2">
-              <button v-if="unreadCount > 0" class="btn btn-sm btn-link p-0" style="font-size:0.72rem;color:#4a9eff" @click="markAllAsRead">
-                <i class="mdi mdi-check-all me-1"></i>Mark all read
-              </button>
-              <span v-if="unreadCount > 0" class="badge bg-danger" style="font-size:0.65rem">{{ unreadCount }} new</span>
+        <div class="topbar-alerts" @click="noop">
+          <div class="topbar-alerts__meta">
+            <div class="topbar-alerts__summary">
+              <strong>{{ unreadCount }} unread</strong>
+              <span>{{ alertVisibleGroups.length }} visible groups</span>
             </div>
+            <button v-if="unreadCount" type="button" class="topbar-link-button" @click="markAllAsRead">Mark all read</button>
           </div>
-          <div class="dropdown-divider m-0"></div>
-          <div v-if="loadingAlerts" class="text-center py-3" style="font-size:0.78rem;color:#5a7499">
-            <span class="spinner-border spinner-border-sm me-1"></span>Loading…
-          </div>
-          <template v-else>
-            <div
-              v-for="alert in recentAlerts"
-              :key="alert.id"
-              class="dropdown-item d-flex align-items-start gap-2 py-2 alert-item"
-              @click="markAlertAsRead(alert.id)"
+
+          <div class="visually-hidden" aria-live="polite">{{ alertAnnouncement }}</div>
+
+          <div class="topbar-tabs" role="tablist" aria-label="Alert filters">
+            <button
+              v-for="tab in alertTabs"
+              :key="tab.id"
+              type="button"
+              class="topbar-tab sc-focus-ring"
+              :class="{ active: alertTab === tab.id }"
+              role="tab"
+              :aria-selected="String(alertTab === tab.id)"
+              @click="alertTab = tab.id"
             >
-              <i :class="severityIcon(alert.severity)" :style="`color:${severityColor(alert.severity)};font-size:1rem;margin-top:2px`"></i>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:0.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ formatAlertMessage(alert.message) }}</div>
-                <div style="font-size:0.68rem;color:#5a7499">{{ timeAgo(alert.ts) }}</div>
-              </div>
-              <i v-if="!alert.read" class="mdi mdi-circle-small" style="color:#4a9eff;font-size:0.6rem"></i>
-            </div>
-            <div v-if="!recentAlerts.length" class="text-center py-3" style="font-size:0.78rem;color:#5a7499">
-              No recent alerts
-            </div>
-          </template>
-          <div class="dropdown-divider m-0"></div>
-          <router-link to="/alerts" class="dropdown-item text-center py-2" style="font-size:0.78rem;color:#4a9eff" @click="showNotifs=false">
-            View all alerts <i class="mdi mdi-arrow-right ms-1"></i>
-          </router-link>
-        </div>
-      </div>
-
-      <!-- User menu -->
-      <div class="position-relative" v-click-outside="() => showUserMenu = false">
-        <div class="user-menu" @click="showUserMenu = !showUserMenu" data-dropdown-trigger role="button" tabindex="0" aria-label="User menu">
-          <div class="user-avatar">{{ userInitials }}</div>
-          <span class="user-name d-none d-md-inline">{{ username }}</span>
-          <i class="mdi mdi-chevron-down d-none d-md-inline" style="font-size:0.8rem;color:#5a7499" aria-hidden="true"></i>
-        </div>
-
-        <div v-show="showUserMenu" class="dropdown-menu dropdown-menu-end show" style="top:44px;right:0;position:absolute;min-width:200px">
-          <div class="px-3 py-2" style="border-bottom:1px solid var(--sc-border, #1e2d4a)">
-            <div style="font-size:0.82rem;font-weight:600">{{ username }}</div>
-            <div style="font-size:0.72rem;color:#5a7499">{{ userRole }}</div>
+              <span>{{ tab.label }}</span>
+              <strong>{{ tab.count }}</strong>
+            </button>
           </div>
-          <router-link to="/settings" class="dropdown-item" @click="showUserMenu=false">
-            <i class="mdi mdi-cog-outline"></i> Settings
-          </router-link>
-          <router-link to="/audit-logs" class="dropdown-item" @click="showUserMenu=false">
-            <i class="mdi mdi-history"></i> Audit Logs
-          </router-link>
-          <a href="#" class="dropdown-item" @click.prevent="lockScreen">
-            <i class="mdi mdi-lock-outline"></i> Lock Screen
-          </a>
-          <div class="dropdown-divider"></div>
-          <a href="#" class="dropdown-item" style="color:#f04040" @click.prevent="logout">
-            <i class="mdi mdi-logout" style="color:#f04040"></i> Logout
-          </a>
+
+          <button v-if="queuedAlerts.length" type="button" class="topbar-new-pill sc-focus-ring" @click="applyQueuedAlerts">
+            ↑ {{ queuedAlerts.length }} new
+          </button>
+
+          <div ref="alertList" class="topbar-alerts__list" @scroll="onAlertListScroll">
+            <div v-if="loadingAlerts" class="topbar-state topbar-state--loading">
+              <span class="spinner-border spinner-border-sm"></span>
+              <span>Loading alerts…</span>
+            </div>
+            <EmptyState
+              v-else-if="alertError"
+              icon="mdi mdi-alert-circle-outline"
+              title="Alert feed unavailable"
+              :description="alertError"
+            >
+              <template #actions>
+                <AppButton variant="secondary" size="sm" icon="mdi mdi-refresh" label="Retry" @click="syncAlerts(true)" />
+              </template>
+            </EmptyState>
+            <EmptyState
+              v-else-if="!alertVisibleGroups.length"
+              icon="mdi mdi-bell-off-outline"
+              title="No alerts here"
+              description="New system and security activity will appear here when it arrives."
+            />
+            <template v-else>
+              <div class="topbar-alerts__items" :style="virtualAlertWrapperStyle">
+                <article
+                  v-for="group in visibleAlertGroups"
+                  :key="group.id"
+                  class="topbar-alert-row sc-focus-ring"
+                  :class="{ 'is-unread': !group.read }"
+                  @click="openAlertGroup(group)"
+                >
+                  <div class="topbar-alert-row__icon" :class="`severity-${severityTone(group.base.severity)}`">
+                    <i :class="severityIcon(group.base.severity)" aria-hidden="true"></i>
+                  </div>
+                  <div class="topbar-alert-row__content">
+                    <div class="topbar-alert-row__head">
+                      <div>
+                        <div class="topbar-alert-row__title">{{ summarizeAlert(group.base) }}</div>
+                        <div class="topbar-alert-row__subtitle">{{ alertSubtitle(group) }}</div>
+                      </div>
+                      <div class="topbar-alert-row__meta-actions" @click.stop>
+                        <span v-if="group.count > 1" class="topbar-count-pill">{{ group.count }}</span>
+                        <span v-if="!group.read" class="topbar-unread-dot" aria-hidden="true"></span>
+                        <details class="topbar-row-menu">
+                          <summary class="topbar-row-menu__trigger sc-focus-ring" aria-label="Alert actions">
+                            <i class="mdi mdi-dots-horizontal"></i>
+                          </summary>
+                          <div class="topbar-row-menu__body">
+                            <button type="button" class="dropdown-item" @click="markGroupRead(group)">Mark read</button>
+                            <button type="button" class="dropdown-item" @click="dismissGroup(group)">Dismiss</button>
+                            <button type="button" class="dropdown-item" @click="snoozeGroup(group, 5)">Snooze 5m</button>
+                            <button type="button" class="dropdown-item" @click="snoozeGroup(group, 60)">Snooze 1h</button>
+                            <button type="button" class="dropdown-item" @click="muteRule(group)">Mute rule</button>
+                            <button type="button" class="dropdown-item" :disabled="!group.base.ip" @click="blockSourceIp(group)">Block IP</button>
+                            <button type="button" class="dropdown-item" @click="copyAlertJson(group)">Copy JSON</button>
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+                    <div class="topbar-alert-row__tags">
+                      <span v-for="meta in formatAlertMeta(group.base)" :key="`${group.id}-${meta}`" class="topbar-tag">{{ meta }}</span>
+                    </div>
+                    <button
+                      v-if="group.count > 1"
+                      type="button"
+                      class="topbar-link-button topbar-link-button--small"
+                      @click.stop="toggleAlertGroup(group.id)"
+                    >
+                      {{ expandedAlertGroups[group.id] ? 'Hide repeats' : `Show ${group.count - 1} repeats` }}
+                    </button>
+                    <div v-if="expandedAlertGroups[group.id]" class="topbar-alert-expansion">
+                      <div v-for="item in group.items" :key="item.id" class="topbar-alert-expansion__item">
+                        <span>{{ summarizeAlert(item) }}</span>
+                        <time>{{ timeAgo(item.ts) }}</time>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </template>
+          </div>
+
+          <div class="topbar-alerts__footer">
+            <button type="button" class="topbar-link-button" @click="openAlertsPage">Open full Alerts page</button>
+          </div>
         </div>
-      </div>
+      </Popover>
+
+      <Popover
+        :model-value="openPopover === 'user'"
+        :title="userMenuTitle"
+        subtitle="Account"
+        :width="440"
+        :max-width="520"
+        panel-class="topbar-popover topbar-popover--user"
+        body-class="topbar-popover__body topbar-popover__body--user"
+        @update:modelValue="setPopoverState('user', $event)"
+        @after-open="handleUserMenuOpened"
+      >
+        <template #trigger="{ toggle, triggerRef, triggerAttrs, open }">
+          <button
+            :ref="triggerRef"
+            class="user-menu sc-focus-ring"
+            :class="{ 'is-active': open }"
+            v-bind="triggerAttrs"
+            aria-label="User menu"
+            @click="toggle"
+          >
+            <UserAvatar :name="displayName" :src="avatarUrl" :status="presence.status" size="md" />
+            <span class="user-name-wrap d-none d-xl-flex">
+              <span class="user-name" :title="displayName">{{ displayName }}</span>
+              <span class="user-role">{{ userRole }} · {{ presence.status }}</span>
+            </span>
+            <i class="mdi mdi-chevron-down d-none d-xl-inline" aria-hidden="true"></i>
+          </button>
+        </template>
+
+        <div v-if="userMenuView === 'main'" class="user-popover">
+          <header class="user-popover__header">
+            <div class="user-popover__hero">
+              <UserAvatar :name="displayName" :src="avatarUrl" :status="presence.status" size="lg" />
+              <div class="user-popover__meta">
+                <strong :title="displayName">{{ displayName }}</strong>
+                <span>{{ userRole }} · {{ presence.status }}</span>
+                <button type="button" class="user-popover__last-login" @click="openAuditForCurrentUser">
+                  {{ lastLoginLabel }}
+                </button>
+              </div>
+            </div>
+            <AppButton variant="ghost" size="sm" label="Manage" @click="goToAccount" />
+          </header>
+
+          <section class="user-popover__section">
+            <div class="user-popover__section-label">Account</div>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="goToAccount">
+              <div>
+                <strong>Profile</strong>
+                <p>Email, display details, and recovery setup.</p>
+              </div>
+            </button>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('general')">
+              <div>
+                <strong>Settings</strong>
+                <p>System and account-level preferences.</p>
+              </div>
+              <KbdHint hint="⌘," />
+            </button>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="openTokensInfo">
+              <div>
+                <strong>API tokens</strong>
+                <p>Token management is not exposed by the current agent API yet.</p>
+              </div>
+            </button>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('access-control')">
+              <div>
+                <strong>2FA management</strong>
+                <p>{{ me.totp_enabled ? 'TOTP is enabled for this account.' : 'Set up TOTP for stronger access control.' }}</p>
+              </div>
+            </button>
+          </section>
+
+          <section class="user-popover__section">
+            <div class="user-popover__section-label">Workspace</div>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="userMenuView = 'servers'">
+              <div>
+                <strong>Switch server</strong>
+                <p>{{ currentServerLabel }}</p>
+              </div>
+              <i class="mdi mdi-chevron-right"></i>
+            </button>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="openAuditForCurrentUser">
+              <div>
+                <strong>Audit Logs</strong>
+                <p>Jump to this user’s recent authentication activity.</p>
+              </div>
+            </button>
+          </section>
+
+          <section class="user-popover__section">
+            <div class="user-popover__section-label">Preferences</div>
+            <div class="user-popover__setting-row">
+              <div>
+                <strong>Theme</strong>
+                <p>Applies immediately across the app.</p>
+              </div>
+              <SegmentedControl :model-value="currentThemePref" :options="themeSegmentOptions" label="Theme" @update:modelValue="applyTheme" />
+            </div>
+            <div class="user-popover__setting-row">
+              <div>
+                <strong>Density</strong>
+                <p>Controls layout density for navigation surfaces.</p>
+              </div>
+              <SegmentedControl :model-value="sidebarDensity" :options="densitySegmentOptions" label="Density" @update:modelValue="applyDensity" />
+            </div>
+            <div class="user-popover__setting-row">
+              <div>
+                <strong>Presence</strong>
+                <p>DND suppresses non-critical desktop notifications.</p>
+              </div>
+              <SegmentedControl :model-value="presence.status" :options="presenceSegmentOptions" label="Presence" @update:modelValue="applyPresence" />
+            </div>
+            <div class="user-popover__setting-row user-popover__setting-row--stacked">
+              <div>
+                <strong>Auto-away</strong>
+                <p>Switch to Away after inactivity.</p>
+              </div>
+              <select v-model.number="presence.autoAwayMinutes" class="user-popover__select sc-focus-ring" @change="savePresenceState()">
+                <option :value="5">5 minutes</option>
+                <option :value="15">15 minutes</option>
+                <option :value="30">30 minutes</option>
+                <option :value="60">60 minutes</option>
+              </select>
+            </div>
+          </section>
+
+          <section class="user-popover__section">
+            <div class="user-popover__section-label">Help / Info</div>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="showShortcutHelp">
+              <div>
+                <strong>Keyboard shortcuts</strong>
+                <p>See the most useful navigation shortcuts.</p>
+              </div>
+              <KbdHint hint="⌘K" />
+            </button>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="openWhatsNew">
+              <div>
+                <strong>What’s new <span v-if="!whatsNewSeen" class="user-popover__dot">• new</span></strong>
+                <p>Recent changes and release notes.</p>
+              </div>
+            </button>
+            <button type="button" class="user-popover__item sc-focus-ring" @click="openDocs">
+              <div>
+                <strong>Help & docs</strong>
+                <p>Open the project documentation.</p>
+              </div>
+            </button>
+            <button v-if="lockPinSet" type="button" class="user-popover__item sc-focus-ring" @click="lockScreen">
+              <div>
+                <strong>Lock screen</strong>
+                <p>Require the local PIN to unlock.</p>
+              </div>
+              <KbdHint hint="Space" />
+            </button>
+          </section>
+
+          <button type="button" class="user-popover__signout sc-focus-ring" @click="confirmSignOut">
+            <i class="mdi mdi-logout"></i>
+            <span>Sign out</span>
+          </button>
+        </div>
+
+        <div v-else class="user-popover user-popover--servers">
+          <div class="user-popover__subheader">
+            <button type="button" class="topbar-link-button" @click="userMenuView = 'main'">
+              <i class="mdi mdi-chevron-left"></i>
+              Back
+            </button>
+            <strong>Switch server</strong>
+            <button type="button" class="topbar-link-button" @click="promptAddServer">Add server</button>
+          </div>
+          <div class="user-popover__server-search">
+            <i class="mdi mdi-magnify"></i>
+            <input v-model.trim="serverSearch" class="sc-focus-ring" type="search" placeholder="Search servers">
+          </div>
+          <div class="user-popover__server-list">
+            <button
+              v-for="server in filteredServerEntries"
+              :key="server.url"
+              type="button"
+              class="user-popover__server-item sc-focus-ring"
+              :class="{ active: server.url === currentOrigin }"
+              @click="switchServer(server)"
+            >
+              <div>
+                <div class="user-popover__server-head">
+                  <strong>{{ server.name }}</strong>
+                  <div class="user-popover__server-health">
+                    <StatusDot :status="server.statusDot" />
+                    <span>{{ server.healthLabel }}</span>
+                  </div>
+                </div>
+                <p>{{ server.url }}</p>
+                <div class="user-popover__server-stats">
+                  <span>CPU {{ server.metrics.cpu }}</span>
+                  <span>RAM {{ server.metrics.ram }}</span>
+                </div>
+              </div>
+              <i class="mdi mdi-chevron-right"></i>
+            </button>
+            <button v-if="linkedAccounts.length" type="button" class="user-popover__add-account sc-focus-ring" @click="openAccountSwitcher">
+              Add account
+            </button>
+          </div>
+        </div>
+      </Popover>
     </div>
 
     <Teleport to="body">
       <div v-if="showQuickMountHelp" class="quick-mount-help-backdrop" @click.self="showQuickMountHelp = false">
         <div class="quick-mount-help-modal">
-        <div class="quick-mount-help-header">
-          <h6 class="mb-0 d-flex align-items-center gap-2">
-            <i class="mdi mdi-help-circle-outline" style="color:#4a9eff"></i>
-            How To Use Quick Mount
-          </h6>
-          <button class="btn btn-sm p-0" style="color:#5a7499" @click="showQuickMountHelp = false">
-            <i class="mdi mdi-close"></i>
-          </button>
-        </div>
-        <div class="quick-mount-help-body">
-          <p style="font-size:0.82rem;color:#8aa4c8;margin-bottom:10px">
-            Quick Mount creates an SSH local tunnel so apps running on your server become reachable from your computer.
-          </p>
-          <ol class="quick-mount-help-steps">
-            <li>
-              Set your SSH connection values in Quick Mount:
-              <code>user</code>, <code>port</code>, and <code>host</code>. These are auto-detected and prefilled.
-            </li>
-            <li>
-              Click <strong>Copy</strong> next to any app. You will get a command like:
+          <div class="quick-mount-help-header">
+            <h6 class="mb-0 d-flex align-items-center gap-2">
+              <i class="mdi mdi-help-circle-outline" style="color:#4a9eff"></i>
+              How To Use Quick Mount
+            </h6>
+            <button class="btn btn-sm p-0" style="color:#5a7499" @click="showQuickMountHelp = false">
+              <i class="mdi mdi-close"></i>
+            </button>
+          </div>
+          <div class="quick-mount-help-body">
+            <p style="font-size:0.82rem;color:#8aa4c8;margin-bottom:10px">
+              Quick Mount creates an SSH local tunnel so apps running on your server become reachable from your computer.
+            </p>
+            <ol class="quick-mount-help-steps">
+              <li>Set your SSH connection values in Quick Mount: <code>user</code>, <code>port</code>, and <code>host</code>.</li>
+              <li>Click <strong>Copy</strong> next to any app. You will get a command like <code>{{ mountExampleCommand }}</code>.</li>
+              <li>Paste and run that command in your local terminal.</li>
+              <li>Keep that SSH session open, then visit <code>http://localhost:&lt;port&gt;</code>.</li>
+            </ol>
+            <div class="quick-mount-help-note">
+              <i class="mdi mdi-shield-lock-outline"></i>
+              <span>The tunnel is encrypted over SSH and closes automatically when you end the SSH session.</span>
+            </div>
+            <div class="quick-mount-help-example">
+              <div style="font-size:0.7rem;color:#5a7499;margin-bottom:5px">Example command</div>
               <code>{{ mountExampleCommand }}</code>
-            </li>
-            <li>
-              Paste and run that command in your local terminal (your own PC/macOS/Linux machine).
-            </li>
-            <li>
-              Keep that SSH session open, then visit:
-              <code>http://localhost:&lt;port&gt;</code>
-            </li>
-          </ol>
-          <div class="quick-mount-help-note">
-            <i class="mdi mdi-shield-lock-outline"></i>
-            <span>The tunnel is encrypted over SSH and closes automatically when you end the SSH session.</span>
+            </div>
           </div>
-          <div class="quick-mount-help-example">
-            <div style="font-size:0.7rem;color:#5a7499;margin-bottom:5px">Example command</div>
-            <code>{{ mountExampleCommand }}</code>
+          <div class="quick-mount-help-footer">
+            <button class="btn btn-sm" style="background:rgba(34,214,124,0.08);color:#22d67c;border:1px solid rgba(34,214,124,0.2)" @click="copyMountExample">
+              <i :class="`mdi mdi-${mountHelpCopied ? 'check' : 'content-copy'} me-1`"></i>{{ mountHelpCopied ? 'Copied' : 'Copy Example Command' }}
+            </button>
+            <button class="btn btn-sm btn-sc-primary" @click="showQuickMountHelp = false">Got it</button>
           </div>
         </div>
-        <div class="quick-mount-help-footer">
-          <button class="btn btn-sm" style="background:rgba(34,214,124,0.08);color:#22d67c;border:1px solid rgba(34,214,124,0.2)" @click="copyMountExample">
-            <i :class="`mdi mdi-${mountHelpCopied ? 'check' : 'content-copy'} me-1`"></i>{{ mountHelpCopied ? 'Copied' : 'Copy Example Command' }}
-          </button>
-          <button class="btn btn-sm btn-sc-primary" @click="showQuickMountHelp = false">
-            Got it
-          </button>
-        </div>
-      </div>
       </div>
     </Teleport>
 
@@ -369,9 +602,9 @@
           <div class="pwa-install-body">
             <p>Safari does not support the native install prompt. Use the Share button and choose <strong>Add to Home Screen</strong>.</p>
             <ol>
-              <li>Tap the <span style="font-weight:700">Share</span> button in Safari.</li>
-              <li>Scroll and select <span style="font-weight:700">Add to Home Screen</span>.</li>
-              <li>Tap <span style="font-weight:700">Add</span> to install SentinelCore.</li>
+              <li>Tap the <strong>Share</strong> button in Safari.</li>
+              <li>Scroll and select <strong>Add to Home Screen</strong>.</li>
+              <li>Tap <strong>Add</strong> to install SentinelCore.</li>
             </ol>
             <p class="text-muted">Once installed, the app launches as a standalone experience with offline support.</p>
           </div>
@@ -387,29 +620,72 @@
 <script>
 import api from '@/services/api'
 import { pwaState, promptInstall, reloadApp } from '@/plugins/pwa'
+import Popover from '@/components/ui/popover.vue'
+import AppButton from '@/components/ui/app-button.vue'
+import EmptyState from '@/components/ui/empty-state.vue'
+import KbdHint from '@/components/ui/kbd-hint.vue'
+import StatusDot from '@/components/ui/status-dot.vue'
+import UserAvatar from '@/components/ui/user-avatar.vue'
+import SegmentedControl from '@/components/settings/fields/segmented-control.vue'
+import { navigationSearchEntries, settingsCommandEntries } from '@/components/menu'
+import { formatAlertMeta, groupAlerts, summarizeAlert } from '@/utils/formatters'
+import { getUserPresence, setUserPresence } from '@/utils/user-presence'
+
+const SERVERS_KEY = 'sidebar:servers'
+const SERVER_META_KEY = 'topbar:server-meta'
+const WHATS_NEW_KEY = 'topbar:whats-new-seen'
+const ALERT_MUTES_KEY = 'topbar:muted-rules'
+const ALERT_SNOOZE_KEY = 'topbar:snoozed-rules'
+const AUTH_CHANNEL = 'sentinel-auth'
+
+function safeParse(value, fallback) {
+  try {
+    return JSON.parse(value ?? '')
+  } catch {
+    return fallback
+  }
+}
+
+function uniqueBy(items, keyFn) {
+  const seen = new Set()
+  return items.filter(item => {
+    const key = keyFn(item)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function mergeAlerts(nextAlerts, currentAlerts) {
+  const map = new Map(currentAlerts.map(alert => [alert.id, alert]))
+  nextAlerts.forEach(alert => {
+    map.set(alert.id, { ...map.get(alert.id), ...alert })
+  })
+  return Array.from(map.values()).sort((left, right) => (right.ts || 0) - (left.ts || 0))
+}
+
+function alertRuleKey(alert) {
+  return [alert.type || '', alert.source || '', summarizeAlert(alert)].join('::')
+}
 
 export default {
   name: 'Topbar',
+  components: {
+    Popover,
+    AppButton,
+    EmptyState,
+    KbdHint,
+    StatusDot,
+    UserAvatar,
+    SegmentedControl
+  },
   emits: ['toggle-sidebar'],
   data() {
     return {
+      openPopover: '',
       searchQuery: '',
       showSearchResults: false,
       searchActiveIndex: -1,
-      showNotifs: false,
-      showUserMenu: false,
-      showThemeMenu: false,
-      themeOptions: [
-        { value: 'system', label: 'System', icon: 'mdi mdi-monitor' },
-        { value: 'light', label: 'Light', icon: 'mdi mdi-weather-sunny' },
-        { value: 'dark', label: 'Dark', icon: 'mdi mdi-weather-night' }
-      ],
-      recentAlerts: [],
-      loadingAlerts: false,
-      abortController: null,
-      handleKeyboardShortcuts: null,
-      handleGlobalClick: null,
-      // Quick Mount
       showQuickMount: false,
       showQuickMountHelp: false,
       showPwaInstallModal: false,
@@ -426,45 +702,73 @@ export default {
       detectedSshUserSource: '',
       detectedSshPort: 22,
       detectedSshHost: '',
+      alerts: [],
+      queuedAlerts: [],
+      expandedAlertGroups: {},
+      loadingAlerts: false,
+      alertError: '',
+      alertTab: 'all',
+      alertScrollTop: 0,
+      alertViewportHeight: 360,
+      alertPollTimer: null,
+      bellPulseActive: false,
+      bellPulseTimer: null,
+      alertAnnouncement: '',
+      userMenuView: 'main',
+      serverSearch: '',
+      me: { username: '', role: '', email: '', client_ip: '', totp_enabled: false },
+      lastLoginEntry: null,
+      presence: { status: 'online', autoAwayMinutes: 15, avatarUrl: '' },
+      presenceAutoChanged: false,
+      lastActivityAt: Date.now(),
+      presenceInterval: null,
+      whatsNewSeen: JSON.parse(localStorage.getItem(WHATS_NEW_KEY) || 'false'),
+      knownServers: safeParse(localStorage.getItem(SERVERS_KEY), []),
+      serverMetaCache: safeParse(localStorage.getItem(SERVER_META_KEY), {}),
+      linkedAccounts: safeParse(localStorage.getItem('sc_linked_accounts'), []),
+      livePaused: false,
+      authChannel: null,
+      handleKeyboardShortcuts: null,
+      onActivity: null,
+      abortController: null
     }
   },
   computed: {
+    sidebarCollapsed() {
+      return this.$store.state.layout.sidebarCollapsed
+    },
+    sidebarDensity() {
+      return this.$store.state.layout.sidebarDensity
+    },
     wsConnected() {
       return this.$store.getters['metrics/wsConnected']
     },
-    sidebarCollapsed() {
-      return this.$store.state.layout.sidebarCollapsed
+    metricsSnap() {
+      return this.$store.getters['metrics/snap'] || {}
     },
     currentThemePref() {
       return this.$store.state.layout.theme
     },
-    themeIcon() {
-      const t = this.currentThemePref
-      if (t === 'light') return 'mdi-weather-sunny'
-      if (t === 'dark') return 'mdi-weather-night'
-      return 'mdi-monitor'
+    currentUser() {
+      return this.$store.getters['auth/user'] || safeParse(sessionStorage.getItem('sc_user'), {})
     },
-    currentPage() {
-      const names = {
-        '/dashboard': 'Dashboard', '/security': 'Security Center',
-        '/firewall': 'Firewall', '/monitoring': 'Monitoring',
-        '/containers': 'Containers', '/logs': 'Logs',
-        '/tasks': 'Tasks', '/alerts': 'Alerts',
-        '/users': 'Users', '/settings': 'Settings',
-        '/terminal': 'Terminal', '/audit-logs': 'Audit Logs',
-        '/security-tools': 'Security Tools',
-        '/updates': 'Updates'
-      }
-      return names[this.$route.path] || 'SentinelCore'
+    loginAt() {
+      return Number(this.currentUser?.loginAt || 0)
     },
-    username() {
-      try { return JSON.parse(sessionStorage.getItem('sc_user') || '{}').username || 'admin' } catch (e) { console.error('Failed to parse user from sessionStorage:', e); return 'admin' }
+    currentUsername() {
+      return this.me.username || this.currentUser?.username || 'admin'
+    },
+    displayName() {
+      return this.currentUsername
     },
     userRole() {
-      try { return JSON.parse(sessionStorage.getItem('sc_user') || '{}').role || '' } catch (e) { console.error('Failed to parse role from sessionStorage:', e); return '' }
+      return String(this.me.role || this.currentUser?.role || 'operator').toLowerCase()
     },
-    userInitials() {
-      return this.username.slice(0, 2).toUpperCase()
+    avatarUrl() {
+      return this.presence.avatarUrl || ''
+    },
+    currentPage() {
+      return this.$route.meta?.title || 'SentinelCore'
     },
     lockPinSet() {
       return this.$store.getters['lock/lockPinSet']
@@ -478,11 +782,14 @@ export default {
     updateAvailable() {
       return pwaState.updateAvailable
     },
-    unreadCount() {
-      return this.recentAlerts.filter(a => !a.read).length
-    },
     serverHost() {
       return window.location.hostname
+    },
+    currentOrigin() {
+      return window.location.origin
+    },
+    currentServerLabel() {
+      return this.metricsSnap.hostname || this.serverHost
     },
     mountCategories() {
       return [...new Set(this.tunnelApps.map(a => a.category))]
@@ -494,64 +801,707 @@ export default {
       return this.mountSshHost || this.detectedSshHost || this.serverHost
     },
     effectiveSshPort() {
-      const p = Number.parseInt(this.mountSshPort, 10)
-      if (!Number.isNaN(p) && p > 0 && p <= 65535) return p
-      return this.detectedSshPort || 22
+      const port = Number.parseInt(this.mountSshPort, 10)
+      return !Number.isNaN(port) && port > 0 && port <= 65535 ? port : (this.detectedSshPort || 22)
     },
     mountExampleCommand() {
-      const host = this.effectiveSshHost
-      const user = this.effectiveSshUser
-      const port = String(this.effectiveSshPort)
-      const portFlag = port !== '22' ? ` -p ${port}` : ''
-      return `ssh -L 9090:localhost:9090${portFlag} ${user}@${host}`
+      const portFlag = String(this.effectiveSshPort) !== '22' ? ` -p ${this.effectiveSshPort}` : ''
+      return `ssh -L 9090:localhost:9090${portFlag} ${this.effectiveSshUser}@${this.effectiveSshHost}`
     },
     searchResults() {
-      if (!this.searchQuery || this.searchQuery.trim() === '') return []
-      const query = this.searchQuery.toLowerCase()
-      const results = []
-      
-      // Define searchable pages with icons
-      const pages = [
-        { path: '/dashboard', label: 'Dashboard', icon: 'mdi mdi-view-dashboard' },
-        { path: '/security', label: 'Security Center', icon: 'mdi mdi-shield' },
-        { path: '/firewall', label: 'Firewall', icon: 'mdi mdi-firewall' },
-        { path: '/monitoring', label: 'Monitoring', icon: 'mdi mdi-chart-line' },
-        { path: '/containers', label: 'Containers', icon: 'mdi mdi-box' },
-        { path: '/logs', label: 'Logs', icon: 'mdi mdi-file-document' },
-        { path: '/tasks', label: 'Tasks', icon: 'mdi mdi-clock-outline' },
-        { path: '/alerts', label: 'Alerts', icon: 'mdi mdi-bell' },
-        { path: '/users', label: 'Users', icon: 'mdi mdi-account-group' },
-        { path: '/settings', label: 'Settings', icon: 'mdi mdi-cog' },
-        { path: '/terminal', label: 'Terminal', icon: 'mdi mdi-terminal' },
-        { path: '/audit-logs', label: 'Audit Logs', icon: 'mdi mdi-history' },
-        { path: '/updates', label: 'Updates', icon: 'mdi mdi-download' },
-        { path: '/security-tools', label: 'Security Tools', icon: 'mdi mdi-shield-search' },
-        { path: '/services', label: 'Services', icon: 'mdi mdi-server' }
+      const query = this.searchQuery.trim().toLowerCase()
+      if (!query) return []
+      const entries = [
+        ...navigationSearchEntries(),
+        ...settingsCommandEntries.map(entry => ({
+          label: entry.label,
+          route: entry.route,
+          icon: 'mdi mdi-cog-outline',
+          group: entry.group,
+          keywords: entry.keywords
+        }))
       ]
-      
-      // Filter pages by query
-      for (const page of pages) {
-        if (page.label.toLowerCase().includes(query) || page.path.toLowerCase().includes(query)) {
-          results.push({ ...page, path: page.path })
-        }
+      return uniqueBy(
+        entries.filter(entry => {
+          const haystack = `${entry.label} ${entry.route} ${entry.group} ${(entry.keywords || []).join(' ')}`.toLowerCase()
+          return haystack.includes(query)
+        }),
+        entry => `${entry.group}:${entry.route}`
+      ).slice(0, 8)
+    },
+    liveLabel() {
+      if (this.livePaused) return 'Paused'
+      return this.wsConnected ? 'Live' : 'Offline'
+    },
+    liveTooltip() {
+      const lastTick = this.metricsSnap.ts ? this.timeAgo(this.metricsSnap.ts) : 'No data yet'
+      if (this.livePaused) return `Live updates paused. Last tick ${lastTick}. Click to resume.`
+      return `${this.wsConnected ? 'Connected' : 'Disconnected'} · Last tick ${lastTick}. Click to ${this.livePaused ? 'resume' : 'pause'}.`
+    },
+    unreadCount() {
+      return this.visibleAlerts.filter(alert => !alert.read).length
+    },
+    badgeCountLabel() {
+      return this.unreadCount >= 10 ? '9+' : String(this.unreadCount)
+    },
+    alertBadgeTone() {
+      const unread = this.visibleAlerts.filter(alert => !alert.read)
+      if (unread.some(alert => ['emergency', 'critical'].includes(alert.severity))) return 'critical'
+      if (unread.some(alert => alert.severity === 'warning')) return 'warn'
+      return 'neutral'
+    },
+    visibleAlerts() {
+      return this.alerts.filter(alert => !this.isRuleSuppressed(alert))
+    },
+    alertTabs() {
+      const counts = {
+        all: this.visibleAlerts.length,
+        unread: this.visibleAlerts.filter(alert => !alert.read).length,
+        critical: this.visibleAlerts.filter(alert => ['emergency', 'critical'].includes(alert.severity)).length,
+        warning: this.visibleAlerts.filter(alert => alert.severity === 'warning').length
       }
-      
-      return results.slice(0, 8)
+      return [
+        { id: 'all', label: 'All', count: counts.all },
+        { id: 'unread', label: 'Unread', count: counts.unread },
+        { id: 'critical', label: 'Critical', count: counts.critical },
+        { id: 'warning', label: 'Warning', count: counts.warning }
+      ]
+    },
+    groupedAlertGroups() {
+      return groupAlerts(this.visibleAlerts)
+    },
+    alertVisibleGroups() {
+      return this.groupedAlertGroups.filter(group => {
+        if (this.alertTab === 'unread') return !group.read
+        if (this.alertTab === 'critical') return ['emergency', 'critical'].includes(group.base.severity)
+        if (this.alertTab === 'warning') return group.base.severity === 'warning'
+        return true
+      })
+    },
+    shouldVirtualizeAlerts() {
+      return !Object.keys(this.expandedAlertGroups).some(key => this.expandedAlertGroups[key]) && this.alertVisibleGroups.length > 40
+    },
+    virtualItemHeight() {
+      return 94
+    },
+    virtualRange() {
+      if (!this.shouldVirtualizeAlerts) {
+        return { start: 0, end: this.alertVisibleGroups.length }
+      }
+      const visibleCount = Math.ceil(this.alertViewportHeight / this.virtualItemHeight) + 6
+      const start = Math.max(0, Math.floor(this.alertScrollTop / this.virtualItemHeight) - 3)
+      return {
+        start,
+        end: Math.min(this.alertVisibleGroups.length, start + visibleCount)
+      }
+    },
+    visibleAlertGroups() {
+      return this.shouldVirtualizeAlerts
+        ? this.alertVisibleGroups.slice(this.virtualRange.start, this.virtualRange.end)
+        : this.alertVisibleGroups
+    },
+    virtualAlertWrapperStyle() {
+      if (!this.shouldVirtualizeAlerts) return {}
+      const top = this.virtualRange.start * this.virtualItemHeight
+      const bottom = Math.max(0, (this.alertVisibleGroups.length - this.virtualRange.end) * this.virtualItemHeight)
+      return {
+        paddingTop: `${top}px`,
+        paddingBottom: `${bottom}px`
+      }
+    },
+    userMenuTitle() {
+      return this.userMenuView === 'servers' ? 'Switch server' : 'Account'
+    },
+    lastLoginLabel() {
+      if (this.lastLoginEntry) {
+        return `Last login ${this.timeAgo(this.lastLoginEntry.ts)} from ${this.lastLoginEntry.ip || this.me.client_ip || 'unknown IP'}`
+      }
+      if (this.loginAt) {
+        return `Signed in ${this.timeAgo(Math.floor(this.loginAt / 1000))} from ${this.me.client_ip || 'unknown IP'}`
+      }
+      return 'Last login not available yet'
+    },
+    themeSegmentOptions() {
+      return [
+        { label: 'System', value: 'system' },
+        { label: 'Light', value: 'light' },
+        { label: 'Dark', value: 'dark' }
+      ]
+    },
+    densitySegmentOptions() {
+      return [
+        { label: 'Cozy', value: 'comfortable' },
+        { label: 'Compact', value: 'compact' }
+      ]
+    },
+    presenceSegmentOptions() {
+      return [
+        { label: 'Online', value: 'online' },
+        { label: 'Away', value: 'away' },
+        { label: 'DND', value: 'dnd' }
+      ]
+    },
+    filteredServerEntries() {
+      const query = this.serverSearch.trim().toLowerCase()
+      return this.serverEntries.filter(server => {
+        if (!query) return true
+        return `${server.name} ${server.url}`.toLowerCase().includes(query)
+      })
+    },
+    serverEntries() {
+      const baseEntries = this.knownServers.length
+        ? this.knownServers
+        : [{ id: 'current', name: this.currentServerLabel, url: this.currentOrigin }]
+      return uniqueBy(baseEntries, entry => entry.url).map(server => {
+        const meta = this.serverMetaCache[server.url] || {}
+        const isCurrent = server.url === this.currentOrigin
+        const metrics = isCurrent
+          ? {
+              cpu: `${Number(this.metricsSnap.cpu_pct || 0).toFixed(0)}%`,
+              ram: `${Number(this.metricsSnap.ram_pct || 0).toFixed(0)}%`
+            }
+          : {
+              cpu: meta.cpu || '—',
+              ram: meta.ram || '—'
+            }
+        const healthState = isCurrent ? (meta.healthState || (this.wsConnected ? 'online' : 'offline')) : (meta.healthState || 'offline')
+        return {
+          ...server,
+          metrics,
+          healthLabel: meta.healthLabel || (isCurrent ? (this.wsConnected ? 'Current' : 'Offline') : 'Cached'),
+          statusDot: healthState
+        }
+      })
+    }
+  },
+  watch: {
+    '$route.fullPath'() {
+      this.openPopover = ''
+      this.showQuickMount = false
+      this.showSearchResults = false
+      this.userMenuView = 'main'
+    },
+    currentUsername: {
+      immediate: true,
+      handler(username) {
+        this.presence = getUserPresence(username)
+      }
+    },
+    metricsSnap: {
+      deep: true,
+      handler() {
+        this.persistCurrentServerMeta()
+      }
+    },
+    unreadCount(value, oldValue) {
+      if (value !== oldValue) {
+        this.alertAnnouncement = `${value} unread alerts`
+      }
+    }
+  },
+  mounted() {
+    this.seedKnownServers()
+    this.abortController = new AbortController()
+    this.loadMountClientIp()
+    this.loadProfileContext()
+    this.syncAlerts(true)
+    this.scheduleAlertPolling()
+    this.handleKeyboardShortcuts = event => this.onGlobalKeydown(event)
+    document.addEventListener('keydown', this.handleKeyboardShortcuts)
+    document.addEventListener('pointerdown', this.onGlobalPointerDown, true)
+    this.registerPresenceActivity()
+    this.presenceInterval = window.setInterval(this.checkAutoAway, 60000)
+    if (window.BroadcastChannel) {
+      this.authChannel = new window.BroadcastChannel(AUTH_CHANNEL)
+      this.authChannel.addEventListener('message', this.onAuthChannelMessage)
+    }
+  },
+  beforeUnmount() {
+    this.abortController?.abort()
+    document.removeEventListener('keydown', this.handleKeyboardShortcuts)
+    document.removeEventListener('pointerdown', this.onGlobalPointerDown, true)
+    window.clearInterval(this.alertPollTimer)
+    window.clearInterval(this.presenceInterval)
+    window.removeEventListener('mousemove', this.onActivity, true)
+    window.removeEventListener('mousedown', this.onActivity, true)
+    window.removeEventListener('touchstart', this.onActivity, true)
+    window.removeEventListener('keydown', this.onActivity, true)
+    if (this.authChannel) {
+      this.authChannel.removeEventListener('message', this.onAuthChannelMessage)
+      this.authChannel.close()
     }
   },
   methods: {
+    formatAlertMeta,
+    summarizeAlert,
+    noop() {},
     toggleCollapse() {
       this.$store.commit('layout/TOGGLE_COLLAPSED')
     },
-    setTheme(val) {
-      this.$store.commit('layout/SET_THEME', val)
-      this.showThemeMenu = false
+    setPopoverState(name, value) {
+      this.openPopover = value ? name : (this.openPopover === name ? '' : this.openPopover)
+      if (value) {
+        this.showQuickMount = false
+        if (name !== 'user') {
+          this.userMenuView = 'main'
+        }
+      }
+    },
+    onGlobalPointerDown(event) {
+      const target = event.target
+      if (!this.$el?.contains(target) && !target.closest('.sc-popover-panel')) {
+        this.showSearchResults = false
+      }
+    },
+    onGlobalKeydown(event) {
+      const isTypingTarget = ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName) || event.target?.isContentEditable
+      if (!isTypingTarget && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        window.dispatchEvent(new CustomEvent('sentinel:command-palette-open'))
+        return
+      }
+      if (!isTypingTarget && event.ctrlKey && event.key === '/') {
+        event.preventDefault()
+        this.focusSearch()
+        return
+      }
+      if (!isTypingTarget && (event.key === ' ' || (event.ctrlKey && event.key.toLowerCase() === 'l')) && this.lockPinSet) {
+        event.preventDefault()
+        this.lockScreen()
+        return
+      }
+      if (event.key === 'Escape') {
+        this.openPopover = ''
+        this.showQuickMount = false
+        this.showSearchResults = false
+        if (this.showQuickMountHelp) {
+          this.showQuickMountHelp = false
+        }
+      }
+    },
+    focusSearch() {
+      this.showSearchResults = true
+      this.$nextTick(() => this.$el?.querySelector('.search-input')?.focus())
+    },
+    navigateSearch(direction) {
+      if (!this.searchResults.length) return
+      const next = this.searchActiveIndex + direction
+      if (next < 0) {
+        this.searchActiveIndex = this.searchResults.length - 1
+      } else if (next >= this.searchResults.length) {
+        this.searchActiveIndex = 0
+      } else {
+        this.searchActiveIndex = next
+      }
+    },
+    selectSearchResult() {
+      const item = this.searchResults[this.searchActiveIndex]
+      if (item) {
+        this.navigateToSearchResult(item)
+      }
+    },
+    navigateToSearchResult(result) {
+      this.$router.push(result.route)
+      this.searchQuery = ''
+      this.showSearchResults = false
+      this.searchActiveIndex = -1
+    },
+    toggleLiveState() {
+      this.livePaused = !this.livePaused
+      if (this.livePaused) {
+        this.$store.dispatch('metrics/stopLive')
+      } else {
+        this.$store.dispatch('metrics/startLive')
+      }
+    },
+    applyTheme(value) {
+      this.$store.commit('layout/SET_THEME', value)
+    },
+    applyDensity(value) {
+      this.$store.commit('layout/SET_SIDEBAR_DENSITY', value)
+    },
+    applyPresence(value) {
+      this.presence.status = value
+      this.presenceAutoChanged = false
+      this.savePresenceState()
+    },
+    savePresenceState() {
+      this.presence = setUserPresence(this.currentUsername, this.presence)
+    },
+    registerPresenceActivity() {
+      this.onActivity = () => {
+        this.lastActivityAt = Date.now()
+        if (this.presenceAutoChanged && this.presence.status === 'away') {
+          this.presence.status = 'online'
+          this.presenceAutoChanged = false
+          this.savePresenceState()
+        }
+      }
+      ;['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach(type => {
+        window.addEventListener(type, this.onActivity, true)
+      })
+    },
+    checkAutoAway() {
+      if (this.presence.status !== 'online' || this.presenceAutoChanged) return
+      const minutes = Number(this.presence.autoAwayMinutes || 15)
+      if (!minutes || minutes < 1) return
+      if (Date.now() - this.lastActivityAt >= minutes * 60 * 1000) {
+        this.presence.status = 'away'
+        this.presenceAutoChanged = true
+        this.savePresenceState()
+      }
+    },
+    async loadProfileContext() {
+      try {
+        const [{ data: me }, { data: logs }] = await Promise.all([
+          api.getMe(),
+          api.getAuditLogs({ limit: 200 })
+        ])
+        this.me = me || this.me
+        const lastLogin = (Array.isArray(logs) ? logs : (logs.logs || []))
+          .filter(log => log.username === (me.username || this.currentUsername) && log.success)
+          .sort((left, right) => (right.ts || 0) - (left.ts || 0))[0]
+        this.lastLoginEntry = lastLogin || null
+      } catch (error) {
+        if (error.response?.status !== 401) {
+          console.error('Failed to load profile context:', error)
+        }
+      }
+    },
+    handleUserMenuOpened() {
+      this.userMenuView = 'main'
+      this.persistCurrentServerMeta(true)
+      if (!this.me.username) {
+        this.loadProfileContext()
+      }
+    },
+    goToAccount() {
+      this.openPopover = ''
+      this.$router.push('/settings/general')
+    },
+    goToSettings(section) {
+      this.openPopover = ''
+      this.$router.push(`/settings/${section}`)
+    },
+    openTokensInfo() {
+      this.$swal?.fire({
+        title: 'API tokens',
+        text: 'Per-user API token management is not exposed by the current agent yet.',
+        icon: 'info',
+        confirmButtonText: 'OK'
+      })
+    },
+    showShortcutHelp() {
+      this.$swal?.fire({
+        title: 'Keyboard shortcuts',
+        html: `
+          <div style="text-align:left;font-size:0.92rem;line-height:1.7">
+            <div><strong>⌘K / Ctrl+K</strong> open command palette</div>
+            <div><strong>⌘,</strong> open settings</div>
+            <div><strong>Space</strong> lock screen</div>
+            <div><strong>Ctrl+/</strong> focus topbar search</div>
+          </div>
+        `,
+        icon: 'info',
+        confirmButtonText: 'Close'
+      })
+    },
+    openWhatsNew() {
+      this.whatsNewSeen = true
+      localStorage.setItem(WHATS_NEW_KEY, 'true')
+      this.openPopover = ''
+      this.$router.push('/updates')
+    },
+    openDocs() {
+      window.open('https://github.com/ehsanR91/sentinel#readme', '_blank', 'noopener')
+    },
+    openAuditForCurrentUser() {
+      const query = {
+        user: this.currentUsername,
+        result: 'success'
+      }
+      if (this.lastLoginEntry?.ip) {
+        query.search = `ip:${this.lastLoginEntry.ip}`
+      }
+      this.openPopover = ''
+      this.$router.push({ path: '/audit-logs', query })
+    },
+    openAccountSwitcher() {
+      this.$swal?.fire({ title: 'Switch account', text: 'Linked account switching is not configured yet.', icon: 'info' })
+    },
+    severityTone(severity) {
+      if (severity === 'emergency' || severity === 'critical') return 'critical'
+      if (severity === 'warning') return 'warn'
+      return 'info'
+    },
+    severityIcon(severity) {
+      if (severity === 'emergency') return 'mdi mdi-alert-octagon-outline'
+      if (severity === 'critical') return 'mdi mdi-alert-circle-outline'
+      if (severity === 'warning') return 'mdi mdi-alert-outline'
+      return 'mdi mdi-information-outline'
+    },
+    alertSubtitle(group) {
+      const meta = formatAlertMeta(group.base)
+      const parts = [group.base.source || 'system', this.timeAgo(group.latestTs)]
+      parts.push(...meta)
+      return parts.filter(Boolean).join(' · ')
+    },
+    timeAgo(ts) {
+      if (!ts) return 'just now'
+      const diff = Math.max(0, Math.floor(Date.now() / 1000) - Number(ts))
+      if (diff < 60) return `${diff}s ago`
+      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+      if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+      return `${Math.floor(diff / 86400)}d ago`
+    },
+    handleAlertsOpened() {
+      this.$nextTick(() => {
+        this.alertViewportHeight = this.$refs.alertList?.clientHeight || 360
+      })
+      if (!this.alerts.length) {
+        this.syncAlerts(true)
+      }
+    },
+    scheduleAlertPolling() {
+      this.alertPollTimer = window.setInterval(() => this.syncAlerts(false), 30000)
+    },
+    isRuleSuppressed(alert) {
+      const rule = alertRuleKey(alert)
+      const muted = safeParse(localStorage.getItem(ALERT_MUTES_KEY), [])
+      const snoozed = safeParse(localStorage.getItem(ALERT_SNOOZE_KEY), {})
+      return muted.includes(rule) || Number(snoozed[rule] || 0) > Date.now()
+    },
+    async syncAlerts(forceOpenLoad = false) {
+      if (!this.$store.getters['auth/loggedIn']) return
+      this.loadingAlerts = forceOpenLoad
+      this.alertError = ''
+      try {
+        const { data } = await api.getAlerts()
+        const nextAlerts = Array.isArray(data) ? data.slice(0, 250) : []
+        const currentIds = new Set(this.alerts.map(alert => alert.id))
+        const newAlerts = nextAlerts.filter(alert => !currentIds.has(alert.id))
+        const merged = mergeAlerts(nextAlerts, this.alerts)
+        if (newAlerts.length && this.openPopover === 'alerts' && this.alertScrollTop > 24) {
+          this.queuedAlerts = mergeAlerts(newAlerts, this.queuedAlerts)
+        } else {
+          this.alerts = merged
+        }
+        if (newAlerts.some(alert => ['emergency', 'critical'].includes(alert.severity))) {
+          this.triggerBellPulse()
+          if (this.openPopover !== 'alerts') {
+            if (this.presence.status === 'dnd') {
+              this.$swal?.fire({ toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, icon: 'info', title: 'DND active — sound suppressed' })
+            } else {
+              this.$swal?.fire({ toast: true, position: 'top-end', timer: 3000, showConfirmButton: false, icon: 'warning', title: `${newAlerts.length} new critical alert${newAlerts.length > 1 ? 's' : ''}` })
+            }
+          }
+        }
+      } catch (error) {
+        if (error.response?.status !== 401) {
+          this.alertError = error.response?.data?.detail || error.message || 'Unable to load alerts.'
+        }
+      } finally {
+        this.loadingAlerts = false
+      }
+    },
+    triggerBellPulse() {
+      this.bellPulseActive = false
+      window.clearTimeout(this.bellPulseTimer)
+      this.$nextTick(() => {
+        this.bellPulseActive = true
+        this.bellPulseTimer = window.setTimeout(() => {
+          this.bellPulseActive = false
+        }, 1400)
+      })
+    },
+    onAlertListScroll() {
+      this.alertScrollTop = this.$refs.alertList?.scrollTop || 0
+      this.alertViewportHeight = this.$refs.alertList?.clientHeight || 360
+    },
+    applyQueuedAlerts() {
+      this.alerts = mergeAlerts(this.queuedAlerts, this.alerts)
+      this.queuedAlerts = []
+      this.$nextTick(() => {
+        if (this.$refs.alertList) {
+          this.$refs.alertList.scrollTop = 0
+          this.alertScrollTop = 0
+        }
+      })
+    },
+    toggleAlertGroup(groupId) {
+      this.expandedAlertGroups = {
+        ...this.expandedAlertGroups,
+        [groupId]: !this.expandedAlertGroups[groupId]
+      }
+    },
+    async markAllAsRead() {
+      const ids = this.visibleAlerts.filter(alert => !alert.read).map(alert => alert.id)
+      if (!ids.length) return
+      await api.markAlertsAsRead(ids)
+      this.alerts = this.alerts.map(alert => (ids.includes(alert.id) ? { ...alert, read: true } : alert))
+    },
+    async markGroupRead(group) {
+      const ids = group.items.filter(item => !item.read).map(item => item.id)
+      if (!ids.length) return
+      await api.markAlertsAsRead(ids)
+      this.alerts = this.alerts.map(alert => (ids.includes(alert.id) ? { ...alert, read: true } : alert))
+    },
+    async dismissGroup(group) {
+      await this.markGroupRead(group)
+    },
+    snoozeGroup(group, minutes) {
+      const key = alertRuleKey(group.base)
+      const store = safeParse(localStorage.getItem(ALERT_SNOOZE_KEY), {})
+      store[key] = Date.now() + (minutes * 60 * 1000)
+      localStorage.setItem(ALERT_SNOOZE_KEY, JSON.stringify(store))
+      this.alerts = this.alerts.slice()
+    },
+    muteRule(group) {
+      const key = alertRuleKey(group.base)
+      const store = safeParse(localStorage.getItem(ALERT_MUTES_KEY), [])
+      if (!store.includes(key)) {
+        localStorage.setItem(ALERT_MUTES_KEY, JSON.stringify([...store, key]))
+      }
+      this.alerts = this.alerts.slice()
+    },
+    async blockSourceIp(group) {
+      if (!group.base.ip) return
+      const result = await this.$swal?.fire({
+        title: `Block ${group.base.ip}?`,
+        text: 'A firewall block will be created for this IP.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Block IP'
+      })
+      if (result && !result.isConfirmed) return
+      await api.banIp(group.base.ip)
+      this.$swal?.fire({ toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, icon: 'success', title: `${group.base.ip} blocked` })
+    },
+    copyAlertJson(group) {
+      navigator.clipboard.writeText(JSON.stringify(group.items, null, 2)).catch(() => {})
+    },
+    async openAlertGroup(group) {
+      await this.markGroupRead(group)
+      this.openPopover = ''
+      this.$router.push('/alerts')
+    },
+    openAlertsPage() {
+      this.openPopover = ''
+      this.$router.push('/alerts')
+    },
+    async confirmSignOut() {
+      const hasUnsavedChanges = !!window.__sc_unsaved_changes__
+      const recentLogin = this.loginAt ? (Date.now() - this.loginAt) < (5 * 60 * 1000) : false
+      if (!hasUnsavedChanges && !recentLogin) {
+        await this.performLogout()
+        return
+      }
+
+      const result = await this.$swal?.fire({
+        title: 'Sign out?',
+        text: hasUnsavedChanges
+          ? 'You have unsaved changes in another view.'
+          : 'You signed in recently. Confirm to avoid accidental sign-out.',
+        icon: 'warning',
+        showCancelButton: true,
+        showDenyButton: hasUnsavedChanges && typeof window.__sc_save_dirty_view__ === 'function',
+        confirmButtonText: hasUnsavedChanges ? 'Discard & sign out' : 'Sign out',
+        denyButtonText: 'Save & sign out',
+        cancelButtonText: 'Cancel'
+      })
+      if (!result) return
+      if (result.isDenied && typeof window.__sc_save_dirty_view__ === 'function') {
+        await window.__sc_save_dirty_view__()
+        await this.performLogout()
+        return
+      }
+      if (result.isConfirmed) {
+        await this.performLogout()
+      }
+    },
+    async performLogout() {
+      try {
+        await api.logout()
+      } catch {
+        // Ignore transport failures during logout.
+      }
+      this.authChannel?.postMessage({ type: 'signout' })
+      this.$store.dispatch('auth/logout')
+      this.openPopover = ''
+      this.$router.push('/login')
+    },
+    onAuthChannelMessage(event) {
+      if (event.data?.type === 'signout') {
+        this.openPopover = ''
+        this.$store.dispatch('auth/logout')
+        this.$router.push('/login')
+      }
+    },
+    seedKnownServers() {
+      if (!this.knownServers.some(server => server.url === this.currentOrigin)) {
+        this.knownServers = [{ id: 'current', name: this.currentServerLabel, url: this.currentOrigin }, ...this.knownServers]
+        localStorage.setItem(SERVERS_KEY, JSON.stringify(uniqueBy(this.knownServers, entry => entry.url)))
+      }
+    },
+    persistCurrentServerMeta(forceHealth = false) {
+      const entry = {
+        ...this.serverMetaCache[this.currentOrigin],
+        cpu: `${Number(this.metricsSnap.cpu_pct || 0).toFixed(0)}%`,
+        ram: `${Number(this.metricsSnap.ram_pct || 0).toFixed(0)}%`,
+        healthLabel: this.wsConnected ? 'Current' : 'Offline',
+        healthState: this.wsConnected ? 'online' : 'offline'
+      }
+      this.serverMetaCache = {
+        ...this.serverMetaCache,
+        [this.currentOrigin]: entry
+      }
+      localStorage.setItem(SERVER_META_KEY, JSON.stringify(this.serverMetaCache))
+      if (forceHealth) {
+        api.getHealth().then(({ data }) => {
+          const overall = data?.overall_status || 'warning'
+          const statusMap = { healthy: 'online', warning: 'away', critical: 'dnd' }
+          this.serverMetaCache = {
+            ...this.serverMetaCache,
+            [this.currentOrigin]: {
+              ...entry,
+              healthLabel: overall,
+              healthState: statusMap[overall] || 'offline'
+            }
+          }
+          localStorage.setItem(SERVER_META_KEY, JSON.stringify(this.serverMetaCache))
+        }).catch(() => {})
+      }
+    },
+    promptAddServer() {
+      const name = window.prompt('Server label')
+      if (!name) return
+      const url = window.prompt('Server URL (for example https://sentinel.example.com)')
+      if (!url) return
+      try {
+        const normalized = new URL(url).origin
+        if (this.knownServers.some(server => server.url === normalized)) return
+        this.knownServers = [...this.knownServers, { id: `${Date.now()}`, name, url: normalized }]
+        localStorage.setItem(SERVERS_KEY, JSON.stringify(this.knownServers))
+      } catch {
+        window.alert('Enter a valid URL for the target SentinelCore instance.')
+      }
+    },
+    switchServer(server) {
+      if (!server?.url) return
+      if (server.url === this.currentOrigin) {
+        this.userMenuView = 'main'
+        return
+      }
+      try {
+        window.location.assign(`${server.url}${this.$route.fullPath}`)
+      } catch {
+        this.$swal?.fire({ toast: true, position: 'top-end', timer: 2500, showConfirmButton: false, icon: 'error', title: 'Server switch failed' })
+      }
     },
     lockScreen() {
-      this.showUserMenu = false
-      this.showThemeMenu = false
+      this.openPopover = ''
       if (!this.lockPinSet) {
-        this.$router.push('/settings?tab=lock')
+        this.$router.push('/settings/access-control')
         return
       }
       window.dispatchEvent(new CustomEvent('sentinel:lock'))
@@ -574,99 +1524,17 @@ export default {
         await reloadApp()
       }
     },
-    focusSearch() {
-      this.showSearchResults = true
-      this.$nextTick(() => {
-        const el = this.$el?.querySelector('.search-input')
-        el?.focus()
-      })
-    },
-    async toggleNotifs() {
-      this.showNotifs = !this.showNotifs
-      if (this.showNotifs && !this.recentAlerts.length) {
-        await this.loadAlerts()
-      }
-    },
-    async loadAlerts() {
-      if (!this.$store.getters['auth/loggedIn']) return
-      this.loadingAlerts = true
+    async loadMountClientIp() {
       try {
-        const api = (await import('@/services/api')).default
-        const { data } = await api.getAlerts({ signal: this.abortController?.signal })
-        this.recentAlerts = (Array.isArray(data) ? data : []).slice(0, 5)
-      } catch (err) {
-        if (err.name !== 'AbortError' && err.response?.status !== 401) {
-          console.error('Failed to load alerts:', err)
-        }
-      } finally {
-        this.loadingAlerts = false
-      }
-    },
-    formatAlertMessage(message) {
-      if (!message || typeof message !== 'string') return message
-      return message
-        .replace(/^\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\s*/, '')
-        .trimStart()
-    },
-    severityIcon(s) {
-      if (s === 'critical') return 'mdi mdi-shield-alert'
-      if (s === 'warning') return 'mdi mdi-alert-circle-outline'
-      return 'mdi mdi-information-outline'
-    },
-    severityColor(s) {
-      if (s === 'critical') return '#f04040'
-      if (s === 'warning') return '#f5a623'
-      return '#4a9eff'
-    },
-    timeAgo(ts) {
-      const diff = Math.floor(Date.now() / 1000) - ts
-      if (diff < 60) return `${diff}s ago`
-      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-      if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-      return `${Math.floor(diff / 86400)}d ago`
-    },
-    logout() {
-      sessionStorage.removeItem('sc_user')
-      sessionStorage.removeItem('sc_token')
-      this.$router.push('/login')
-    },
-    navigateSearch(direction) {
-      if (this.searchResults.length === 0) return
-      this.searchActiveIndex += direction
-      if (this.searchActiveIndex < 0) this.searchActiveIndex = this.searchResults.length - 1
-      if (this.searchActiveIndex >= this.searchResults.length) this.searchActiveIndex = 0
-    },
-    selectSearchResult() {
-      if (this.searchActiveIndex >= 0 && this.searchResults[this.searchActiveIndex]) {
-        this.navigateToSearchResult(this.searchResults[this.searchActiveIndex])
-      }
-    },
-    navigateToSearchResult(result) {
-      this.$router.push(result.path)
-      this.searchQuery = ''
-      this.showSearchResults = false
-      this.searchActiveIndex = -1
-    },
-    async markAllAsRead() {
-      try {
-        await api.markAlertsAsRead(this.recentAlerts.map(a => a.id))
-        this.recentAlerts = this.recentAlerts.map(a => ({ ...a, read: true }))
-      } catch (err) {
-        console.error('Failed to mark alerts as read:', err)
-      }
-    },
-    async markAlertAsRead(id) {
-      try {
-        await api.markAlertAsRead(id)
-        this.recentAlerts = this.recentAlerts.map(a =>
-          a.id === id ? { ...a, read: true } : a
-        )
-      } catch (err) {
-        console.error('Failed to mark alert as read:', err)
+        const { data } = await api.getMe()
+        this.mountClientIp = data?.client_ip || ''
+      } catch {
+        this.mountClientIp = ''
       }
     },
     async toggleQuickMount() {
       this.showQuickMount = !this.showQuickMount
+      this.openPopover = ''
       if (this.showQuickMount && !this.tunnelApps.length) {
         await this.refreshTunnelApps()
       }
@@ -677,15 +1545,7 @@ export default {
     copyMountExample() {
       navigator.clipboard.writeText(this.mountExampleCommand).catch(() => {})
       this.mountHelpCopied = true
-      setTimeout(() => { this.mountHelpCopied = false }, 1800)
-    },
-    async loadMountClientIp() {
-      try {
-        const { data } = await api.getMe()
-        this.mountClientIp = data?.client_ip || ''
-      } catch (_) {
-        this.mountClientIp = ''
-      }
+      window.setTimeout(() => { this.mountHelpCopied = false }, 1800)
     },
     async refreshTunnelApps() {
       this.loadingTunnels = true
@@ -700,174 +1560,221 @@ export default {
         this.detectedSshPort = Number.parseInt(data?.connection?.ssh_port, 10) || this.detectedSshPort || 22
         this.detectedSshUser = data?.connection?.ssh_user || this.detectedSshUser
         this.detectedSshUserSource = data?.connection?.ssh_user_source || this.detectedSshUserSource
-      } catch (_) {
+      } catch {
         this.tunnelApps = []
       } finally {
         this.loadingTunnels = false
       }
     },
     copyMount(app) {
-      const host = this.effectiveSshHost
-      const user = this.effectiveSshUser
-      const port = String(this.effectiveSshPort)
-      const portFlag = port !== '22' ? ` -p ${port}` : ''
-      const cmd = `ssh -L ${app.port}:localhost:${app.port}${portFlag} ${user}@${host}`
-      navigator.clipboard.writeText(cmd).catch(() => {})
+      const portFlag = String(this.effectiveSshPort) !== '22' ? ` -p ${this.effectiveSshPort}` : ''
+      const command = `ssh -L ${app.port}:localhost:${app.port}${portFlag} ${this.effectiveSshUser}@${this.effectiveSshHost}`
+      navigator.clipboard.writeText(command).catch(() => {})
       const key = app.name + app.port
       this.mountCopied = key
-      setTimeout(() => { if (this.mountCopied === key) this.mountCopied = '' }, 2000)
+      window.setTimeout(() => { if (this.mountCopied === key) this.mountCopied = '' }, 2000)
     },
     async grantAccess(app) {
       const ip = this.mountClientIp || 'your current IP'
       let durationHours = 3
-
       if (this.$swal) {
-        const durationSelect = `
-          <div style="margin-top:10px;text-align:left">
-            <p style="margin-bottom:6px;color:#c9d8f0;font-size:0.87rem">
-              Allow <strong>${app.name}</strong> (port ${app.port}) to be accessed directly from <strong>${ip}</strong>.
-            </p>
-            <label style="font-size:0.8rem;color:#8fa8c8;display:block;margin-bottom:4px">Duration:</label>
-            <select id="sc-grant-duration" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid rgba(100,140,200,0.3);background:#0e1c30;color:#c9d8f0;font-size:0.85rem">
-              <option value="1">1 hour</option>
-              <option value="3" selected>3 hours</option>
-              <option value="6">6 hours</option>
-              <option value="12">12 hours</option>
-              <option value="24">24 hours</option>
-            </select>
-          </div>`
-        const res = await this.$swal({
-          title: 'Grant Temporary Access?',
-          html: durationSelect,
+        const response = await this.$swal.fire({
+          title: 'Grant temporary access?',
+          html: `
+            <div style="margin-top:10px;text-align:left">
+              <p style="margin-bottom:6px;color:#c9d8f0;font-size:0.87rem">Allow <strong>${app.name}</strong> (port ${app.port}) to be accessed directly from <strong>${ip}</strong>.</p>
+              <label style="font-size:0.8rem;color:#8fa8c8;display:block;margin-bottom:4px">Duration</label>
+              <select id="sc-grant-duration" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid rgba(100,140,200,0.3);background:#0e1c30;color:#c9d8f0;font-size:0.85rem">
+                <option value="1">1 hour</option>
+                <option value="3" selected>3 hours</option>
+                <option value="6">6 hours</option>
+                <option value="12">12 hours</option>
+                <option value="24">24 hours</option>
+              </select>
+            </div>
+          `,
           icon: 'warning',
           showCancelButton: true,
-          confirmButtonText: 'Grant Access',
-          cancelButtonText: 'Cancel',
-          confirmButtonColor: '#f5a623',
-          preConfirm: () => parseInt(document.getElementById('sc-grant-duration')?.value) || 3,
+          confirmButtonText: 'Grant access',
+          preConfirm: () => parseInt(document.getElementById('sc-grant-duration')?.value) || 3
         })
-        if (!res.isConfirmed) return
-        durationHours = res.value
-      } else {
-        const text = `Allow browser access to ${app.name} on port ${app.port} for IP ${ip}?`
-        if (!window.confirm(text)) return
+        if (!response.isConfirmed) return
+        durationHours = response.value
+      } else if (!window.confirm(`Allow browser access to ${app.name} on port ${app.port} for IP ${ip}?`)) {
+        return
       }
 
       this.grantingPort = app.port
       try {
         const { data } = await api.grantTunnelAccess(app.port, durationHours)
         const grantedIp = data?.ip || this.mountClientIp || 'your IP'
-        const dh = data?.duration_hours || durationHours
-        const expiresAt = data?.expires_at ? new Date(data.expires_at * 1000).toLocaleString() : `in ${dh}h`
-        const browseHost = this.effectiveSshHost
-        const browseUrl = `http://${browseHost}:${app.port}`
-        const isProxy = data?.mode === 'nat' || data?.mode === 'proxy'
-        const modeNote = isProxy
-          ? `<p style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(34,214,124,0.08);color:#22d67c;font-size:0.78rem"><i class="mdi mdi-router-network me-1"></i>Proxy mode: SentinelCore is forwarding ${browseHost}:${app.port} → 127.0.0.1:${app.port}</p>`
-          : `<p style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(74,158,255,0.08);color:#4a9eff;font-size:0.78rem"><i class="mdi mdi-shield-check me-1"></i>UFW rule added for ${grantedIp}</p>`
-        if (this.$swal) {
-          await this.$swal({
-            title: 'Access Granted \u2713',
-            html: `<div style="text-align:left;font-size:0.87rem;color:#c9d8f0">
-              <p><strong>IP:</strong> ${grantedIp} &nbsp; <strong>Port:</strong> ${app.port} &nbsp; <strong>Duration:</strong> ${dh}h</p>
-              <p><strong>Expires:</strong> ${expiresAt}</p>
-              ${modeNote}
-              <p style="margin-top:10px">Open: <a href="${browseUrl}" target="_blank" style="color:#4a9eff">${browseUrl}</a></p>
-            </div>`,
-            icon: 'success',
-            confirmButtonText: 'OK'
-          })
-        } else {
-          window.alert(`Access granted for ${grantedIp} to port ${app.port} for ${dh}h. Expires: ${expiresAt}.\n\nOpen: ${browseUrl}`)
-        }
-      } catch (err) {
-        const msg = err?.response?.data?.error || err?.response?.data?.message || 'Failed to grant temporary access'
-        if (this.$swal) {
-          await this.$swal({ title: 'Grant Failed', text: msg, icon: 'error', confirmButtonText: 'OK' })
-        } else {
-          window.alert(msg)
-        }
+        const expiresAt = data?.expires_at ? new Date(data.expires_at * 1000).toLocaleString() : `in ${durationHours}h`
+        const browseUrl = `http://${this.effectiveSshHost}:${app.port}`
+        await this.$swal?.fire({
+          title: 'Access granted',
+          html: `<div style="text-align:left;font-size:0.87rem;color:#c9d8f0"><p><strong>IP:</strong> ${grantedIp} &nbsp; <strong>Port:</strong> ${app.port}</p><p><strong>Expires:</strong> ${expiresAt}</p><p style="margin-top:10px">Open: <a href="${browseUrl}" target="_blank" style="color:#4a9eff">${browseUrl}</a></p></div>`,
+          icon: 'success',
+          confirmButtonText: 'OK'
+        })
+      } catch (error) {
+        const message = error?.response?.data?.error || error?.response?.data?.message || 'Failed to grant temporary access'
+        await this.$swal?.fire({ title: 'Grant failed', text: message, icon: 'error', confirmButtonText: 'OK' })
       } finally {
         this.grantingPort = null
       }
-    },
-    closeAllDropdowns() {
-      this.showNotifs = false
-      this.showUserMenu = false
-      this.showThemeMenu = false
-      this.showQuickMount = false
-      this.showSearchResults = false
     }
-  },
-  mounted() {
-    this.abortController = new AbortController()
-    this.loadMountClientIp()
-
-    // Add global keyboard shortcuts
-    this.handleKeyboardShortcuts = (e) => {
-      // Only handle shortcuts when not typing in input fields
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true') {
-        return
-      }
-
-      // Lock screen: Space or Ctrl+L
-      if ((e.key === ' ' || (e.ctrlKey && e.key === 'l')) && this.lockPinSet) {
-        e.preventDefault()
-        this.lockScreen()
-        return
-      }
-
-      // Command palette: Ctrl/Cmd+K. Keep Ctrl+/ as the lightweight inline search.
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault()
-        window.dispatchEvent(new CustomEvent('sentinel:command-palette-open'))
-        return
-      }
-
-      if (e.ctrlKey && e.key === '/') {
-        e.preventDefault()
-        this.focusSearch()
-        return
-      }
-
-      // Close dropdowns: Escape
-      if (e.key === 'Escape') {
-        if (this.showQuickMountHelp) {
-          this.showQuickMountHelp = false
-          return
-        }
-        this.closeAllDropdowns()
-        return
-      }
-    }
-
-    document.addEventListener('keydown', this.handleKeyboardShortcuts)
-
-    // Close dropdowns when clicking outside
-    this.handleGlobalClick = (e) => {
-      const clickedElement = e.target
-      const isInsideDropdown = clickedElement.closest('.dropdown-menu')
-      const isInsideDropdownTrigger = clickedElement.closest('[data-dropdown-trigger]')
-
-      if (!isInsideDropdown && !isInsideDropdownTrigger) {
-        this.closeAllDropdowns()
-      }
-    }
-
-    document.addEventListener('click', this.handleGlobalClick, true)
-  },
-  beforeUnmount() {
-    if (this.abortController) {
-      this.abortController.abort()
-    }
-    document.removeEventListener('keydown', this.handleKeyboardShortcuts)
-    document.removeEventListener('click', this.handleGlobalClick, true)
   }
 }
 </script>
 
 <style scoped>
-/* Global Search Styles */
+.topbar-breadcrumb {
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.topbar-breadcrumb__prefix {
+  color: var(--text-tertiary);
+}
+
+.topbar-breadcrumb__current {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.topbar-system-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.topbar-live-pill {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.7rem;
+  border: 1px solid color-mix(in srgb, #22d67c 22%, var(--border-subtle));
+  border-radius: 999px;
+  background: color-mix(in srgb, #22d67c 10%, transparent);
+  color: var(--text-primary);
+}
+
+.topbar-live-pill.is-paused,
+.topbar-live-pill.is-offline {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+}
+
+.topbar-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  position: relative;
+}
+
+.topbar-btn:hover,
+.topbar-btn.is-active,
+.user-menu:hover,
+.user-menu.is-active {
+  background: var(--accent-muted);
+  color: var(--text-primary);
+}
+
+.topbar-btn--quick-mount {
+  background: rgba(34,214,124,0.06);
+  border: 1px solid rgba(34,214,124,0.18);
+  color: #22d67c;
+}
+
+.topbar-btn--bell i,
+.user-menu i {
+  font-size: 1.1rem;
+}
+
+.topbar-badge {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.topbar-badge--critical {
+  background: #f04040;
+}
+
+.topbar-badge--warn {
+  background: #f5a623;
+}
+
+.topbar-badge--neutral {
+  background: var(--text-tertiary);
+}
+
+.has-critical-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 14px;
+  border: 2px solid rgba(240, 64, 64, 0.35);
+  animation: bellPulse 1.2s ease-out 1;
+}
+
+.user-menu {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.2rem 0.45rem 0.2rem 0.2rem;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.user-name-wrap {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.user-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.user-role {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: lowercase;
+}
+
+.topbar-search {
+  margin-left: 0.35rem;
+}
+
 .search-input-wrapper {
   position: relative;
   display: flex;
@@ -877,225 +1784,456 @@ export default {
 .search-icon {
   position: absolute;
   left: 12px;
-  color: var(--sc-text-muted);
-  font-size: 0.9rem;
+  color: var(--text-tertiary);
   pointer-events: none;
-  z-index: 5;
 }
 
 .search-input {
-  width: 200px;
-  padding: 8px 12px 8px 36px;
-  border: 1px solid var(--sc-border);
-  border-radius: 6px;
-  background: var(--sc-bg-secondary);
-  color: var(--sc-text);
-  font-size: 0.85rem;
-  transition: width 0.3s ease, box-shadow 0.3s ease;
+  width: 212px;
+  min-height: 38px;
+  padding: 0.55rem 0.75rem 0.55rem 2.15rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
 .search-input:focus {
-  width: 260px;
+  width: 272px;
   outline: none;
-  border-color: var(--sc-blue);
-  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.15);
-}
-
-.search-input::placeholder {
-  color: var(--sc-text-muted);
 }
 
 .search-results-dropdown {
   position: absolute;
-  top: 54px;
+  top: 48px;
   right: 0;
-  width: min(320px, calc(100vw - 1rem));
+  width: min(340px, calc(100vw - 1rem));
   max-height: 400px;
   overflow-y: auto;
-  background: var(--sc-bg-card);
-  border: 1px solid var(--sc-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-  z-index: 1050;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+  z-index: 1100;
 }
 
 .search-results-header {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--sc-border);
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--sc-text-muted);
+  padding: 0.8rem 0.95rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.74rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
 }
 
 .search-result-item {
+  width: 100%;
   display: flex;
   align-items: center;
-  padding: 10px 14px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-  color: var(--sc-text);
-  font-size: 0.85rem;
+  gap: 0.7rem;
+  padding: 0.8rem 0.95rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--text-primary);
 }
 
 .search-result-item:hover,
 .search-result-item.active {
-  background: rgba(74, 158, 255, 0.1);
-}
-
-.search-result-item i {
-  width: 20px;
-  margin-right: 10px;
-  color: var(--sc-blue);
-  font-size: 1rem;
-}
-
-.search-result-item span:first-child {
-  flex: 1;
-  font-weight: 500;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .search-result-path {
+  margin-left: auto;
   font-size: 0.72rem;
-  color: var(--sc-text-muted);
-  opacity: 0.7;
+  color: var(--text-tertiary);
 }
 
-.search-no-results {
-  padding: 20px 14px;
-  text-align: center;
-  color: var(--sc-text-muted);
-  font-size: 0.85rem;
+.topbar-popover :deep(.sc-popover-body) {
+  padding-top: 0;
 }
 
-/* Alert Dropdown Styles */
-.alert-dropdown {
-  position: absolute;
-  top: 44px;
-  right: 0;
-  min-width: 280px;
-  max-width: min(320px, calc(100vw - 1rem));
-  max-height: 400px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  white-space: normal;
-  background: var(--sc-bg-card);
-  border: 1px solid var(--sc-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+.topbar-alerts {
+  display: grid;
+  gap: 0.9rem;
 }
 
-.pwa-install-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1400;
-  background: rgba(5, 10, 18, 0.82);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-}
-
-.pwa-install-modal {
-  width: min(520px, 100%);
-  background: var(--sc-bg-card);
-  border: 1px solid var(--sc-border);
-  border-radius: 18px;
-  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-}
-
-.pwa-install-header,
-.pwa-install-footer {
-  padding: 1rem 1.25rem;
+.topbar-alerts__meta,
+.topbar-alerts__footer,
+.user-popover__subheader {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.topbar-alerts__summary {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.topbar-alerts__summary strong,
+.user-popover__meta strong,
+.user-popover__item strong,
+.user-popover__setting-row strong,
+.user-popover__server-item strong {
+  color: var(--text-primary);
+}
+
+.topbar-alerts__summary span,
+.topbar-link-button,
+.topbar-link-button--small,
+.topbar-alert-row__subtitle,
+.user-popover__meta span,
+.user-popover__item p,
+.user-popover__setting-row p,
+.user-popover__server-item p,
+.user-popover__server-stats,
+.user-popover__select,
+.user-popover__section-label,
+.user-popover__last-login {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.topbar-link-button,
+.topbar-link-button--small,
+.user-popover__last-login {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.topbar-tabs {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding-bottom: 0.1rem;
+}
+
+.topbar-tab {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.topbar-tab.active {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border-subtle));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  color: var(--text-primary);
+}
+
+.topbar-new-pill {
+  min-height: 34px;
+  justify-self: start;
+  padding: 0 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border-subtle));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  color: var(--text-primary);
+}
+
+.topbar-alerts__list {
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 0.1rem;
+}
+
+.topbar-alerts__items {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.topbar-alert-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 0.8rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid transparent;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.topbar-alert-row:hover,
+.user-popover__item:hover,
+.user-popover__server-item:hover {
+  background: var(--surface-hover, color-mix(in srgb, var(--surface-2) 88%, transparent));
+}
+
+.topbar-alert-row.is-unread {
+  border-left-color: var(--accent);
+}
+
+.topbar-alert-row__icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+}
+
+.topbar-alert-row__icon.severity-critical {
+  color: #f04040;
+}
+
+.topbar-alert-row__icon.severity-warn {
+  color: #f5a623;
+}
+
+.topbar-alert-row__icon.severity-info {
+  color: var(--accent);
+}
+
+.topbar-alert-row__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.topbar-alert-row__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.topbar-alert-row__tags,
+.user-popover__server-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.topbar-tag,
+.topbar-count-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.topbar-unread-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.topbar-row-menu {
+  position: relative;
+}
+
+.topbar-row-menu summary {
+  list-style: none;
+}
+
+.topbar-row-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.topbar-row-menu__trigger {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.topbar-row-menu__body {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 4;
+  min-width: 170px;
+  padding: 0.35rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+
+.topbar-alert-expansion {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.topbar-alert-expansion__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--border-subtle);
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.topbar-state {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.user-popover {
+  display: grid;
   gap: 1rem;
 }
 
-.pwa-install-body {
-  padding: 0 1.25rem 1.25rem;
-  color: var(--sc-text-secondary);
-  line-height: 1.7;
+.user-popover__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--surface-2) 80%, transparent));
 }
 
-.pwa-install-body p,
-.pwa-install-body ol {
-  margin: 0 0 1rem;
+.user-popover__hero {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
 }
 
-.pwa-install-body ol {
-  padding-left: 1.25rem;
+.user-popover__meta {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
-.pwa-install-body li {
-  margin-bottom: 0.75rem;
+.user-popover__meta strong {
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.pwa-install-body .text-muted {
-  color: var(--sc-text-muted);
+.user-popover__section {
+  display: grid;
+  gap: 0.5rem;
 }
 
-.pwa-install-modal h5 {
-  margin: 0;
-  font-size: 1rem;
+.user-popover__section-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
 }
 
-.alert-dropdown {
+.user-popover__item,
+.user-popover__setting-row,
+.user-popover__server-item,
+.user-popover__signout,
+.user-popover__add-account {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid transparent;
+  border-radius: 14px;
+  background: var(--surface-2);
+  text-align: left;
+}
+
+.user-popover__item:focus-visible,
+.user-popover__server-item:focus-visible,
+.user-popover__signout:focus-visible,
+.user-popover__add-account:focus-visible {
+  border-left-color: var(--accent);
+}
+
+.user-popover__setting-row {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.user-popover__setting-row--stacked {
+  display: grid;
+}
+
+.user-popover__dot {
+  color: var(--accent);
+  font-size: 0.75rem;
+}
+
+.user-popover__signout {
+  margin-top: 0.2rem;
+  color: #f04040;
+  border-top: 1px solid color-mix(in srgb, #f04040 16%, transparent);
+  border-left-color: #f04040;
+}
+
+.user-popover__signout:hover {
+  background: color-mix(in srgb, #f04040 9%, transparent);
+}
+
+.user-popover__server-search {
+  position: relative;
+}
+
+.user-popover__server-search i {
   position: absolute;
-  top: 44px;
-  right: 0;
-  min-width: 280px;
-  max-width: min(320px, calc(100vw - 1rem));
-  max-height: 400px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  white-space: normal;
-  background: var(--sc-bg-card);
-  border: 1px solid var(--sc-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
 }
 
-.alert-item {
-  cursor: pointer;
-  transition: background 0.15s ease;
-  border-radius: 4px;
-  margin: 2px 4px;
-  word-break: break-word;
+.user-popover__server-search input,
+.user-popover__select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.6rem 0.8rem 0.6rem 2rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--surface-1);
+  color: var(--text-primary);
 }
 
-.alert-item:hover {
-  background: rgba(74, 158, 255, 0.08);
+.user-popover__select {
+  padding-left: 0.8rem;
 }
 
-.alert-item i.mdi-circle-small {
-  color: var(--sc-blue);
+.user-popover__server-list {
+  display: grid;
+  gap: 0.65rem;
 }
 
-/* Scrollbar styling for search results and alerts */
-.search-results-dropdown::-webkit-scrollbar,
-.alert-dropdown::-webkit-scrollbar {
-  width: 6px;
+.user-popover__server-head,
+.user-popover__server-health {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
-.search-results-dropdown::-webkit-scrollbar-track,
-.alert-dropdown::-webkit-scrollbar-track {
-  background: var(--sc-bg-secondary);
-  border-radius: 3px;
-}
-
-.search-results-dropdown::-webkit-scrollbar-thumb,
-.alert-dropdown::-webkit-scrollbar-thumb {
-  background: var(--sc-border);
-  border-radius: 3px;
-}
-
-.search-results-dropdown::-webkit-scrollbar-thumb:hover,
-.alert-dropdown::-webkit-scrollbar-thumb:hover {
-  background: var(--sc-text-muted);
+.user-popover__server-item.active {
+  border-left-color: var(--accent);
 }
 
 .quick-mount-panel {
@@ -1109,68 +2247,46 @@ export default {
   cursor: default;
   transition: background 0.12s;
 }
+
 .quick-mount-row:hover {
   background: rgba(74, 158, 255, 0.04);
 }
 
-.quick-mount-panel::-webkit-scrollbar {
-  width: 4px;
-}
-.quick-mount-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-.quick-mount-panel::-webkit-scrollbar-thumb {
-  background: var(--sc-border);
-  border-radius: 2px;
-}
-
-.quick-mount-help-backdrop {
+.quick-mount-help-backdrop,
+.pwa-install-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 1400;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(3, 8, 18, 0.62);
-  backdrop-filter: blur(2px);
+  padding: 1rem;
+  background: rgba(5, 10, 18, 0.74);
 }
 
-.quick-mount-help-modal {
-  width: min(560px, 92vw);
-  border: 1px solid var(--sc-border, #1e2d4a);
-  border-radius: 12px;
-  background: var(--sc-bg-card);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38);
+.quick-mount-help-modal,
+.pwa-install-modal {
+  width: min(560px, 100%);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px;
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
 }
 
-.quick-mount-help-header {
+.quick-mount-help-header,
+.pwa-install-header,
+.pwa-install-footer {
+  padding: 1rem 1.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--sc-border, #1e2d4a);
+  gap: 1rem;
 }
 
-.quick-mount-help-body {
-  padding: 12px 14px;
-}
-
-.quick-mount-help-steps {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--sc-text, #c9d8f0);
-  font-size: 0.79rem;
-}
-
-.quick-mount-help-steps li {
-  margin-bottom: 7px;
-}
-
-.quick-mount-help-steps code {
-  color: #4a9eff;
-  background: rgba(74, 158, 255, 0.08);
-  padding: 1px 5px;
-  border-radius: 4px;
+.quick-mount-help-body,
+.pwa-install-body {
+  padding: 0 1.25rem 1.25rem;
 }
 
 .quick-mount-help-note {
@@ -1186,10 +2302,12 @@ export default {
   padding: 8px 10px;
 }
 
-.quick-mount-help-note i {
-  color: #22d67c;
-  font-size: 0.95rem;
-  margin-top: 1px;
+.quick-mount-help-example {
+  margin-top: 10px;
+  border: 1px solid rgba(74, 158, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(74, 158, 255, 0.05);
+  padding: 8px 10px;
 }
 
 .quick-mount-help-footer {
@@ -1199,19 +2317,64 @@ export default {
   padding: 0 14px 12px;
 }
 
-.quick-mount-help-example {
-  margin-top: 10px;
-  border: 1px solid rgba(74, 158, 255, 0.18);
-  border-radius: 8px;
-  background: rgba(74, 158, 255, 0.05);
-  padding: 8px 10px;
+@keyframes bellPulse {
+  0% { opacity: 0.85; transform: scale(0.9); }
+  100% { opacity: 0; transform: scale(1.12); }
 }
 
-.quick-mount-help-example code {
-  display: block;
-  font-size: 0.72rem;
-  color: #4a9eff;
-  white-space: pre-wrap;
-  word-break: break-word;
+@media (max-width: 1024px) {
+  .user-name-wrap,
+  .user-menu .mdi-chevron-down {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .topbar-search {
+    display: none !important;
+  }
+
+  .topbar-right {
+    gap: 0.3rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-tabs {
+    padding-bottom: 0.35rem;
+  }
+
+  .topbar-alerts__list {
+    max-height: min(64vh, 520px);
+  }
+
+  .topbar-alert-row,
+  .user-popover__item,
+  .user-popover__setting-row,
+  .user-popover__server-item,
+  .user-popover__signout,
+  .user-popover__add-account {
+    padding: 1rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .topbar-btn,
+  .topbar-tab,
+  .user-popover__item,
+  .user-popover__server-item,
+  .user-popover__signout,
+  .user-popover__add-account {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .has-critical-pulse::after,
+  .search-input,
+  .quick-mount-row {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 </style>

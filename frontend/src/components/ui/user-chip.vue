@@ -1,13 +1,17 @@
 <template>
   <button type="button" class="sc-chip sc-chip--interactive sc-focus-ring" :title="title" @click="$emit('click')">
-    <span class="user-avatar">{{ initials }}</span>
+    <UserAvatar :name="user || 'Unknown'" :status="presence.status" size="sm" />
     <span>{{ user || 'Unknown' }}</span>
   </button>
 </template>
 
 <script>
+import UserAvatar from './user-avatar.vue'
+import { getUserPresence, USER_PRESENCE_EVENT } from '@/utils/user-presence'
+
 export default {
   name: 'UserChip',
+  components: { UserAvatar },
   props: {
     user: { type: String, default: '' },
     email: { type: String, default: '' },
@@ -15,11 +19,12 @@ export default {
     recentCount: { type: Number, default: 0 }
   },
   emits: ['click'],
+  data () {
+    return {
+      presence: getUserPresence(this.user)
+    }
+  },
   computed: {
-    initials () {
-      const parts = (this.user || '?').split(/[._\s-]+/).filter(Boolean)
-      return parts.slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || '?'
-    },
     title () {
       const lines = []
       if (this.user) lines.push(this.user)
@@ -28,20 +33,40 @@ export default {
       if (this.recentCount) lines.push(`Recent events: ${this.recentCount}`)
       return lines.join('\n')
     }
+  },
+  watch: {
+    user: {
+      immediate: true,
+      handler (value) {
+        this.presence = getUserPresence(value)
+      }
+    }
+  },
+  mounted () {
+    window.addEventListener(USER_PRESENCE_EVENT, this.handlePresenceChange)
+  },
+  beforeUnmount () {
+    window.removeEventListener(USER_PRESENCE_EVENT, this.handlePresenceChange)
+  },
+  methods: {
+    handlePresenceChange (event) {
+      if (event.detail?.username === this.user) {
+        this.presence = event.detail.value
+      }
+    }
   }
 }
 </script>
 
 <style scoped>
-.user-avatar {
+.sc-chip :deep(.sc-user-avatar--sm) {
   width: 18px;
   height: 18px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--accent-muted);
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 700;
+}
+
+.sc-chip :deep(.sc-user-avatar__status) {
+  right: -2px;
+  bottom: -2px;
+  transform: scale(0.78);
 }
 </style>

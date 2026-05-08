@@ -6,9 +6,13 @@ const state = () => ({
 
 const mutations = {
   SET_USER(state, user) {
-    state.user = user
+    const nextUser = user ? {
+      ...user,
+      loginAt: user.loginAt || Date.now()
+    } : null
+    state.user = nextUser
     if (user) {
-      sessionStorage.setItem('sc_user', JSON.stringify(user))
+      sessionStorage.setItem('sc_user', JSON.stringify(nextUser))
     } else {
       sessionStorage.removeItem('sc_user')
     }
