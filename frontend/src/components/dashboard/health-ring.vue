@@ -82,16 +82,17 @@
           <div v-if="!prioritizedIssues.length" class="health-anchor__empty">No active remediation items.</div>
           <div v-else class="health-anchor__issue-list">
             <div v-for="issue in prioritizedIssues" :key="issue.name" class="health-anchor__issue-row" :class="{ 'is-critical': issue.status === 'critical' }">
-              <div class="health-anchor__issue-copy">
-                <div class="health-anchor__issue-title-row">
-                  <span class="health-anchor__issue-badge" :class="`health-anchor__issue-badge--${issue.status}`">{{ severityLabel(issue.status) }}</span>
-                  <strong>{{ issue.name }}</strong>
-                </div>
-                <div class="health-anchor__issue-message">{{ issue.message }}</div>
+              <div class="health-anchor__issue-accent-bar" aria-hidden="true" />
+              <div class="health-anchor__issue-badge" :class="`health-anchor__issue-badge--${issue.status}`">{{ severityLabel(issue.status) }}</div>
+              <div class="health-anchor__issue-content">
+                <div class="health-anchor__issue-title" :title="issue.name">{{ issue.name }}</div>
+                <div class="health-anchor__issue-message" :title="issue.message">{{ issue.message }}</div>
               </div>
               <div class="health-anchor__issue-actions">
-                <AppButton variant="secondary" size="sm" label="Fix" @click.stop="$emit('inspect-issue', issue)" />
-                <AppButton variant="ghost" size="sm" label="Inspect" @click.stop="$emit('inspect-issue', issue)" />
+                <AppButton variant="secondary" size="sm" label="Fix" class="health-anchor__btn-fix" @click.stop="$emit('inspect-issue', issue)" />
+                <button type="button" class="health-anchor__btn-arrow" aria-label="Inspect issue" @click.stop="$emit('inspect-issue', issue)">
+                  <i class="mdi mdi-arrow-right" aria-hidden="true"></i>
+                </button>
               </div>
             </div>
           </div>
@@ -144,6 +145,8 @@ function areaPath(points = [], width = 220, height = 42) {
   return `${linePath(points)} L${last[0]},${height} L${first[0]},${height} Z`
 }
 
+import { getHealthTone, getHealthColor, getHealthStatusWord } from '@/utils/health'
+
 export default {
   name: 'DashboardHealthRing',
   components: { AppButton },
@@ -159,25 +162,16 @@ export default {
       return Math.max(0, Math.min(100, Number(this.healthData?.score || 0)))
     },
     statusTone() {
-      if (this.score < 50) return 'error'
-      if (this.score < 80) return 'warn'
-      return 'ok'
+      return getHealthTone(this.score)
     },
     statusWord() {
-      if (this.score < 35) return 'Critical'
-      if (this.score < 50) return 'Degraded'
-      if (this.score < 80) return 'Healthy'
-      return 'Optimal'
+      return getHealthStatusWord(this.score)
     },
     statusLabel() {
       return String(this.healthData?.overall_status || 'unknown').toUpperCase()
     },
     ringColor() {
-      return {
-        ok: 'var(--dashboard-ring-ok)',
-        warn: 'var(--dashboard-ring-warn)',
-        error: 'var(--dashboard-ring-error)'
-      }[this.statusTone]
+      return getHealthColor(this.score)
     },
     outerProgressStyle() {
       const radius = 64
@@ -458,29 +452,26 @@ export default {
 }
 
 .health-anchor__issue-row {
-  display: flex;
-  gap: 10px;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 56px;
-  padding: 8px 10px 8px 14px;
+  display: grid;
+  grid-template-columns: 3px 64px 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  padding: 8px 12px 8px 0;
   border-bottom: 1px solid var(--border-subtle);
   background: transparent;
-  position: relative;
+  overflow: hidden;
+  max-height: 56px;
 }
 
-.health-anchor__issue-row::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
+.health-anchor__issue-accent-bar {
+  grid-row: 1 / span 2;
   width: 3px;
-  border-radius: 999px;
+  height: 100%;
+  border-radius: 0;
   background: var(--state-warn);
 }
 
-.health-anchor__issue-row.is-critical::before {
+.health-anchor__issue-row.is-critical .health-anchor__issue-accent-bar {
   background: var(--state-error);
 }
 
@@ -488,25 +479,15 @@ export default {
   border-top: 1px solid var(--border-subtle);
 }
 
-.health-anchor__issue-copy {
-  min-width: 0;
-}
-
-.health-anchor__issue-title-row {
-  align-items: center;
-  justify-content: flex-start;
-  margin-bottom: 4px;
-}
-
-.health-anchor__issue-title-row strong {
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
 .health-anchor__issue-badge {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  justify-self: start;
+  margin-top: 2px;
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: 2px 6px;
   border-radius: 999px;
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -523,10 +504,65 @@ export default {
   color: var(--state-warn-fg);
 }
 
-.health-anchor__issue-actions {
+.health-anchor__issue-content {
+  grid-column: 3;
+  grid-row: 1 / span 2;
   display: flex;
-  gap: 8px;
-  align-self: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.health-anchor__issue-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.health-anchor__issue-message {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.health-anchor__issue-actions {
+  grid-column: 4;
+  grid-row: 1 / span 2;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.health-anchor__btn-fix {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.health-anchor__btn-arrow {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.health-anchor__btn-arrow:hover {
+  background: var(--surface-hover, var(--surface-3));
+  color: var(--text-primary);
 }
 
 .health-anchor__loading-ring,

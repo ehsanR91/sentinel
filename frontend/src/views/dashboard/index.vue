@@ -48,9 +48,11 @@
       </template>
     </PageHeader>
 
-    <section class="dashboard-hero-grid">
+    <HeroCardRail v-slot="{ activeId, toggle }">
       <HealthRing
-        class="dashboard-hero-grid__health"
+        class="hero-rail-card dashboard-hero-grid__health"
+        :class="{ 'is-expanded': activeId === 'health', 'is-collapsed': activeId && activeId !== 'health' }"
+        @click="activeId && activeId !== 'health' ? toggle('health') : null"
         :health-data="healthData"
         :history="healthHistory"
         :loading="healthLoading"
@@ -59,8 +61,12 @@
         @inspect-issue="openHealthIssue"
       />
 
-      <article class="dashboard-panel dashboard-server-card">
-        <div class="dashboard-panel__header">
+      <article 
+        class="hero-rail-card dashboard-panel dashboard-server-card"
+        :class="{ 'is-expanded': activeId === 'identity', 'is-collapsed': activeId && activeId !== 'identity' }"
+        @click="activeId && activeId !== 'identity' ? toggle('identity') : null"
+      >
+        <div class="dashboard-panel__header" @click="!activeId || activeId === 'identity' ? toggle('identity') : null" style="cursor: pointer">
           <div>
             <div class="dashboard-panel__eyebrow">Server Identity</div>
             <h2 class="dashboard-panel__title">{{ snap.hostname || 'Sentinel node' }}</h2>
@@ -81,7 +87,7 @@
                 type="button"
                 class="dashboard-identity-row__copy sc-focus-ring"
                 :aria-label="`Copy ${row.label}`"
-                @click="copyIdentityValue(row)"
+                @click.stop="copyIdentityValue(row)"
               >
                 <i class="mdi mdi-content-copy" aria-hidden="true"></i>
               </button>
@@ -90,8 +96,12 @@
         </div>
       </article>
 
-      <article class="dashboard-panel dashboard-hero-side">
-        <div class="dashboard-panel__header">
+      <article 
+        class="hero-rail-card dashboard-panel dashboard-hero-side"
+        :class="{ 'is-expanded': activeId === 'actions', 'is-collapsed': activeId && activeId !== 'actions' }"
+        @click="activeId && activeId !== 'actions' ? toggle('actions') : null"
+      >
+        <div class="dashboard-panel__header" @click="!activeId || activeId === 'actions' ? toggle('actions') : null" style="cursor: pointer">
           <div>
             <div class="dashboard-panel__eyebrow">Critical Signals</div>
             <h2 class="dashboard-panel__title">Operator Actions</h2>
@@ -105,7 +115,7 @@
             type="button"
             class="dashboard-status-pill"
             :class="`dashboard-status-pill--${pill.tone}`"
-            @click="navigateTo(pill.route)"
+            @click.stop="navigateTo(pill.route)"
           >
             <span class="dashboard-status-pill__label">{{ pill.label }}</span>
             <span class="dashboard-status-pill__value" :class="`is-${pill.tone}`">
@@ -116,13 +126,13 @@
         </div>
 
         <div class="dashboard-actions-grid">
-          <AppButton variant="primary" size="md" icon="mdi mdi-shield-search" label="Scan now" @click="runScanAction" />
-          <AppButton variant="secondary" size="md" icon="mdi mdi-broom" :loading="cleanerRunning" label="Run cleaner" @click="openCleaner" />
-          <AppButton variant="secondary" size="md" icon="mdi mdi-reload-alert" label="Reload services" @click="reloadServicesPanel" />
-          <AppButton variant="secondary" size="md" icon="mdi mdi-console-line" label="Open terminal" @click="navigateTo('/terminal')" />
+          <AppButton variant="primary" size="md" icon="mdi mdi-shield-search" label="Scan now" @click.stop="runScanAction" />
+          <AppButton variant="secondary" size="md" icon="mdi mdi-broom" :loading="cleanerRunning" label="Run cleaner" @click.stop="openCleaner" />
+          <AppButton variant="secondary" size="md" icon="mdi mdi-reload-alert" label="Reload services" @click.stop="reloadServicesPanel" />
+          <AppButton variant="secondary" size="md" icon="mdi mdi-console-line" label="Open terminal" @click.stop="navigateTo('/terminal')" />
         </div>
       </article>
-    </section>
+    </HeroCardRail>
 
     <draggable
       v-model="kpiWidgets"
@@ -248,26 +258,40 @@
       </template>
     </draggable>
 
-    <section class="dashboard-footer-strip dashboard-panel">
-      <div class="dashboard-footer-strip__group">
-        <span class="dashboard-footer-strip__label">Agent build</span>
-        <span class="dashboard-footer-strip__value">v{{ healthData.version || 'unknown' }}</span>
+    <section
+      class="dashboard-footer-strip dashboard-panel"
+      :class="{ 'is-expanded': isFooterExpanded }"
+      @click="isFooterExpanded = !isFooterExpanded"
+      v-click-outside="() => { isFooterExpanded = false }"
+    >
+      <div class="dashboard-footer-strip__title">
+        <i class="mdi mdi-server-network"></i>
+        <span>Server details</span>
+        <i class="mdi dashboard-footer-strip__chevron" :class="isFooterExpanded ? 'mdi-chevron-down' : 'mdi-chevron-up'"></i>
       </div>
-      <div class="dashboard-footer-strip__group">
-        <span class="dashboard-footer-strip__label">Last sync</span>
-        <span class="dashboard-footer-strip__value">{{ formatRelativeFromNow(lastLoadedAt) }}</span>
-      </div>
-      <div class="dashboard-footer-strip__group">
-        <span class="dashboard-footer-strip__label">Connection</span>
-        <span class="dashboard-connection-pill" :class="`dashboard-connection-pill--${connectionTone}`">{{ connectionStateLabel }}</span>
-      </div>
-      <div class="dashboard-footer-strip__group">
-        <span class="dashboard-footer-strip__label">Endpoint</span>
-        <span class="dashboard-footer-strip__value dashboard-footer-strip__value--mono">{{ endpointLabel }}</span>
-      </div>
-      <div class="dashboard-footer-strip__group">
-        <span class="dashboard-footer-strip__label">Operator IP</span>
-        <span class="dashboard-footer-strip__value dashboard-footer-strip__value--mono">{{ userMeta.client_ip || 'Unavailable' }}</span>
+      <div class="dashboard-footer-strip__grid">
+        <div class="dashboard-footer-strip__inner">
+          <div class="dashboard-footer-strip__group">
+            <span class="dashboard-footer-strip__label">Agent build</span>
+            <span class="dashboard-footer-strip__value">v{{ healthData.version || 'unknown' }}</span>
+          </div>
+          <div class="dashboard-footer-strip__group">
+            <span class="dashboard-footer-strip__label">Last sync</span>
+            <span class="dashboard-footer-strip__value">{{ formatRelativeFromNow(lastLoadedAt) }}</span>
+          </div>
+          <div class="dashboard-footer-strip__group">
+             <span class="dashboard-footer-strip__label">Connection</span>
+             <span class="dashboard-connection-pill" :class="`dashboard-connection-pill--${connectionTone}`">{{ connectionStateLabel }}</span>
+          </div>
+          <div class="dashboard-footer-strip__group">
+            <span class="dashboard-footer-strip__label">Endpoint</span>
+            <span class="dashboard-footer-strip__value dashboard-footer-strip__value--mono">{{ endpointLabel }}</span>
+          </div>
+          <div class="dashboard-footer-strip__group">
+            <span class="dashboard-footer-strip__label">Operator IP</span>
+            <span class="dashboard-footer-strip__value dashboard-footer-strip__value--mono">{{ userMeta.client_ip || 'Unavailable' }}</span>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -415,12 +439,14 @@ import PageHeader from '@/components/page-header.vue'
 import AppButton from '@/components/ui/app-button.vue'
 import DetailDrawer from '@/components/ui/detail-drawer.vue'
 import HealthRing from '@/components/dashboard/health-ring.vue'
+import HeroCardRail from '@/components/dashboard/hero-rail.vue'
 import KPICard from '@/components/dashboard/kpi-card.vue'
 import TelemetryChart from '@/components/dashboard/telemetry-chart.vue'
 import ActivityFeed from '@/components/dashboard/activity-feed.vue'
 import ServiceHealthPanel from '@/components/dashboard/service-health-panel.vue'
 import draggable from 'vuedraggable'
 import { mapGetters } from 'vuex'
+import { getHealthStatusWord, getHealthTone } from '@/utils/health'
 
 const DASHBOARD_STATE_KEY = 'sc_dashboard_v2_layout'
 
@@ -646,6 +672,7 @@ export default {
     AppButton,
     DetailDrawer,
     HealthRing,
+    HeroCardRail,
     KPICard,
     TelemetryChart,
     ActivityFeed,
@@ -655,6 +682,7 @@ export default {
   data() {
     const saved = normalizeDashboardState(safeLocalState())
     return {
+      isFooterExpanded: false,
       breadcrumbs: [{ text: 'Dashboard', active: true, icon: 'mdi mdi-view-dashboard' }],
       layoutEditMode: !!saved.layoutEditMode,
       activePreset: saved.activePreset || 'operator',
@@ -908,10 +936,8 @@ export default {
     },
     healthHeadline() {
       const score = Number(this.healthData.score || 0)
-      if (score < 35) return 'Critical posture'
-      if (score < 50) return 'Degraded posture'
-      if (score < 80) return 'Healthy with issues'
-      return 'Operationally healthy'
+      const word = getHealthStatusWord(score)
+      return word === 'Healthy' ? 'Healthy with issues' : (word === 'Optimal' ? 'Operationally healthy' : `${word} posture`)
     },
     selectedKpiDetail() {
       return this.selectedKpiId ? this.kpiCardById(this.selectedKpiId) : null
@@ -1533,12 +1559,6 @@ export default {
   white-space: nowrap;
 }
 
-.dashboard-hero-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 1.25fr) minmax(280px, 1fr) minmax(320px, 1.1fr);
-  gap: 18px;
-}
-
 .dashboard-panel {
   border-radius: 22px;
   border: 1px solid var(--dashboard-panel-border);
@@ -1895,10 +1915,59 @@ export default {
 }
 
 .dashboard-footer-strip {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 18px;
+  cursor: pointer;
+  user-select: none;
+  min-height: 40px;
+}
+
+.dashboard-footer-strip__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.dashboard-footer-strip__chevron {
+  margin-left: auto;
+  font-size: 16px;
+  color: var(--text-tertiary);
+  transition: transform 0.3s ease;
+}
+
+.dashboard-footer-strip.is-expanded .dashboard-footer-strip__chevron {
+  transform: rotate(180deg);
+}
+
+.dashboard-footer-strip__grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+
+.dashboard-footer-strip.is-expanded .dashboard-footer-strip__grid {
+  grid-template-rows: 1fr;
+}
+
+.dashboard-footer-strip__inner {
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
-  align-items: center;
+  margin-top: 0;
+  padding-top: 0;
+  transition: margin-top 0.3s ease, padding-top 0.3s ease;
+}
+
+.dashboard-footer-strip.is-expanded .dashboard-footer-strip__inner {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--dashboard-panel-border);
 }
 
 .dashboard-footer-strip__group {
@@ -2096,7 +2165,6 @@ export default {
 }
 
 @media (max-width: 1279px) {
-  .dashboard-hero-grid,
   .dashboard-kpi-grid,
   .dashboard-telemetry-grid,
   .dashboard-footer-strip {
@@ -2105,7 +2173,6 @@ export default {
 }
 
 @media (max-width: 960px) {
-  .dashboard-hero-grid,
   .dashboard-kpi-grid,
   .dashboard-telemetry-grid,
   .dashboard-drawer-grid,

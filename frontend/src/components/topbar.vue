@@ -394,108 +394,105 @@
             </div>
           </header>
 
-          <section class="user-popover__section">
-            <div class="user-popover__section-label">Account</div>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="goToAccount">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-account-circle-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">Profile</span>
-              </span>
-            </button>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('general')">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-cog-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">Settings</span>
-              </span>
-              <span class="user-popover__item-meta">⌘,</span>
-            </button>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="openTokensInfo">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-key-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">API tokens</span>
-              </span>
-            </button>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('access-control')">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-shield-key-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">2FA management</span>
-              </span>
-              <span class="user-popover__item-meta">{{ me.totp_enabled ? 'On' : 'Off' }}</span>
-            </button>
-          </section>
+          <div class="user-popover__scroll-area">
+            <section class="user-popover__section">
+              <div class="user-popover__section-label">Account</div>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="goToAccount">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-account-circle-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">Profile</span>
+                </span>
+              </button>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('general')">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-cog-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">Settings</span>
+                </span>
+                <span class="user-popover__item-meta">⌘,</span>
+              </button>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="openTokensInfo">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-key-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">API tokens</span>
+                </span>
+              </button>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('access-control')">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-shield-key-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">2FA management</span>
+                </span>
+                <span class="user-popover__item-meta">{{ me.totp_enabled ? 'On' : 'Off' }}</span>
+              </button>
+            </section>
 
-          <section class="user-popover__section">
-            <div class="user-popover__section-label">Workspace</div>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="userMenuView = 'servers'">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-server-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">Switch server</span>
-              </span>
-              <i class="mdi mdi-chevron-right user-popover__item-meta-icon" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="openAuditForCurrentUser">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-file-document-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">Audit logs</span>
-              </span>
-            </button>
-          </section>
+            <section class="user-popover__section">
+              <div class="user-popover__section-label">Workspace</div>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="userMenuView = 'servers'">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-server-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">Switch server</span>
+                </span>
+                <i class="mdi mdi-chevron-right user-popover__item-meta-icon" aria-hidden="true"></i>
+              </button>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="openAuditForCurrentUser">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-file-document-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">Audit logs</span>
+                </span>
+              </button>
+            </section>
 
-          <section class="user-popover__section">
-            <div class="user-popover__section-label">Preferences</div>
-            <div class="user-popover__setting-row">
-              <span class="user-popover__setting-label">Theme</span>
-              <SegmentedControl :model-value="currentThemePref" :options="themeSegmentOptions" label="Theme" @update:modelValue="applyTheme" />
-            </div>
-            <div class="user-popover__setting-row">
-              <span class="user-popover__setting-label">Density</span>
-              <SegmentedControl :model-value="sidebarDensity" :options="densitySegmentOptions" label="Density" @update:modelValue="applyDensity" />
-            </div>
-            <div class="user-popover__setting-row">
-              <span class="user-popover__setting-label">Status</span>
-              <SegmentedControl :model-value="presence.status" :options="presenceSegmentOptions" label="Presence" @update:modelValue="applyPresence" />
-            </div>
-            <div class="user-popover__setting-row user-popover__setting-row--stacked">
-              <span class="user-popover__setting-label">Auto-away</span>
-              <select v-model.number="presence.autoAwayMinutes" class="user-popover__select sc-focus-ring" @change="savePresenceState()">
-                <option :value="5">5 minutes</option>
-                <option :value="15">15 minutes</option>
-                <option :value="30">30 minutes</option>
-                <option :value="60">60 minutes</option>
-              </select>
-            </div>
-          </section>
+            <section class="user-popover__section">
+              <div class="user-popover__section-label">Preferences</div>
+              <div class="user-popover__setting-row">
+                <span class="user-popover__setting-label">Theme</span>
+                <SegmentedControl :model-value="currentThemePref" :options="themeSegmentOptions" label="Theme" @update:modelValue="applyTheme" />
+              </div>
+              <div class="user-popover__setting-row">
+                <span class="user-popover__setting-label">Density</span>
+                <SegmentedControl :model-value="sidebarDensity" :options="densitySegmentOptions" label="Density" @update:modelValue="applyDensity" />
+              </div>
+              <div class="user-popover__setting-row">
+                <span class="user-popover__setting-label">Status</span>
+                <SegmentedControl :model-value="presence.status" :options="presenceSegmentOptions" label="Presence" @update:modelValue="applyPresence" />
+              </div>
+              <div class="user-popover__setting-row user-popover__setting-row--stacked">
+                <span class="user-popover__setting-label">Auto-away</span>
+                <SegmentedControl :model-value="presence.autoAwayMinutes" :options="autoAwayOptions" label="Auto-away" @update:modelValue="updateAutoAway" />
+              </div>
+            </section>
 
-          <section class="user-popover__section">
-            <div class="user-popover__section-label">Help</div>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="showShortcutHelp">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-keyboard-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">Keyboard shortcuts</span>
-              </span>
-              <span class="user-popover__item-meta">⌘K</span>
-            </button>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="openWhatsNew">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-star-four-points-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">What’s new</span>
-              </span>
-              <span v-if="!whatsNewSeen" class="user-popover__item-meta">New</span>
-            </button>
-            <button type="button" class="user-popover__item sc-focus-ring" @click="openDocs">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-help-circle-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">Help & docs</span>
-              </span>
-            </button>
-            <button v-if="lockPinSet" type="button" class="user-popover__item sc-focus-ring" @click="lockScreen">
-              <span class="user-popover__item-main">
-                <i class="mdi mdi-lock-outline" aria-hidden="true"></i>
-                <span class="user-popover__item-label">Lock screen</span>
-              </span>
-              <span class="user-popover__item-meta">Space</span>
-            </button>
-          </section>
+            <section class="user-popover__section">
+              <div class="user-popover__section-label">Help</div>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="showShortcutHelp">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-keyboard-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">Keyboard shortcuts</span>
+                </span>
+                <span class="user-popover__item-meta">⌘K</span>
+              </button>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="openWhatsNew">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-star-four-points-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">What’s new</span>
+                </span>
+                <span v-if="!whatsNewSeen" class="user-popover__item-meta">New</span>
+              </button>
+              <button type="button" class="user-popover__item sc-focus-ring" @click="openDocs">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-help-circle-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">Help & docs</span>
+                </span>
+              </button>
+              <button v-if="lockPinSet" type="button" class="user-popover__item sc-focus-ring" @click="lockScreen">
+                <span class="user-popover__item-main">
+                  <i class="mdi mdi-lock-outline" aria-hidden="true"></i>
+                  <span class="user-popover__item-label">Lock screen</span>
+                </span>
+                <span class="user-popover__item-meta">Space</span>
+              </button>
+            </section>
+          </div>
 
           <button type="button" class="user-popover__signout sc-focus-ring" @click="confirmSignOut">
             <i class="mdi mdi-logout"></i>
@@ -947,6 +944,14 @@ export default {
         { label: 'DND', value: 'dnd' }
       ]
     },
+    autoAwayOptions() {
+      return [
+        { label: '5m', value: 5 },
+        { label: '15m', value: 15 },
+        { label: '30m', value: 30 },
+        { label: '60m', value: 60 }
+      ]
+    },
     filteredServerEntries() {
       const query = this.serverSearch.trim().toLowerCase()
       return this.serverEntries.filter(server => {
@@ -1128,6 +1133,10 @@ export default {
     applyPresence(value) {
       this.presence.status = value
       this.presenceAutoChanged = false
+      this.savePresenceState()
+    },
+    updateAutoAway(value) {
+      this.presence.autoAwayMinutes = value
       this.savePresenceState()
     },
     savePresenceState() {
@@ -2128,7 +2137,17 @@ export default {
   gap: 8px;
 }
 
+.user-popover__scroll-area {
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 2px;
+}
+
 .user-popover__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -2250,17 +2269,21 @@ export default {
 }
 
 .user-popover__signout {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   margin-top: 4px;
   min-height: 36px;
   color: #f04040;
+  background: var(--surface-1);
   border-top: 1px solid var(--border-subtle);
-  border-radius: 0;
-  padding-top: 8px;
+  border-radius: 0 0 12px 12px;
+  padding: 8px 12px;
   justify-content: flex-start;
 }
 
 .user-popover__signout:hover {
-  background: color-mix(in srgb, #f04040 9%, transparent);
+  background: color-mix(in srgb, #f04040 9%, var(--surface-1));
 }
 
 .user-popover__server-search {

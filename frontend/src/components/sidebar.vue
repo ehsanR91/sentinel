@@ -7,7 +7,9 @@
     :data-position="sidebarPosition"
     aria-label="Primary navigation"
     @touchstart.passive="onTouchStart"
-    @touchmove="onTouchMove"
+    @touchmove.passive="onTouchMove"
+    @touchend.passive="onTouchEnd"
+    :style="sidebarStyle"
   >
     <div class="sidebar-header">
       <div class="sidebar-brand-row">
@@ -428,7 +430,7 @@
         <div class="server-drawer-card">
           <div class="server-drawer-card__row">
             <span>Health</span>
-            <StatusBadge :state="serverTone === 'critical' ? 'critical' : serverTone === 'warn' ? 'warn' : serverTone === 'ok' ? 'ok' : 'muted'" :label="health.summary || 'Telemetry available'" />
+            <StatusBadge :state="serverTone === 'error' ? 'error' : serverTone === 'warn' ? 'warn' : serverTone === 'ok' ? 'ok' : 'muted'" :label="health.summary || 'Telemetry available'" />
           </div>
           <div class="server-drawer-grid">
             <div>
@@ -504,6 +506,7 @@ import appConfig from '@/app.config.json'
 import DetailDrawer from '@/components/ui/detail-drawer.vue'
 import StatusBadge from '@/components/ui/status-badge.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
+import { getHealthTone } from '@/utils/health'
 import {
   sidebarSections,
   flattenSidebarItems,
@@ -593,6 +596,8 @@ export default {
       flashItemId: null,
       viewportWidth: typeof window === 'undefined' ? 1440 : window.innerWidth,
       touchStartX: 0,
+      touchCurrentX: 0,
+      touchStartTime: 0,
       reducedMotion: typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     }
   },
@@ -643,8 +648,25 @@ export default {
       return {
         collapsed: this.effectiveCollapsed,
         open: this.sidebarOpen && this.isMobileViewport,
+        'mobile-interacting': this.touchStartX > 0 && this.isMobileViewport,
         'is-hidden': this.sidebarHidden,
         'is-right': this.sidebarPosition === 'right'
+      }
+    },
+    sidebarStyle() {
+      if (!this.isMobileViewport || !this.sidebarOpen) return {}
+      if (this.touchCurrentX > 0 && this.touchStartX > 0) {
+        const diff = this.sidebarPosition === 'right'
+          ? Math.max(0, this.touchCurrentX - this.touchStartX)
+          : Math.min(0, this.touchCurrentX - this.touchStartX)
+        return {
+          transform: `translateX(${diff}px)`,
+          transition: 'none'
+        }
+      }
+      return {
+        transform: 'translateX(0)',
+        transition: 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)'
       }
     },
     visibleSections() {
@@ -674,11 +696,8 @@ export default {
     },
     serverTone() {
       if (!this.wsConnected) return 'warn'
-      if (this.health.overall_status === 'critical') return 'critical'
-      if (this.health.overall_status === 'warning') return 'warn'
-      if (Number(this.health.score || 0) < 80) return 'warn'
-      if (this.health.overall_status === 'healthy') return 'ok'
-      return 'muted'
+      if (!this.health || !this.health.score) return 'muted'
+      return getHealthTone(this.health.score)
     },
     appVersion() {
       return appConfig.version || '1.0.0'
@@ -789,13 +808,31 @@ export default {
     },
     onTouchStart(event) {
       this.touchStartX = event.changedTouches?.[0]?.clientX || 0
+      this.touchCurrentX = this.touchStartX
+      this.touchStartTime = Date.now()
     },
     onTouchMove(event) {
       if (!this.isMobileViewport || !this.sidebarOpen) return
+      this.touchCurrentX = event.changedTouches?.[0]?.clientX || 0
+    },
+    onTouchEnd(event) {
+      if (!this.isMobileViewport || !this.sidebarOpen) return
       const currentX = event.changedTouches?.[0]?.clientX || 0
-      if (this.touchStartX - currentX > 80) {
+      const dx = currentX - this.touchStartX
+      const dt = Date.now() - this.touchStartTime
+      const velocity = Math.abs(dx / dt)
+
+      const isRight = this.sidebarPosition === 'right'
+      const closedDx = isRight ? dx > 60 : dx < -60
+      const closedVelocity = velocity > 0.4 && (isRight ? dx > 0 : dx < 0)
+
+      if (closedDx || closedVelocity) {
         this.$store.commit('layout/CLOSE_SIDEBAR')
       }
+
+      this.touchStartX = 0
+      this.touchCurrentX = 0
+      this.touchStartTime = 0
     },
     persistScrollPosition() {
       const scrollContainer = this.$refs.scrollContainer

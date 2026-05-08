@@ -39,6 +39,7 @@
         :key="service.name"
         class="service-health__tile"
         :class="`service-health__tile--${service.state}`"
+        @click="openServicePage(service)"
       >
         <div class="service-health__tile-top">
           <div class="service-health__identity">
@@ -51,28 +52,31 @@
           <span class="service-health__pill" :class="`service-health__pill--${service.state}`">{{ service.state }}</span>
         </div>
 
-        <div class="service-health__history" aria-hidden="true">
-          <span
-            v-for="(entry, index) in service.history"
-            :key="`${service.name}-${index}`"
-            class="service-health__history-segment"
-            :class="entry ? 'is-up' : 'is-down'"
-          ></span>
+        <div class="service-health__history" aria-label="Uptime history">
+          <UptimeBar :history="service.history" :max-segments="24" />
         </div>
 
         <div class="service-health__tile-actions">
-          <button type="button" class="service-health__action" @click="performAction(service, service.running ? 'restart' : 'start')" :disabled="!!busy[service.name]">
-            <i :class="busy[service.name] ? 'mdi mdi-loading mdi-spin' : `mdi mdi-${service.running ? 'restart' : 'play'}`"></i>
-            {{ service.running ? 'Restart' : 'Start' }}
-          </button>
-          <button type="button" class="service-health__action" @click="openLogs(service)">
-            <i class="mdi mdi-file-document-box-outline"></i>
-            Logs
-          </button>
-          <button type="button" class="service-health__action" @click="openServicePage(service)">
-            <i class="mdi mdi-arrow-top-right"></i>
-            Open
-          </button>
+          <Tooltip :label="service.running ? 'Restart' : 'Start'" as-child>
+            <button type="button" class="service-health__action-icon" @click.stop="performAction(service, service.running ? 'restart' : 'start')" :disabled="!!busy[service.name]">
+              <i :class="busy[service.name] ? 'mdi mdi-loading mdi-spin' : `mdi mdi-${service.running ? 'restart' : 'play'}`"></i>
+            </button>
+          </Tooltip>
+          <Tooltip label="Logs" as-child>
+            <button type="button" class="service-health__action-icon" @click.stop="openLogs(service)">
+              <i class="mdi mdi-file-document-box-outline"></i>
+            </button>
+          </Tooltip>
+          <Tooltip :label="service.running ? 'Stop' : 'Options'" as-child>
+            <button type="button" class="service-health__action-icon" @click.stop="performAction(service, 'stop')" :disabled="!service.running || !!busy[service.name]">
+              <i class="mdi mdi-stop"></i>
+            </button>
+          </Tooltip>
+          <Tooltip label="Open panel" as-child>
+            <button type="button" class="service-health__action-icon" @click.stop="openServicePage(service)">
+              <i class="mdi mdi-arrow-top-right"></i>
+            </button>
+          </Tooltip>
         </div>
       </article>
     </div>
@@ -81,6 +85,8 @@
 
 <script>
 import AppButton from '@/components/ui/app-button.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
+import UptimeBar from '@/components/ui/uptime-bar.vue'
 
 const HISTORY_LIMIT = 24
 
@@ -90,7 +96,7 @@ function cloneHistory(history = []) {
 
 export default {
   name: 'DashboardServiceHealthPanel',
-  components: { AppButton },
+  components: { AppButton, Tooltip, UptimeBar },
   data() {
     return {
       services: [],
@@ -301,6 +307,14 @@ export default {
   background: var(--surface-2);
   position: relative;
   overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.service-health__tile:hover {
+  transform: translateY(-1px);
+  background: var(--surface-3);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--dashboard-panel-border));
 }
 
 .service-health__tile--failed,
@@ -323,8 +337,17 @@ export default {
   gap: 10px;
 }
 
+.service-health__tile-top {
+  min-width: 0;
+}
+
 .service-health__identity {
   align-items: flex-start;
+  min-width: 0;
+}
+
+.service-health__identity > div {
+  min-width: 0;
 }
 
 .service-health__name {
@@ -370,9 +393,7 @@ export default {
 .service-health__pill--failed { background: var(--state-error-bg); color: var(--state-error-fg); }
 
 .service-health__history {
-  display: grid;
-  grid-template-columns: repeat(24, 1fr);
-  gap: 2px;
+  display: flex;
 }
 
 .service-health__history-segment {
@@ -387,8 +408,8 @@ export default {
 .service-health__tile-actions {
   margin-top: auto;
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
   transform: translateY(110%);
   opacity: 0;
   transition: transform 100ms ease, opacity 100ms ease;
@@ -408,36 +429,28 @@ export default {
 
 @media (hover: none) {
   .service-health__tile-actions {
-    display: none;
-  }
-
-  .service-health__tile::after {
-    content: '\22EF';
-    position: absolute;
-    top: 8px;
-    right: 10px;
-    font-size: 16px;
-    color: var(--text-tertiary);
-    pointer-events: none;
+    display: flex;
+    transform: none;
+    opacity: 1;
   }
 }
 
-.service-health__action {
-  flex: 1 1 0;
+.service-health__action-icon {
+  width: 32px;
+  height: 32px;
   border-radius: 12px;
   border: 1px solid var(--dashboard-panel-border);
   background: var(--surface-3);
   color: var(--text-secondary);
-  padding: 8px 10px;
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  font-size: 16px;
   transition: background 0.12s ease, color 0.12s ease;
+  flex: none;
 }
 
-.service-health__action:hover {
+.service-health__action-icon:hover {
   background: var(--accent-muted);
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 24%, var(--dashboard-panel-border));
