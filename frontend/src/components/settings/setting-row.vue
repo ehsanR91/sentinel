@@ -71,9 +71,9 @@ export default {
 
 <style scoped>
 .setting-row {
-  padding: var(--space-16);
+  padding: 12px 14px;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface-2);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
@@ -89,19 +89,19 @@ export default {
 
 .setting-row__header {
   display: grid;
-  gap: var(--space-8);
+  gap: 6px;
 }
 
 .setting-row__title-wrap {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-12);
+  gap: 10px;
 }
 
 .setting-row__label {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -109,7 +109,7 @@ export default {
 .setting-row__meta-inline {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-8);
+  gap: 6px;
 }
 
 .setting-row__description,
@@ -117,7 +117,7 @@ export default {
 .setting-row__footnote,
 .setting-row__learn {
   margin: 0;
-  font-size: var(--font-size-13);
+  font-size: var(--font-size-12);
   color: var(--text-secondary);
 }
 
@@ -130,8 +130,8 @@ export default {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -139,20 +139,20 @@ export default {
 }
 
 .setting-row__control {
-  margin-top: var(--space-16);
+  margin-top: 10px;
 }
 
 .setting-row__footer {
   display: grid;
-  gap: var(--space-8);
-  margin-top: var(--space-12);
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .setting-row__error {
   display: inline-flex;
   align-items: center;
   gap: var(--space-6);
-  font-size: var(--font-size-13);
+  font-size: var(--font-size-12);
   color: var(--danger);
 }
 

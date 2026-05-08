@@ -74,7 +74,18 @@
         <div class="dashboard-identity-grid">
           <div v-for="row in identityRows" :key="row.label" class="dashboard-identity-row">
             <span class="dashboard-identity-row__label">{{ row.label }}</span>
-            <span class="dashboard-identity-row__value" :class="{ 'is-mono': row.mono }">{{ row.value }}</span>
+            <span class="dashboard-identity-row__value" :class="{ 'is-mono': row.mono }">
+              <span>{{ row.value }}</span>
+              <button
+                v-if="row.copyValue"
+                type="button"
+                class="dashboard-identity-row__copy sc-focus-ring"
+                :aria-label="`Copy ${row.label}`"
+                @click="copyIdentityValue(row)"
+              >
+                <i class="mdi mdi-content-copy" aria-hidden="true"></i>
+              </button>
+            </span>
           </div>
         </div>
       </article>
@@ -97,7 +108,10 @@
             @click="navigateTo(pill.route)"
           >
             <span class="dashboard-status-pill__label">{{ pill.label }}</span>
-            <span class="dashboard-status-pill__value">{{ pill.value }}</span>
+            <span class="dashboard-status-pill__value" :class="`is-${pill.tone}`">
+              <span class="dashboard-status-pill__marker" :class="`is-${pill.tone}`">{{ pill.marker }}</span>
+              <span>{{ pill.value }}</span>
+            </span>
           </button>
         </div>
 
@@ -736,43 +750,53 @@ export default {
     identityRows() {
       return [
         { label: 'Hostname', value: this.snap.hostname || 'Unavailable', mono: true },
-        { label: 'Endpoint', value: this.endpointLabel, mono: true },
-        { label: 'OS', value: this.snap.os || 'Unknown' },
+        { label: 'Endpoint', value: this.endpointLabel, mono: true, copyValue: this.endpointLabel },
+        { label: 'OS', value: this.prettyPlatformLabel(this.snap.os) || 'Unknown' },
         { label: 'Kernel', value: this.snap.kernel || 'Unknown', mono: true },
         { label: 'Uptime', value: fmtUptime(this.snap.uptime) },
         { label: 'Region', value: 'Self-hosted' },
         { label: 'Agent', value: `v${this.healthData.version || 'unknown'}`, mono: true },
-        { label: 'Last tick', value: this.lastMetricTs ? formatTimestamp(this.lastMetricTs * 1000) : 'Awaiting stream' }
+        { label: 'Last tick', value: this.lastMetricTs ? this.formatLastTick(this.lastMetricTs * 1000) : 'Awaiting stream' }
       ]
     },
     backupTask() {
       return this.tasks.find(task => /backup/i.test(task.name || '') || /backup/i.test(task.command || '')) || null
     },
+    idsService() {
+      const services = Array.isArray(this.secStats.services) ? this.secStats.services : []
+      return services.find(service => /crowdsec|psad/i.test(service.name || service.label || '')) || null
+    },
     heroPills() {
-      const stoppedIds = (this.secStats.services || []).filter(service => service.active_state !== 'active').length
+      const idsIssue = !!(this.idsService && this.idsService.active_state !== 'active')
       return [
         {
           label: 'Firewall',
           value: this.secStats.ufwActive ? 'Active' : 'Inactive',
           tone: this.secStats.ufwActive ? 'ok' : 'error',
+          marker: '●',
           route: '/firewall'
         },
         {
           label: 'IDS',
-          value: stoppedIds ? `${stoppedIds} stopped` : 'All active',
-          tone: stoppedIds ? 'warn' : 'ok',
-          route: '/services'
+          value: idsIssue ? '1 stopped' : 'OK',
+          tone: idsIssue ? 'warn' : 'ok',
+          marker: idsIssue ? '⚠' : '●',
+          route: idsIssue
+            ? { path: '/services', query: { state: 'stopped', service: this.idsService?.name || 'crowdsec' } }
+            : { path: '/services', query: { service: this.idsService?.name || 'crowdsec' } }
         },
         {
           label: 'Updates',
           value: this.updates.count ? `${this.updates.count} pending` : 'Current',
           tone: this.updates.count ? 'warn' : 'ok',
+          marker: this.updates.count ? '⚠' : '●',
           route: '/updates'
         },
         {
           label: 'Backups',
           value: this.backupTask?.last_run?.started_at ? this.formatRelativeFromNow(new Date(this.backupTask.last_run.started_at).getTime()) : 'No recent run',
           tone: this.backupTask?.last_run?.started_at ? 'info' : 'warn',
+          marker: this.backupTask?.last_run?.started_at ? '•' : '⚠',
           route: '/tasks'
         }
       ]
@@ -929,6 +953,22 @@ export default {
   methods: {
     formatRelativeFromNow(timestamp) {
       return relativeTime(timestamp)
+    },
+    formatLastTick(timestamp) {
+      const base = formatTimestamp(timestamp)
+      try {
+        const zone = new Intl.DateTimeFormat(undefined, { timeZoneName: 'shortOffset' })
+          .formatToParts(new Date(timestamp))
+          .find(part => part.type === 'timeZoneName')?.value
+        return zone ? `${base} ${zone}` : base
+      } catch {
+        return base
+      }
+    },
+    prettyPlatformLabel(value) {
+      if (!value) return ''
+      if (String(value).toLowerCase() === 'linux') return 'Linux'
+      return String(value).replace(/\b\w/g, char => char.toUpperCase())
     },
     formatTimestamp,
     formatPercentValue(value) {
@@ -1298,6 +1338,14 @@ export default {
       this.selectedKpiId = id
       this.showKpiDrawer = true
     },
+    async copyIdentityValue(row) {
+      if (!row?.copyValue || !navigator.clipboard) return
+      try {
+        await navigator.clipboard.writeText(row.copyValue)
+      } catch {
+        // Ignore clipboard failures.
+      }
+    },
     navigateTo(route) {
       if (!route) return
       this.$router.push(route)
@@ -1536,8 +1584,7 @@ export default {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .dashboard-live-chip {
@@ -1586,6 +1633,33 @@ export default {
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashboard-identity-row__copy {
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.dashboard-identity-row:hover .dashboard-identity-row__copy,
+.dashboard-identity-row__copy:focus-visible {
+  opacity: 1;
+}
+
+.dashboard-identity-row__copy:hover,
+.dashboard-identity-row__copy:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
 }
 
 .dashboard-identity-row__value.is-mono,
@@ -1613,6 +1687,15 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.dashboard-status-pill:hover,
+.dashboard-status-pill:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--dashboard-panel-border));
 }
 
 .dashboard-status-pill__label {
@@ -1626,6 +1709,49 @@ export default {
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-status-pill__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 12px;
+  font-size: 13px;
+}
+
+.dashboard-status-pill__marker.is-ok {
+  color: var(--dashboard-threshold-ok);
+}
+
+.dashboard-status-pill__value.is-ok {
+  color: var(--dashboard-threshold-ok);
+}
+
+.dashboard-status-pill__marker.is-warn {
+  color: var(--dashboard-threshold-warn);
+}
+
+.dashboard-status-pill__value.is-warn {
+  color: var(--dashboard-threshold-warn);
+}
+
+.dashboard-status-pill__marker.is-error {
+  color: var(--dashboard-threshold-crit);
+}
+
+.dashboard-status-pill__value.is-error {
+  color: var(--dashboard-threshold-crit);
+}
+
+.dashboard-status-pill__marker.is-info {
+  color: var(--text-secondary);
+}
+
+.dashboard-status-pill__value.is-info {
+  color: var(--text-secondary);
 }
 
 .dashboard-status-pill--ok {

@@ -75,7 +75,7 @@
                 <div style="font-size:0.68rem;color:var(--sc-text-muted)">{{ svc.stateText }}</div>
               </div>
               <div class="d-flex align-items-center gap-1">
-                <span class="badge rounded-pill" :class="svc.healthClass" style="font-size:0.62rem">
+                <span class="security-badge" :class="`security-badge--${svc.healthTone}`">
                   {{ svc.statusText }}
                 </span>
                 <Tooltip v-if="svc.canForceStart" :label="`Force start ${svc.label}`" description="Attempt to start the service even when it is currently degraded or inactive." variant="rich" as-child>
@@ -109,7 +109,7 @@
             </tr>
             <tr v-for="ban in filteredBans" :key="ban.ip">
               <td class="font-mono sc-danger-mono" style="font-size:0.78rem">{{ ban.ip }}</td>
-              <td><span class="badge badge-info">{{ ban.source }}</span></td>
+              <td><span class="security-badge security-badge--muted security-badge--source">{{ ban.source }}</span></td>
               <td class="sc-cell-main" style="font-size:0.75rem">{{ ban.reason }}</td>
               <td class="sc-cell-main" style="font-size:0.75rem">{{ ban.banned_by || '—' }}</td>
               <td class="sc-cell-muted" style="font-size:0.72rem">{{ timeAgo(ban.ts) }}</td>
@@ -181,8 +181,8 @@ export default {
           name,
           label,
           stateText: `${activeState}/${subState}`,
-          statusText: healthy ? 'Healthy' : (activeState === 'active' ? 'Active' : 'Inactive'),
-          healthClass: healthy ? 'badge-online' : (activeState === 'active' ? 'badge-warning' : 'badge-offline'),
+          statusText: healthy ? 'OK' : (activeState === 'active' ? 'Warn' : 'Off'),
+          healthTone: healthy ? 'ok' : (activeState === 'active' ? 'warn' : 'muted'),
           canForceStart: installed && !healthy
         }
       })
@@ -318,5 +318,40 @@ export default {
 
 .sc-view-security :deep(.card-body) {
   padding: 1rem;
+}
+
+.security-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.security-badge--ok {
+  color: #22d67c;
+  background: rgba(34, 214, 124, 0.12);
+  border-color: rgba(34, 214, 124, 0.2);
+}
+
+.security-badge--warn {
+  color: #f5a623;
+  background: rgba(245, 166, 35, 0.12);
+  border-color: rgba(245, 166, 35, 0.2);
+}
+
+.security-badge--muted {
+  color: var(--sc-text-muted);
+  background: rgba(138, 164, 200, 0.1);
+  border-color: rgba(138, 164, 200, 0.16);
+}
+
+.security-badge--source {
+  text-transform: uppercase;
 }
 </style>

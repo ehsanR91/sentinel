@@ -552,9 +552,18 @@ export default {
       return this.selectedService && this.recommendedConfigs[this.selectedService.name]
     }
   },
+  watch: {
+    '$route.query': {
+      immediate: false,
+      handler() {
+        this.applyRouteQuery()
+      }
+    }
+  },
   async mounted() {
     document.addEventListener('click', this.closeActionMenus)
     await this.loadAll()
+    await this.applyRouteQuery()
   },
   beforeUnmount() {
     this.stopInstallLogPolling()
@@ -617,6 +626,32 @@ export default {
       this.runningOnly = false
       this.failedOnly = false
       this.clearExpanded()
+    },
+    async applyRouteQuery() {
+      const { state, service, panel } = this.$route.query || {}
+      if (state === 'running') {
+        this.runningOnly = true
+        this.failedOnly = false
+      } else if (state === 'stopped') {
+        this.runningOnly = false
+        this.failedOnly = true
+      }
+
+      if (service) {
+        const query = String(service)
+        this.q = query
+        const match = this.services.find(entry => {
+          const haystack = `${entry.name} ${entry.label} ${entry.package || ''}`.toLowerCase()
+          return haystack.includes(query.toLowerCase())
+        })
+        if (match) {
+          this.selectedService = match
+          this.expandedService = match.name
+          if (panel === 'logs') {
+            await this.openServiceLogs(match)
+          }
+        }
+      }
     },
     toggleExpand(s) {
       this.expandedService = this.expandedService === s.name ? null : s.name

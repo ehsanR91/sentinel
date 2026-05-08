@@ -3,11 +3,11 @@
     <PageHeader :title="currentSection.label" icon="mdi mdi-cog-outline" :items="pageHeaderItems">
       <template #actions>
         <AppButton
+          v-if="dirtyFields.length"
           variant="secondary"
           size="sm"
           icon="mdi mdi-file-document-edit-outline"
           label="Review Changes"
-          :disabled="!dirtyFields.length"
           @click="reviewDrawerOpen = true"
         />
       </template>
@@ -17,7 +17,6 @@
       <aside class="settings-rail sc-surface" aria-label="Settings navigation">
         <div class="settings-rail__header">
           <div class="settings-rail__title">Settings</div>
-          <p class="settings-rail__summary">Searchable, sectioned configuration with one save model.</p>
         </div>
         <nav class="settings-nav">
           <router-link
@@ -42,18 +41,7 @@
         </div>
 
         <header class="settings-toolbar sc-surface">
-          <div>
-            <div class="settings-breadcrumbs">
-              <router-link to="/settings/general">Settings</router-link>
-              <span>/</span>
-              <span>{{ currentSection.label }}</span>
-              <template v-if="activeSubsectionLabel">
-                <span>/</span>
-                <span>{{ activeSubsectionLabel }}</span>
-              </template>
-            </div>
-            <p class="settings-toolbar__description">{{ currentSection.description }}</p>
-          </div>
+          <p class="settings-toolbar__description">{{ currentSection.description }}</p>
           <div class="settings-search">
             <label for="settings-search" class="visually-hidden">Search settings</label>
             <div class="settings-search__field">
@@ -1736,7 +1724,7 @@ export default {
 
 .settings-layout {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 220px minmax(0, 1fr);
   gap: var(--space-20);
   align-items: start;
 }
@@ -1744,11 +1732,15 @@ export default {
 .settings-rail {
   position: sticky;
   top: calc(72px + env(safe-area-inset-top));
-  padding: var(--space-16);
+  padding: 12px;
+}
+
+.settings-rail__header {
+  margin-bottom: 8px;
 }
 
 .settings-rail__title {
-  font-size: var(--font-size-16);
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -1778,18 +1770,19 @@ export default {
 
 .settings-nav {
   display: grid;
-  gap: var(--space-4);
-  margin-top: var(--space-16);
+  gap: 2px;
 }
 
 .settings-nav__item {
   display: flex;
   align-items: center;
   gap: var(--space-10);
-  padding: 0.75rem 0.85rem;
+  min-height: 36px;
+  padding: 0.55rem 0.7rem;
   border-radius: var(--radius-md);
   text-decoration: none;
   color: var(--text-secondary);
+  font-size: var(--font-size-13);
 }
 
 .settings-nav__item.active,
@@ -1822,37 +1815,24 @@ export default {
   position: sticky;
   top: calc(72px + env(safe-area-inset-top));
   z-index: 8;
-  padding: var(--space-16);
+  padding: 12px 14px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-16);
-}
-
-.settings-breadcrumbs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-8);
-  font-size: var(--font-size-13);
-  color: var(--text-secondary);
-}
-
-.settings-breadcrumbs a {
-  color: var(--accent);
-  text-decoration: none;
+  gap: 12px;
 }
 
 .settings-search {
   position: relative;
-  width: min(380px, 100%);
+  width: min(340px, 100%);
 }
 
 .settings-search__field {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  min-height: 44px;
-  padding: 0 0.9rem;
+  min-height: 38px;
+  padding: 0 0.8rem;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--surface-2);
@@ -2051,6 +2031,7 @@ export default {
   .settings-toolbar {
     top: calc(64px + env(safe-area-inset-top));
     flex-direction: column;
+    align-items: stretch;
   }
 
   .settings-search {

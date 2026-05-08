@@ -248,26 +248,83 @@ export function extractPorts (text = '') {
 
 export function normalizeAlertMessage (message = '') {
   return message
+    .replace(/^[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+/g, '')
     .replace(/\d{4}-\d{2}-\d{2}t\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:z|[+-]\d{2}:?\d{2})/ig, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-export function summarizeAlert (alert) {
+function matchGroup (text, pattern) {
+  const match = text.match(pattern)
+  return match?.[1] || ''
+}
+
+function parseAlertDetails (alert) {
   const normalized = normalizeAlertMessage(alert.message || '')
-  if (!normalized && alert.ip) {
+  const ips = extractIPs(normalized)
+  const sourceIp = alert.ip || matchGroup(normalized, /\b(?:src|from|source)\s*[:=]\s*((?:\d{1,3}\.){3}\d{1,3})/i) || ips[0] || ''
+  const destinationIp = matchGroup(normalized, /\b(?:dst|dest|destination|to)\s*[:=]\s*((?:\d{1,3}\.){3}\d{1,3})/i) || ips.find(ip => ip !== sourceIp) || ''
+  const destinationPort = matchGroup(normalized, /\b(?:dpt|dport|dest(?:ination)? port|port)\s*[:=]\s*(\d{1,5})/i)
+  const sourcePort = matchGroup(normalized, /\b(?:spt|sport|source port)\s*[:=]\s*(\d{1,5})/i)
+  const protocol = matchGroup(normalized, /\b(?:proto|protocol)\s*[:=]\s*([a-z0-9]+)/i).toUpperCase()
+  const dangerLevel = matchGroup(normalized, /\bdanger(?:[_\s-]*level)?\s*[:=]?\s*(\d+)/i)
+  const packetCount = matchGroup(normalized, /\b(\d+)\s*(?:packets?|pkts?)\b/i)
+  const signature = matchGroup(normalized, /\b(?:signature|sig)\s*[:=]\s*([^,;]+)/i)
+  const low = normalized.toLowerCase()
+  const isScan = alert.source === 'psad' || alert.type === 'scan' || low.includes('scan') || low.includes('fw1drop')
+  const isAuthFailure = low.includes('failed password') || low.includes('authentication failure')
+  return {
+    normalized,
+    sourceIp,
+    destinationIp,
+    destinationPort,
+    sourcePort,
+    protocol,
+    dangerLevel,
+    packetCount,
+    signature,
+    isScan,
+    isAuthFailure
+  }
+}
+
+export function summarizeAlert (alert) {
+  const details = parseAlertDetails(alert)
+  if (details.isScan) {
+    if (details.sourceIp && details.destinationPort && details.protocol) {
+      return `${details.protocol} ${details.destinationPort} scan from ${details.sourceIp}`
+    }
+    if (details.sourceIp) {
+      return `Scan from ${details.sourceIp}`
+    }
+    return 'Port scan detected'
+  }
+  if (details.isAuthFailure && details.sourceIp) {
+    return `Failed login from ${details.sourceIp}`
+  }
+  if (!details.normalized && alert.ip) {
     return `${alert.type || 'Alert'} involving ${alert.ip}`
   }
-  return normalized || 'Alert event'
+  if (details.signature) {
+    return details.signature
+  }
+  return details.normalized || 'Alert event'
 }
 
 export function formatAlertMeta (alert) {
-  const ips = extractIPs(alert.message || '')
-  const ports = extractPorts(alert.message || '')
+  const details = parseAlertDetails(alert)
   const meta = []
-  if (alert.source) meta.push(alert.source)
-  if (ips.length) meta.push(`${ips.length} IP${ips.length > 1 ? 's' : ''}`)
-  if (ports.length) meta.push(`${ports.length} port${ports.length > 1 ? 's' : ''}`)
+  if (details.protocol) meta.push(details.protocol)
+  if (details.destinationPort) meta.push(`Port ${details.destinationPort}`)
+  if (details.destinationIp) meta.push(`Dst ${details.destinationIp}`)
+  if (details.dangerLevel) meta.push(`Lvl ${details.dangerLevel}`)
+  if (details.packetCount) meta.push(`${details.packetCount} pkts`)
+  if (!details.protocol && !details.destinationPort) {
+    const ips = extractIPs(details.normalized)
+    const ports = extractPorts(details.normalized)
+    if (ips.length) meta.push(`${ips.length} IP${ips.length > 1 ? 's' : ''}`)
+    if (ports.length) meta.push(`${ports.length} port${ports.length > 1 ? 's' : ''}`)
+  }
   return meta
 }
 

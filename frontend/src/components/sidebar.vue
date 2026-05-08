@@ -21,7 +21,7 @@
           </div>
           <div v-if="!effectiveCollapsed" class="sidebar-brand__copy">
             <span class="sidebar-brand__name">SentinelCore</span>
-            <span class="sidebar-brand__sub">Operations control surface</span>
+            <span class="sidebar-brand__sub">Ops console</span>
           </div>
         </router-link>
 
@@ -329,13 +329,13 @@
           </div>
           <div class="server-footer-card__health">
             <span>Health {{ health.score }}/100</span>
-            <div class="server-health-bar" aria-hidden="true">
-              <span :style="{ width: `${Math.max(6, health.score)}%` }"></span>
+            <div class="server-health-bar" :class="`is-${serverTone}`" aria-hidden="true">
+              <span :style="{ width: `${Math.max(0, Math.min(100, Number(health.score || 0)))}%` }"></span>
             </div>
           </div>
         </template>
-        <div v-else class="server-footer-card__compact-bar" aria-hidden="true">
-          <span :style="{ width: `${Math.max(8, health.score)}%` }"></span>
+        <div v-else class="server-footer-card__compact-bar" :class="`is-${serverTone}`" aria-hidden="true">
+          <span :style="{ width: `${Math.max(0, Math.min(100, Number(health.score || 0)))}%` }"></span>
         </div>
       </div>
 
@@ -676,6 +676,7 @@ export default {
       if (!this.wsConnected) return 'warn'
       if (this.health.overall_status === 'critical') return 'critical'
       if (this.health.overall_status === 'warning') return 'warn'
+      if (Number(this.health.score || 0) < 80) return 'warn'
       if (this.health.overall_status === 'healthy') return 'ok'
       return 'muted'
     },

@@ -234,7 +234,7 @@
           <div class="topbar-alerts__meta">
             <div class="topbar-alerts__summary">
               <strong>{{ unreadCount }} unread</strong>
-              <span>{{ alertVisibleGroups.length }} visible groups</span>
+              <span>{{ alertVisibleGroups.length }} visible</span>
             </div>
             <button v-if="unreadCount" type="button" class="topbar-link-button" @click="markAllAsRead">Mark all read</button>
           </div>
@@ -296,7 +296,7 @@
                   </div>
                   <div class="topbar-alert-row__content">
                     <div class="topbar-alert-row__head">
-                      <div>
+                      <div class="topbar-alert-row__summary">
                         <div class="topbar-alert-row__title">{{ summarizeAlert(group.base) }}</div>
                         <div class="topbar-alert-row__subtitle">{{ alertSubtitle(group) }}</div>
                       </div>
@@ -318,9 +318,6 @@
                           </div>
                         </details>
                       </div>
-                    </div>
-                    <div class="topbar-alert-row__tags">
-                      <span v-for="meta in formatAlertMeta(group.base)" :key="`${group.id}-${meta}`" class="topbar-tag">{{ meta }}</span>
                     </div>
                     <button
                       v-if="group.count > 1"
@@ -350,10 +347,9 @@
 
       <Popover
         :model-value="openPopover === 'user'"
-        :title="userMenuTitle"
-        subtitle="Account"
-        :width="440"
-        :max-width="520"
+        :width="280"
+        :min-width="280"
+        :max-width="280"
         panel-class="topbar-popover topbar-popover--user"
         body-class="topbar-popover__body topbar-popover__body--user"
         @update:modelValue="setPopoverState('user', $event)"
@@ -382,94 +378,85 @@
         <div v-if="userMenuView === 'main'" class="user-popover">
           <header class="user-popover__header">
             <div class="user-popover__hero">
-              <UserAvatar :name="displayName" :src="avatarUrl" :status="presence.status" size="lg" />
+              <UserAvatar :name="displayName" :src="avatarUrl" :status="presence.status" size="sm" />
               <div class="user-popover__meta">
                 <Tooltip :label="displayName" as-child>
                   <strong>{{ displayName }}</strong>
                 </Tooltip>
-                <span>{{ userRole }} · {{ presence.status }}</span>
-                <button type="button" class="user-popover__last-login" @click="openAuditForCurrentUser">
+                <span class="user-popover__meta-line">
+                  <StatusDot :status="presence.status" />
+                  <span>{{ userRole }} · {{ presence.status }}</span>
+                </span>
+                <button type="button" class="user-popover__last-login" :title="lastLoginLabel" @click="openAuditForCurrentUser">
                   {{ lastLoginLabel }}
                 </button>
               </div>
             </div>
-            <AppButton variant="ghost" size="sm" label="Manage" @click="goToAccount" />
           </header>
 
           <section class="user-popover__section">
             <div class="user-popover__section-label">Account</div>
             <button type="button" class="user-popover__item sc-focus-ring" @click="goToAccount">
-              <div>
-                <strong>Profile</strong>
-                <p>Email, display details, and recovery setup.</p>
-              </div>
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-account-circle-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">Profile</span>
+              </span>
             </button>
             <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('general')">
-              <div>
-                <strong>Settings</strong>
-                <p>System and account-level preferences.</p>
-              </div>
-              <KbdHint hint="⌘," />
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-cog-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">Settings</span>
+              </span>
+              <span class="user-popover__item-meta">⌘,</span>
             </button>
             <button type="button" class="user-popover__item sc-focus-ring" @click="openTokensInfo">
-              <div>
-                <strong>API tokens</strong>
-                <p>Token management is not exposed by the current agent API yet.</p>
-              </div>
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-key-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">API tokens</span>
+              </span>
             </button>
             <button type="button" class="user-popover__item sc-focus-ring" @click="goToSettings('access-control')">
-              <div>
-                <strong>2FA management</strong>
-                <p>{{ me.totp_enabled ? 'TOTP is enabled for this account.' : 'Set up TOTP for stronger access control.' }}</p>
-              </div>
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-shield-key-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">2FA management</span>
+              </span>
+              <span class="user-popover__item-meta">{{ me.totp_enabled ? 'On' : 'Off' }}</span>
             </button>
           </section>
 
           <section class="user-popover__section">
             <div class="user-popover__section-label">Workspace</div>
             <button type="button" class="user-popover__item sc-focus-ring" @click="userMenuView = 'servers'">
-              <div>
-                <strong>Switch server</strong>
-                <p>{{ currentServerLabel }}</p>
-              </div>
-              <i class="mdi mdi-chevron-right"></i>
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-server-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">Switch server</span>
+              </span>
+              <i class="mdi mdi-chevron-right user-popover__item-meta-icon" aria-hidden="true"></i>
             </button>
             <button type="button" class="user-popover__item sc-focus-ring" @click="openAuditForCurrentUser">
-              <div>
-                <strong>Audit Logs</strong>
-                <p>Jump to this user’s recent authentication activity.</p>
-              </div>
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-file-document-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">Audit logs</span>
+              </span>
             </button>
           </section>
 
           <section class="user-popover__section">
             <div class="user-popover__section-label">Preferences</div>
             <div class="user-popover__setting-row">
-              <div>
-                <strong>Theme</strong>
-                <p>Applies immediately across the app.</p>
-              </div>
+              <span class="user-popover__setting-label">Theme</span>
               <SegmentedControl :model-value="currentThemePref" :options="themeSegmentOptions" label="Theme" @update:modelValue="applyTheme" />
             </div>
             <div class="user-popover__setting-row">
-              <div>
-                <strong>Density</strong>
-                <p>Controls layout density for navigation surfaces.</p>
-              </div>
+              <span class="user-popover__setting-label">Density</span>
               <SegmentedControl :model-value="sidebarDensity" :options="densitySegmentOptions" label="Density" @update:modelValue="applyDensity" />
             </div>
             <div class="user-popover__setting-row">
-              <div>
-                <strong>Presence</strong>
-                <p>DND suppresses non-critical desktop notifications.</p>
-              </div>
+              <span class="user-popover__setting-label">Status</span>
               <SegmentedControl :model-value="presence.status" :options="presenceSegmentOptions" label="Presence" @update:modelValue="applyPresence" />
             </div>
             <div class="user-popover__setting-row user-popover__setting-row--stacked">
-              <div>
-                <strong>Auto-away</strong>
-                <p>Switch to Away after inactivity.</p>
-              </div>
+              <span class="user-popover__setting-label">Auto-away</span>
               <select v-model.number="presence.autoAwayMinutes" class="user-popover__select sc-focus-ring" @change="savePresenceState()">
                 <option :value="5">5 minutes</option>
                 <option :value="15">15 minutes</option>
@@ -480,32 +467,33 @@
           </section>
 
           <section class="user-popover__section">
-            <div class="user-popover__section-label">Help / Info</div>
+            <div class="user-popover__section-label">Help</div>
             <button type="button" class="user-popover__item sc-focus-ring" @click="showShortcutHelp">
-              <div>
-                <strong>Keyboard shortcuts</strong>
-                <p>See the most useful navigation shortcuts.</p>
-              </div>
-              <KbdHint hint="⌘K" />
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-keyboard-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">Keyboard shortcuts</span>
+              </span>
+              <span class="user-popover__item-meta">⌘K</span>
             </button>
             <button type="button" class="user-popover__item sc-focus-ring" @click="openWhatsNew">
-              <div>
-                <strong>What’s new <span v-if="!whatsNewSeen" class="user-popover__dot">• new</span></strong>
-                <p>Recent changes and release notes.</p>
-              </div>
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-star-four-points-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">What’s new</span>
+              </span>
+              <span v-if="!whatsNewSeen" class="user-popover__item-meta">New</span>
             </button>
             <button type="button" class="user-popover__item sc-focus-ring" @click="openDocs">
-              <div>
-                <strong>Help & docs</strong>
-                <p>Open the project documentation.</p>
-              </div>
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-help-circle-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">Help & docs</span>
+              </span>
             </button>
             <button v-if="lockPinSet" type="button" class="user-popover__item sc-focus-ring" @click="lockScreen">
-              <div>
-                <strong>Lock screen</strong>
-                <p>Require the local PIN to unlock.</p>
-              </div>
-              <KbdHint hint="Space" />
+              <span class="user-popover__item-main">
+                <i class="mdi mdi-lock-outline" aria-hidden="true"></i>
+                <span class="user-popover__item-label">Lock screen</span>
+              </span>
+              <span class="user-popover__item-meta">Space</span>
             </button>
           </section>
 
@@ -634,7 +622,6 @@ import Popover from '@/components/ui/popover.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
 import AppButton from '@/components/ui/app-button.vue'
 import EmptyState from '@/components/ui/empty-state.vue'
-import KbdHint from '@/components/ui/kbd-hint.vue'
 import StatusDot from '@/components/ui/status-dot.vue'
 import UserAvatar from '@/components/ui/user-avatar.vue'
 import SegmentedControl from '@/components/settings/fields/segmented-control.vue'
@@ -686,7 +673,6 @@ export default {
     Tooltip,
     AppButton,
     EmptyState,
-    KbdHint,
     StatusDot,
     UserAvatar,
     SegmentedControl
@@ -928,9 +914,6 @@ export default {
         paddingBottom: `${bottom}px`
       }
     },
-    userMenuTitle() {
-      return this.userMenuView === 'servers' ? 'Switch server' : 'Account'
-    },
     lastLoginLabel() {
       if (this.lastLoginEntry) {
         return `Last login ${this.timeAgo(this.lastLoginEntry.ts)} from ${this.lastLoginEntry.ip || this.me.client_ip || 'unknown IP'}`
@@ -942,9 +925,9 @@ export default {
     },
     themeSegmentOptions() {
       return [
-        { label: 'System', value: 'system' },
         { label: 'Light', value: 'light' },
-        { label: 'Dark', value: 'dark' }
+        { label: 'Dark', value: 'dark' },
+        { label: 'System', value: 'system' }
       ]
     },
     densitySegmentOptions() {
@@ -1866,9 +1849,20 @@ export default {
   padding-top: 0;
 }
 
+.topbar-popover--user {
+  width: min(280px, calc(100vw - 24px));
+}
+
+.topbar-popover__body--user {
+  padding: 10px 10px 12px !important;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .topbar-alerts {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.65rem;
 }
 
 .topbar-alerts__meta,
@@ -1882,7 +1876,7 @@ export default {
 
 .topbar-alerts__summary {
   display: grid;
-  gap: 0.15rem;
+  gap: 0;
 }
 
 .topbar-alerts__summary strong,
@@ -1920,21 +1914,22 @@ export default {
 
 .topbar-tabs {
   display: flex;
-  gap: 0.45rem;
+  gap: 0.35rem;
   overflow-x: auto;
   padding-bottom: 0.1rem;
 }
 
 .topbar-tab {
-  min-height: 36px;
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  padding: 0 0.75rem;
+  padding: 0 0.65rem;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .topbar-tab.active {
@@ -1944,13 +1939,14 @@ export default {
 }
 
 .topbar-new-pill {
-  min-height: 34px;
+  min-height: 30px;
   justify-self: start;
-  padding: 0 0.75rem;
+  padding: 0 0.65rem;
   border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border-subtle));
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
   color: var(--text-primary);
+  font-size: 12px;
 }
 
 .topbar-alerts__list {
@@ -1961,17 +1957,18 @@ export default {
 
 .topbar-alerts__items {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.45rem;
 }
 
 .topbar-alert-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 0.8rem;
-  padding: 0.85rem;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 0.65rem;
+  min-height: 56px;
+  padding: 0.55rem 0.7rem;
   border: 1px solid var(--border-subtle);
   border-left: 3px solid transparent;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--surface-2);
 }
 
@@ -1986,12 +1983,12 @@ export default {
 }
 
 .topbar-alert-row__icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--surface-1) 86%, transparent);
 }
 
@@ -2009,24 +2006,24 @@ export default {
 
 .topbar-alert-row__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.55rem;
+}
+
+.topbar-alert-row__summary {
+  min-width: 0;
 }
 
 .topbar-alert-row__title {
-  font-size: 0.9rem;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  line-height: 1.35;
-}
-
-.topbar-alert-row__tags,
-.user-popover__server-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.45rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .topbar-tag,
@@ -2039,6 +2036,19 @@ export default {
   background: color-mix(in srgb, var(--surface-1) 86%, transparent);
   font-size: 0.7rem;
   color: var(--text-secondary);
+}
+
+.topbar-alert-row__subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-popover__server-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
 }
 
 .topbar-unread-dot {
@@ -2111,46 +2121,63 @@ export default {
 
 .user-popover {
   display: grid;
-  gap: 1rem;
+  gap: 8px;
 }
 
 .user-popover__header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 16px;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border-subtle);
   background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--surface-2) 80%, transparent));
 }
 
 .user-popover__hero {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.65rem;
   min-width: 0;
 }
 
 .user-popover__meta {
   display: grid;
-  gap: 0.2rem;
+  gap: 1px;
   min-width: 0;
+  flex: 1;
 }
 
 .user-popover__meta strong {
-  font-size: 0.875rem;
+  font-size: 13px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.user-popover__meta-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .user-popover__section {
   display: grid;
-  gap: 0.5rem;
+  gap: 4px;
+}
+
+.user-popover__section + .user-popover__section {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .user-popover__section-label {
-  font-size: 11px;
+  margin: 0 2px 2px;
+  font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-tertiary);
@@ -2165,12 +2192,12 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.85rem 0.9rem;
-  border: 1px solid var(--border-subtle);
-  border-left: 3px solid transparent;
-  border-radius: 14px;
-  background: var(--surface-2);
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
   text-align: left;
 }
 
@@ -2178,28 +2205,54 @@ export default {
 .user-popover__server-item:focus-visible,
 .user-popover__signout:focus-visible,
 .user-popover__add-account:focus-visible {
-  border-left-color: var(--accent);
+  background: var(--accent-muted);
 }
 
 .user-popover__setting-row {
-  align-items: flex-start;
-  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+  align-items: center;
+  gap: 8px;
 }
 
 .user-popover__setting-row--stacked {
-  display: grid;
+  padding-top: 4px;
 }
 
-.user-popover__dot {
-  color: var(--accent);
-  font-size: 0.75rem;
+.user-popover__item-main {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-popover__item-main i,
+.user-popover__item-meta-icon {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.user-popover__item-label,
+.user-popover__setting-label {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.user-popover__item-meta {
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .user-popover__signout {
-  margin-top: 0.2rem;
+  margin-top: 4px;
+  min-height: 36px;
   color: #f04040;
-  border-top: 1px solid color-mix(in srgb, #f04040 16%, transparent);
-  border-left-color: #f04040;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
+  padding-top: 8px;
+  justify-content: flex-start;
 }
 
 .user-popover__signout:hover {
@@ -2221,8 +2274,8 @@ export default {
 .user-popover__server-search input,
 .user-popover__select {
   width: 100%;
-  min-height: 40px;
-  padding: 0.6rem 0.8rem 0.6rem 2rem;
+  min-height: 36px;
+  padding: 0.45rem 0.8rem 0.45rem 2rem;
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   background: var(--surface-1);
@@ -2246,7 +2299,26 @@ export default {
 }
 
 .user-popover__server-item.active {
-  border-left-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.user-popover__last-login {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-popover__setting-row :deep(.segmented-control) {
+  padding: 2px;
+  border-radius: 999px;
+}
+
+.user-popover__setting-row :deep(.segmented-control__item) {
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 24px;
 }
 
 .quick-mount-panel {
@@ -2367,7 +2439,7 @@ export default {
   .user-popover__server-item,
   .user-popover__signout,
   .user-popover__add-account {
-    padding: 1rem;
+    padding-inline: 10px;
   }
 }
 

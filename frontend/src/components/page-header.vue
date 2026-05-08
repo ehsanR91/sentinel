@@ -12,7 +12,7 @@
               <i class="mdi mdi-arrow-left"></i>
               Back
             </button>
-            <ol class="breadcrumb-list">
+            <ol v-if="showBreadcrumbTrail" class="breadcrumb-list">
               <li class="breadcrumb-item">
                 <router-link to="/dashboard" class="breadcrumb-link d-flex align-items-center gap-1">
                   <i class="mdi mdi-home-outline"></i>
@@ -35,6 +35,10 @@
                 </span>
               </li>
             </ol>
+            <div v-else class="page-breadcrumb-home">
+              <i class="mdi mdi-home-outline" aria-hidden="true"></i>
+              <span>SentinelCore</span>
+            </div>
           </nav>
         </div>
       </div>
@@ -53,6 +57,14 @@ export default {
     items: { type: Array, default: () => [] },
     icon: { type: String, default: '' }
   },
+  computed: {
+    showBreadcrumbTrail () {
+      if (!this.items.length) return false
+      if (this.items.length > 1) return true
+      const [only] = this.items
+      return !only?.active || only?.text !== this.title
+    }
+  },
   methods: {
     goBack () {
       if (window.history.length > 1) {
@@ -67,7 +79,7 @@ export default {
 
 <style scoped>
 .page-header-sc {
-  padding: var(--space-20);
+  padding: 16px 18px;
 }
 
 .page-header-main {
@@ -81,32 +93,40 @@ export default {
 .page-header-title-wrap {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-16);
+  gap: 12px;
   min-width: 0;
 }
 
 .page-header-icon {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
   border-radius: var(--radius-md);
   background: var(--accent-muted);
   color: var(--accent);
-  font-size: 24px;
+  font-size: 20px;
   flex-shrink: 0;
 }
 
 .page-title {
   margin: 0;
-  font-size: var(--font-size-28);
+  font-size: 24px;
   line-height: var(--line-height-tight);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .page-breadcrumbs {
-  margin-top: var(--space-8);
+  margin-top: 6px;
+}
+
+.page-breadcrumb-home {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--font-size-13);
 }
 
 .breadcrumb-list {
@@ -167,11 +187,11 @@ export default {
 
 @media (max-width: 768px) {
   .page-header-sc {
-    padding: var(--space-16);
+    padding: 14px 16px;
   }
 
   .page-title {
-    font-size: var(--font-size-22);
+    font-size: 20px;
   }
 
   .page-header-actions {

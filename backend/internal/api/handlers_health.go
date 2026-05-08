@@ -164,10 +164,10 @@ func (h *Handlers) GetHealth(w http.ResponseWriter, r *http.Request) {
 	response.Score = totalScore
 	if criticalCount > 0 {
 		response.OverallStatus = StatusCritical
-		response.Summary = fmt.Sprintf("System has %d critical issues and %d warnings", criticalCount, warningCount)
+		response.Summary = fmt.Sprintf("System has %d critical %s and %d %s", criticalCount, pluralizeWord(criticalCount, "issue", "issues"), warningCount, pluralizeWord(warningCount, "warning", "warnings"))
 	} else if warningCount > 0 {
 		response.OverallStatus = StatusWarning
-		response.Summary = fmt.Sprintf("System has %d warnings", warningCount)
+		response.Summary = fmt.Sprintf("System has %d %s", warningCount, pluralizeWord(warningCount, "warning", "warnings"))
 	} else {
 		response.OverallStatus = StatusHealthy
 		response.Summary = "All systems operational"
@@ -175,6 +175,13 @@ func (h *Handlers) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 	response.Timestamp = time.Now()
 	writeJSON(w, http.StatusOK, response)
+}
+
+func pluralizeWord(count int, singular, plural string) string {
+	if count == 1 {
+		return singular
+	}
+	return plural
 }
 
 func (h *Handlers) checkSystemInfo() HealthCheck {

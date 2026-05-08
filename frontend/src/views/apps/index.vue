@@ -36,7 +36,7 @@
       <div v-if="opRunning" class="op-progress-bar"><span></span></div>
       <div ref="logWindow" class="op-log-window">
         <div v-for="(line, index) in opLogs" :key="`${index}-${line.ts}`" class="op-log-line" :class="`op-log-line--${line.type}`">
-          <span class="op-log-time">{{ line.ts }}</span>
+          <span class="op-log-time" :title="formatLogTimeTitle(line.ts)">{{ formatLogTime(line.ts) }}</span>
           <span>{{ line.text }}</span>
         </div>
         <div v-if="opError" class="op-log-line op-log-line--error">
@@ -340,7 +340,7 @@
           <h6>Current Operation</h6>
           <div class="op-log-window op-log-window--drawer">
             <div v-for="(line, index) in opLogs" :key="`drawer-log-${index}`" class="op-log-line" :class="`op-log-line--${line.type}`">
-              <span class="op-log-time">{{ line.ts }}</span>
+              <span class="op-log-time" :title="formatLogTimeTitle(line.ts)">{{ formatLogTime(line.ts) }}</span>
               <span>{{ line.text }}</span>
             </div>
           </div>
@@ -384,6 +384,7 @@ import EmptyState from '@/components/ui/empty-state.vue'
 import ErrorState from '@/components/ui/error-state.vue'
 import api from '@/services/api'
 import {
+  formatTimestamp,
   getAppsViewPreference,
   getDensityPreference,
   loadSavedFilters,
@@ -698,6 +699,12 @@ export default {
       this.selectedAppName = app.name
       this.showDrawer = true
     },
+    formatLogTime (value) {
+      return formatTimestamp(value).primary
+    },
+    formatLogTimeTitle (value) {
+      return formatTimestamp(value).title
+    },
     navigateDrawer (step) {
       if (!this.selectedApp) return
       const index = this.filteredApps.findIndex(app => app.name === this.selectedApp.name)
@@ -813,7 +820,7 @@ export default {
       }
     },
     addLog (text, type = 'info') {
-      this.opLogs.push({ ts: new Date().toLocaleTimeString(), text, type })
+      this.opLogs.push({ ts: Date.now(), text, type })
       this.$nextTick(() => {
         const element = this.$refs.logWindow
         if (element) element.scrollTop = element.scrollHeight
