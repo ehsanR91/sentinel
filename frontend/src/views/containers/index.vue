@@ -199,6 +199,7 @@ export default {
   mounted() {
     this.loadContainers()
     this.fetchClientIp()
+    this.detectServerHost()
   },
 
   methods: {
@@ -207,6 +208,17 @@ export default {
         const { data } = await api.getMe()
         if (data?.client_ip) this.clientIp = data.client_ip
       } catch (_) {}
+    },
+
+    async detectServerHost() {
+      try {
+        const { data } = await api.getTunnelableApps()
+        if (data?.connection?.host) {
+          this.serverHost = data.connection.host
+        }
+      } catch (_) {
+        // Fallback to browser hostname when tunnel service detection is unavailable.
+      }
     },
 
     // Parse backend format "9000->9000/tcp, 9443->9443/tcp" → [9000, 9443]
@@ -267,10 +279,11 @@ export default {
         const grantedIp = data?.ip || ip
         const dh = data?.duration_hours || durationHours
         const expiresAt = data?.expires_at ? new Date(data.expires_at * 1000).toLocaleString() : `in ${dh}h`
-        const browseUrl = `http://${this.serverHost}:${port}`
+        const host = data?.host || this.serverHost
+        const browseUrl = `http://${host}:${port}`
         const isProxy = data?.mode === 'nat' || data?.mode === 'proxy'
         const modeNote = isProxy
-          ? `<p style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(34,214,124,0.08);color:#22d67c;font-size:0.78rem"><i class="mdi mdi-router-network me-1"></i>Proxy mode: forwarding ${this.serverHost}:${port} → 127.0.0.1:${port}</p>`
+          ? `<p style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(34,214,124,0.08);color:#22d67c;font-size:0.78rem"><i class="mdi mdi-router-network me-1"></i>Proxy mode: forwarding ${host}:${port} → 127.0.0.1:${port}</p>`
           : `<p style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(74,158,255,0.08);color:#4a9eff;font-size:0.78rem"><i class="mdi mdi-shield-check me-1"></i>UFW rule added for ${grantedIp}</p>`
         this.$swal({
           title: 'Access Granted \u2713',

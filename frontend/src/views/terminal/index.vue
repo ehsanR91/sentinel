@@ -457,6 +457,8 @@ export default {
         top: 0
       },
       touchStartTime: null,
+      touchX: 0,
+      touchY: 0,
       touchThreshold: 500, // 500ms for touch-and-hold
       autoScroll: true,
 
@@ -675,6 +677,7 @@ export default {
       }
 
       this.sendCommand(cmd)
+      this.$nextTick(() => this.$refs.termInput?.focus({ preventScroll: true }))
     },
 
     sendCommand(cmd) {
@@ -811,12 +814,15 @@ export default {
 
     // ── Context Menu ───────────────────────────────────────────────────────────
     showContextMenu(e) {
+      e.preventDefault()
       // Don't show if clicking on input
       if (e.target.tagName === 'INPUT') return
-      
+
+      const menuWidth = 180
+      const menuHeight = 120
+      this.contextMenu.left = Math.min(e.clientX, window.innerWidth - menuWidth - 12)
+      this.contextMenu.top = Math.min(e.clientY, window.innerHeight - menuHeight - 12)
       this.contextMenu.visible = true
-      this.contextMenu.left = e.clientX
-      this.contextMenu.top = e.clientY
     },
 
     hideContextMenuOnOutsideClick(e) {
@@ -931,6 +937,15 @@ export default {
 
 .modal-body-custom {
   padding: 1.25rem 1rem;
+}
+
+/* Terminal output helpers */
+.log-terminal {
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Context Menu Styles - macOS inspired */

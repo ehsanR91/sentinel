@@ -814,7 +814,7 @@ export default {
   position: absolute;
   top: 54px;
   right: 0;
-  width: 320px;
+  width: min(320px, calc(100vw - 1rem));
   max-height: 400px;
   overflow-y: auto;
   background: var(--sc-bg-card);
@@ -880,9 +880,11 @@ export default {
   top: 44px;
   right: 0;
   min-width: 280px;
-  max-width: 320px;
+  max-width: min(320px, calc(100vw - 1rem));
   max-height: 400px;
   overflow-y: auto;
+  overflow-x: hidden;
+  white-space: normal;
   background: var(--sc-bg-card);
   border: 1px solid var(--sc-border);
   border-radius: 8px;
@@ -895,6 +897,7 @@ export default {
   transition: background 0.15s ease;
   border-radius: 4px;
   margin: 2px 4px;
+  word-break: break-word;
 }
 
 .alert-item:hover {
