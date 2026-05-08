@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
 
 	appauth "github.com/ehsanR91/sentinelcore/internal/auth"
@@ -51,10 +53,19 @@ type Handlers struct {
 	gs        *grantStore
 	proxyMu   sync.Mutex
 	proxies   map[string]net.Listener
+	logMu     sync.Mutex
+	logHubs   map[string]*containerLogHub
 }
 
 func NewHandlers(cfg *config.Config, collector *monitoring.Collector, hub *appws.Hub, mailer *notify.Mailer) *Handlers {
-	return &Handlers{cfg: cfg, collector: collector, hub: hub, mailer: mailer, proxies: map[string]net.Listener{}}
+	return &Handlers{
+		cfg:       cfg,
+		collector: collector,
+		hub:       hub,
+		mailer:    mailer,
+		proxies:   map[string]net.Listener{},
+		logHubs:   map[string]*containerLogHub{},
+	}
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -716,6 +727,263 @@ func (h *Handlers) DockerPrune(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+var dockerLogUpgrader = websocket.Upgrader{
+	ReadBufferSize:  4096,
+	WriteBufferSize: 4096,
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		return strings.HasPrefix(origin, "http://"+r.Host) || strings.HasPrefix(origin, "https://"+r.Host)
+	},
+}
+
+type containerLogMessage struct {
+	Type      string `json:"type"`
+	Stream    string `json:"stream,omitempty"`
+	Text      string `json:"text,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+	Error     string `json:"error,omitempty"`
+	Status    string `json:"status,omitempty"`
+}
+
+type containerLogHub struct {
+	id            string
+	mu            sync.Mutex
+	clients       map[*websocket.Conn]struct{}
+	stop          chan struct{}
+	active        bool
+	lastTimestamp string
+}
+
+func (h *Handlers) getContainerLogHub(id string) *containerLogHub {
+	h.logMu.Lock()
+	defer h.logMu.Unlock()
+	hub, ok := h.logHubs[id]
+	if !ok {
+		hub = &containerLogHub{
+			id:      id,
+			clients: map[*websocket.Conn]struct{}{},
+			stop:    make(chan struct{}),
+		}
+		h.logHubs[id] = hub
+	}
+	return hub
+}
+
+func (h *Handlers) removeContainerLogHub(id string) {
+	h.logMu.Lock()
+	defer h.logMu.Unlock()
+	delete(h.logHubs, id)
+}
+
+func (hub *containerLogHub) addClient(conn *websocket.Conn) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	hub.clients[conn] = struct{}{}
+}
+
+func (hub *containerLogHub) removeClient(conn *websocket.Conn) {
+	hub.mu.Lock()
+	defer hub.mu.Unlock()
+	delete(hub.clients, conn)
+	if len(hub.clients) == 0 {
+		select {
+		case <-hub.stop:
+			return
+		default:
+			close(hub.stop)
+		}
+	}
+}
+
+func (hub *containerLogHub) broadcast(msg containerLogMessage) {
+	hub.mu.Lock()
+	for conn := range hub.clients {
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		if err := conn.WriteJSON(msg); err != nil {
+			_ = conn.Close()
+			delete(hub.clients, conn)
+		}
+	}
+	hub.mu.Unlock()
+}
+
+func (h *Handlers) GetContainerLogs(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing container id")
+		return
+	}
+	query := r.URL.Query()
+	stdout := query.Get("stdout") != "0"
+	stderr := query.Get("stderr") != "0"
+	if !stdout && !stderr {
+		stdout = true
+		stderr = true
+	}
+	tail := 100
+	if v := query.Get("tail"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			tail = n
+		}
+	}
+	opts := dockerclient.ContainerLogsOptions{
+		Stdout:     stdout,
+		Stderr:     stderr,
+		Since:      query.Get("since"),
+		Until:      query.Get("until"),
+		Tail:       tail,
+		Timestamps: true,
+		Follow:     false,
+	}
+	lines, err := dockerclient.ContainerLogs(id, opts)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"lines": lines})
+}
+
+func (h *Handlers) ContainerLogsWS(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing container id")
+		return
+	}
+	conn, err := dockerLogUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	hub := h.getContainerLogHub(id)
+	hub.addClient(conn)
+	hub.broadcast(containerLogMessage{Type: "status", Status: "attached"})
+	go h.containerLogsWSReadPump(conn, hub)
+	if !hub.active {
+		go h.runContainerLogsHub(hub)
+	}
+}
+
+func (h *Handlers) containerLogsWSReadPump(conn *websocket.Conn, hub *containerLogHub) {
+	defer func() {
+		hub.removeClient(conn)
+		_ = conn.Close()
+		if len(hub.clients) == 0 {
+			h.removeContainerLogHub(hub.id)
+		}
+	}()
+	conn.SetReadLimit(512)
+	_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			return
+		}
+	}
+}
+
+func (h *Handlers) runContainerLogsHub(hub *containerLogHub) {
+	hub.mu.Lock()
+	if hub.active {
+		hub.mu.Unlock()
+		return
+	}
+	hub.active = true
+	hub.stop = make(chan struct{})
+	hub.mu.Unlock()
+	defer h.removeContainerLogHub(hub.id)
+	backoff := 1 * time.Second
+	for {
+		select {
+		case <-hub.stop:
+			return
+		default:
+		}
+		hub.broadcast(containerLogMessage{Type: "status", Status: "connecting"})
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			select {
+			case <-hub.stop:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+		opts := dockerclient.ContainerLogsOptions{
+			Stdout:     true,
+			Stderr:     true,
+			Since:      hub.lastTimestamp,
+			Tail:       100,
+			Timestamps: true,
+			Follow:     true,
+		}
+		if hub.lastTimestamp == "" {
+			opts.Tail = 100
+		}
+		reader, err := dockerclient.ContainerLogsStream(ctx, hub.id, opts)
+		if err != nil {
+			hub.broadcast(containerLogMessage{Type: "error", Error: err.Error()})
+			cancel()
+			hub.broadcast(containerLogMessage{Type: "status", Status: "reconnecting"})
+			select {
+			case <-hub.stop:
+				return
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
+			continue
+		}
+		hub.broadcast(containerLogMessage{Type: "status", Status: "connected"})
+		err = h.streamContainerLogs(ctx, hub, reader)
+		reader.Close()
+		cancel()
+		if err != nil {
+			hub.broadcast(containerLogMessage{Type: "error", Error: err.Error()})
+		}
+		select {
+		case <-hub.stop:
+			return
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > 30*time.Second {
+			backoff = 30 * time.Second
+		}
+		hub.broadcast(containerLogMessage{Type: "status", Status: "reconnecting"})
+	}
+}
+
+func (h *Handlers) streamContainerLogs(ctx context.Context, hub *containerLogHub, reader io.ReadCloser) error {
+	in := make(chan dockerclient.DockerLogLine, 128)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- dockerclient.StreamDockerLogLines(ctx, reader, in)
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-errCh:
+			return err
+		case line, ok := <-in:
+			if !ok {
+				return nil
+			}
+			if line.Timestamp != "" {
+				hub.lastTimestamp = line.Timestamp
+			}
+			hub.broadcast(containerLogMessage{Type: "line", Stream: line.Stream, Timestamp: line.Timestamp, Text: line.Text})
+		}
+	}
 }
 
 // ─── Lock Screen PIN ──────────────────────────────────────────────────────────

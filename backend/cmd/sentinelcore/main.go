@@ -155,6 +155,7 @@ func main() {
 
 	// ── Terminal WebSocket — no request timeout (long-lived connection) ────────
 	r.With(api.RequireAuth(cfg.JWTSecret)).Get("/api/v1/terminal/ws", h.TerminalWS)
+	r.With(api.RequireAuth(cfg.JWTSecret)).Get("/api/v1/docker/containers/{id}/logs/stream", h.ContainerLogsWS)
 
 	// ── All authenticated routes (60s timeout) ────────────────────────────────
 	r.Group(func(r chi.Router) {
@@ -188,6 +189,7 @@ func main() {
 		r.Get("/api/v1/system/cleanup/logs", h.GetCleanupLogs)
 		r.Get("/api/v1/docker/info", h.GetDockerInfo)
 		r.Get("/api/v1/docker/containers", h.GetDockerContainers)
+		r.Get("/api/v1/docker/containers/{id}/logs", h.GetContainerLogs)
 		r.Get("/api/v1/docker/containers/{id}/stats", h.GetContainerStats)
 		r.Get("/api/v1/logs", h.GetLogs)
 		r.Get("/api/v1/alerts", h.GetAlerts)

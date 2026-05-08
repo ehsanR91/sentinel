@@ -128,11 +128,14 @@
                     <button class="dropdown-item" @click.stop="act(s, s.running ? 'stop' : 'start')" :disabled="busy[s.name]">
                       <i :class="`mdi mdi-${s.running ? 'stop' : 'play'} me-1`"></i>{{ s.running ? 'Stop' : 'Start' }}
                     </button>
-                    <button class="dropdown-item" @click.stop="act(s, s.active_state === 'inactive' ? 'enable' : 'disable')" :disabled="busy[s.name]">
-                      <i :class="`mdi mdi-${s.active_state === 'inactive' ? 'toggle-switch' : 'toggle-switch-off'} me-1`"></i>{{ s.active_state === 'inactive' ? 'Enable' : 'Disable' }}
+                    <button class="dropdown-item" @click.stop="act(s, 'enable')" :disabled="busy[s.name] || s.active_state !== 'inactive'">
+                      <i class="mdi mdi-toggle-switch me-1"></i>Enable
+                    </button>
+                    <button class="dropdown-item" @click.stop="act(s, 'disable')" :disabled="busy[s.name] || s.active_state === 'inactive'">
+                      <i class="mdi mdi-toggle-switch-off me-1"></i>Disable
                     </button>
                     <div class="dropdown-divider"></div>
-                    <button class="dropdown-item" @click.stop="act(s, 'reinstall')" :disabled="busy[s.name]">
+                    <button class="dropdown-item" @click.stop="confirmReinstall(s)" :disabled="busy[s.name]">
                       <i class="mdi mdi-refresh-circle me-1"></i>Re-Install
                     </button>
                     <button class="dropdown-item text-danger" @click.stop="confirmUninstall(s)" :disabled="busy[s.name]">
@@ -784,6 +787,17 @@ export default {
       })
       if (!confirmed.isConfirmed) return
       await this.act(s, 'uninstall')
+    },
+    async confirmReinstall(s) {
+      const confirmed = await this.$swal({
+        title: `Reinstall ${s.label}?`,
+        text: `This will reinstall the package and attempt to restore the service configuration. Existing service files may be overwritten or reloaded.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Reinstall'
+      })
+      if (!confirmed.isConfirmed) return
+      await this.act(s, 'reinstall')
     },
     async act(s, action) {
       this.busy = { ...this.busy, [s.name]: true }

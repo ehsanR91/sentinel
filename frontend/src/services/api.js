@@ -108,6 +108,13 @@ export default {
   getDockerInfo: () => api.get('/docker/info'),
   getContainers: () => api.get('/docker/containers'),
   getContainerStats: (id) => api.get(`/docker/containers/${id}/stats`),
+  getContainerLogs: (id, params) => api.get(`/docker/containers/${id}/logs`, { params }),
+  getContainerLogsWsUrl: (id, params = {}) => {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const host = import.meta.env.VITE_WS_HOST || window.location.host
+    const query = new URLSearchParams(params).toString()
+    return `${proto}//${host}/api/v1/docker/containers/${id}/logs/stream${query ? `?${query}` : ''}`
+  },
   dockerPrune: (kind) => api.post(`/docker/prune/${kind}`),
   startContainer: (id) => api.post(`/containers/${id}/start`),
   stopContainer: (id) => api.post(`/containers/${id}/stop`),

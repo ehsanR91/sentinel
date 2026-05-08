@@ -160,6 +160,16 @@
           </div>
         </div>
       </div>
+
+      <div v-for="modal in containerLogs" :key="modal.modalId">
+        <ContainerLogsModal
+          :modal="modal"
+          :container="modal.container"
+          @focus="bringModalFront"
+          @close="closeLogModal"
+          @update="updateLogModal"
+        />
+      </div>
     </template>
   </div>
 </template>
@@ -167,11 +177,12 @@
 <script>
 import PageHeader from '@/components/page-header.vue'
 import StatCard   from '@/components/widgets/stat-card.vue'
+import ContainerLogsModal from '@/components/container-logs-modal.vue'
 import api from '@/services/api'
 
 export default {
   name: 'ContainersPage',
-  components: { PageHeader, StatCard },
+  components: { PageHeader, StatCard, ContainerLogsModal },
   data() {
     return {
       loading: false,
@@ -184,7 +195,10 @@ export default {
       pruneBusy: false,
       grantingPort: null,
       clientIp: '',
-      serverHost: window.location.hostname
+      serverHost: window.location.hostname,
+      containerLogs: [],
+      nextLogModalId: 1,
+      maxModalZ: 1000
     }
   },
 
@@ -387,7 +401,36 @@ export default {
     },
 
     viewLogs(c) {
-      this.$router.push({ path: '/logs', query: { container: c.name } })
+      const existing = this.containerLogs.find(modal => modal.container.id === c.id)
+      if (existing) {
+        this.bringModalFront(existing.modalId)
+        existing.minimized = false
+        return
+      }
+
+      const left = 80 + (this.containerLogs.length * 40) % 320
+      const top = 80 + (this.containerLogs.length * 30) % 220
+      this.containerLogs.push({
+        modalId: `log-${this.nextLogModalId++}`,
+        container: c,
+        zIndex: ++this.maxModalZ,
+        left,
+        top,
+        width: 880,
+        height: 520,
+        minimized: false,
+        maximized: false
+      })
+    },
+    bringModalFront(modalId) {
+      const zIndex = ++this.maxModalZ
+      this.containerLogs = this.containerLogs.map(modal => modal.modalId === modalId ? { ...modal, zIndex } : modal)
+    },
+    closeLogModal(modalId) {
+      this.containerLogs = this.containerLogs.filter(modal => modal.modalId !== modalId)
+    },
+    updateLogModal(modal) {
+      this.containerLogs = this.containerLogs.map(current => current.modalId === modal.modalId ? modal : current)
     },
 
     async runPrune(kind, label) {
