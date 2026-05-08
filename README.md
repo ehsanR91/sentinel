@@ -443,3 +443,38 @@ SentinelCore currently provides the following important protections:
 ## License
 
 MIT
+
+## Development Setup
+
+To run the backend and frontend separately for development with Hot Module Replacement (HMR) and live-reloading:
+
+### 1. Backend (Go) with Live Reloading
+
+We use [Air](https://github.com/air-verse/air) for live-reloading the Go backend.
+
+1. **Install `air`** (if you haven't already):
+   ```bash
+   go install github.com/air-verse/air@latest
+   ```
+
+2. **Run Air**:
+   Open a terminal, navigate to the `backend/` directory, and start `air`:
+   ```bash
+   cd backend
+   air
+   ```
+   *The backend will now run on `http://127.0.0.1:8080` and auto-recompile when `.go` files are saved.*
+
+### 2. Frontend (Vue) with HMR
+
+1. **Install Dependencies**:
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+2. **Run the Vite Dev Server**:
+   ```bash
+   npm run dev
+   ```
+   *The frontend will start (usually on `http://localhost:5173`) and proxy API/WS requests seamlessly to your backend.*
