@@ -31,11 +31,11 @@
     "@vitejs/plugin-vue": "^5.2.4",
     "eslint": "^8.57.1",
     "eslint-plugin-vue": "^9.32.0",
-    "pwa-asset-generator": "^7.5.0",
+    "pwa-asset-generator": "^8.1.4",
     "sharp": "^0.32.3",
     "vite-plugin-pwa": "^0.18.2",
     "web-vitals": "^3.3.0",
-    "workbox-window": "^8.3.0",
+    "workbox-window": "^7.4.1",
     "sass": "^1.99.0",
     "sass-loader": "^14.2.1",
     "vite": "^5.4.19"

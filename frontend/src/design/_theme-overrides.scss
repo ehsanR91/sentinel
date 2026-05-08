@@ -310,9 +310,6 @@ body {
 .wrapper {
   padding-bottom: env(safe-area-inset-bottom);
 }
-  &:hover { color: var(--sc-text) !important; }
-  &.active { color: var(--sc-blue) !important; }
-}
 
 // Light-mode sidebar nav adjustments
 [data-theme="light"] #sidebar-menu .nav-link {

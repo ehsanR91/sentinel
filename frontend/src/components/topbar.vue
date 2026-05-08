@@ -1036,7 +1036,21 @@ export default {
   margin: 0;
   font-size: 1rem;
 }
-  z-index: 1050;
+
+.alert-dropdown {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  min-width: 280px;
+  max-width: min(320px, calc(100vw - 1rem));
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: normal;
+  background: var(--sc-bg-card);
+  border: 1px solid var(--sc-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
 .alert-item {
