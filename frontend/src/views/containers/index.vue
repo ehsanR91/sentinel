@@ -162,19 +162,30 @@
       </div>
 
       <div v-if="minimizedLogs.length" class="log-taskbar">
-        <div class="taskbar-title"><i class="mdi mdi-text-box-outline me-1"></i>Minimized log windows</div>
-        <div class="taskbar-items">
-          <button
-            v-for="modal in minimizedLogs"
-            :key="modal.modalId"
-            class="taskbar-pill"
-            @click="restoreLogModal(modal.modalId)"
-            :title="`Restore ${modal.container.name} logs`"
-          >
-            <span>{{ modal.container.name }}</span>
-            <small>{{ modal.container.statusText || modal.container.status }}</small>
-            <i class="mdi mdi-arrow-up-bold ms-2"></i>
-          </button>
+        <div class="taskbar-title"><i class="mdi mdi-text-box-outline me-1"></i>Log windows</div>
+        <div class="taskbar-items" role="toolbar" aria-label="Minimized log windows">
+          <div v-for="modal in minimizedLogs" :key="modal.modalId" class="taskbar-pill-item">
+            <button
+              class="taskbar-pill"
+              @click="restoreLogModal(modal.modalId)"
+              @keydown.enter.prevent="restoreLogModal(modal.modalId)"
+              @keydown.space.prevent="restoreLogModal(modal.modalId)"
+              @keydown.esc.prevent="closeLogModal(modal.modalId)"
+              :title="`Restore ${modal.container.name} logs`"
+            >
+              <span class="pill-dot" :class="modal.container.status === 'running' ? 'online' : 'offline'"></span>
+              <span class="pill-text">{{ modal.container.name }}</span>
+              <small class="pill-subtitle">{{ modal.container.statusText || modal.container.status }}</small>
+            </button>
+            <button
+              type="button"
+              class="pill-close"
+              @click.stop="closeLogModal(modal.modalId)"
+              :title="`Close ${modal.container.name} logs`"
+            >
+              <i class="mdi mdi-close"></i>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -514,14 +525,13 @@ export default {
 }
 .log-taskbar {
   position: fixed;
+  top: 72px;
   left: 24px;
   right: 24px;
-  bottom: 22px;
   z-index: 1200;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  flex-wrap: wrap;
   padding: 0.75rem 1rem;
   background: rgba(10, 20, 36, 0.96);
   border: 1px solid rgba(255,255,255,0.08);
@@ -538,30 +548,80 @@ export default {
 }
 .taskbar-items {
   display: flex;
-  gap: 0.55rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  min-width: 0;
+}
+.taskbar-items::-webkit-scrollbar {
+  height: 6px;
+}
+.taskbar-items::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 3px;
+}
+.taskbar-pill-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .taskbar-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.65rem 0.85rem;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(12, 22, 42, 0.95);
   color: #e7f0ff;
   border-radius: 999px;
   font-size: 0.82rem;
   cursor: pointer;
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition: background 0.15s ease, transform 0.15s ease;
+  min-width: 0;
+  max-width: 240px;
 }
 .taskbar-pill:hover {
-  transform: translateY(-1px);
   background: rgba(28, 48, 86, 0.98);
 }
-.taskbar-pill small {
-  display: block;
-  font-size: 0.72rem;
+.pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #64748b;
+}
+.pill-dot.online { background: #22d67c; }
+.pill-dot.offline { background: #f04040; }
+.pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pill-subtitle {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: rgba(255,255,255,0.7);
+  font-size: 0.72rem;
+}
+.pill-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255,255,255,0.7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pill-close:hover {
+  background: rgba(255,255,255,0.08);
+  color: #ffffff;
 }
 
 @media (max-width: 900px) {
