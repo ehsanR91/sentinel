@@ -457,6 +457,96 @@
           </div>
         </div>
 
+        <div v-else-if="selectedKpiId === 'cpu' && selectedKpiDetail" class="dashboard-kpi-drawer">
+          <div class="dashboard-kpi-drawer__hero">
+            <div>
+              <div class="dashboard-kpi-drawer__value">{{ selectedKpiDetail.value }}</div>
+              <div class="dashboard-kpi-drawer__delta" :class="`is-${selectedKpiDetail.deltaTone}`">{{ selectedKpiDetail.deltaLabel || 'No delta yet' }}</div>
+            </div>
+            <div class="dashboard-kpi-drawer__status">Live Feed</div>
+          </div>
+          
+          <h4 class="dashboard-kpi-drawer__heading">Top CPU Processes</h4>
+          <div v-if="!cpuProcesses.length" class="dashboard-kpi-drawer__empty">No CPU processes found.</div>
+          <div v-else class="dashboard-network-procs">
+            <div v-for="proc in cpuProcesses" :key="proc.pid" class="dashboard-net-proc">
+              <div class="dashboard-net-proc__ident">
+                <div class="dashboard-net-proc__icon"><i class="mdi mdi-application-outline"></i></div>
+                <div>
+                  <div class="dashboard-net-proc__name">{{ proc.name }}</div>
+                  <div class="dashboard-net-proc__pid">PID {{ proc.pid }} · {{ proc.user || 'unknown' }}</div>
+                </div>
+              </div>
+              <div class="dashboard-net-proc__meter" aria-hidden="true">
+                <span class="dashboard-net-proc__meter-in" :style="{ width: `${proc.valShare}%`, background: 'var(--accent)' }"></span>
+              </div>
+              <div class="dashboard-net-proc__stats">
+                <div class="dashboard-net-proc__stat is-total">
+                  <i class="mdi mdi-chip"></i>
+                  <strong>{{ Number(proc.cpu_pct || 0).toFixed(1) }}% CPU</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="['memory', 'ram', 'swap'].includes(selectedKpiId) && selectedKpiDetail" class="dashboard-kpi-drawer">
+          <div class="dashboard-kpi-drawer__hero">
+            <div>
+              <div class="dashboard-kpi-drawer__value">{{ selectedKpiDetail.value }}</div>
+              <div class="dashboard-kpi-drawer__delta" :class="`is-${selectedKpiDetail.deltaTone}`">{{ selectedKpiDetail.deltaLabel || 'No delta yet' }}</div>
+            </div>
+            <div class="dashboard-kpi-drawer__status">Live Feed</div>
+          </div>
+          
+          <h4 class="dashboard-kpi-drawer__heading">Top Memory Processes</h4>
+          <div v-if="!ramProcesses.length" class="dashboard-kpi-drawer__empty">No memory processes found.</div>
+          <div v-else class="dashboard-network-procs">
+            <div v-for="proc in ramProcesses" :key="proc.pid" class="dashboard-net-proc">
+              <div class="dashboard-net-proc__ident">
+                <div class="dashboard-net-proc__icon"><i class="mdi mdi-memory"></i></div>
+                <div>
+                  <div class="dashboard-net-proc__name">{{ proc.name }}</div>
+                  <div class="dashboard-net-proc__pid">PID {{ proc.pid }} · {{ proc.user || 'unknown' }}</div>
+                </div>
+              </div>
+              <div class="dashboard-net-proc__meter" aria-hidden="true">
+                <span class="dashboard-net-proc__meter-in" :style="{ width: `${proc.valShare}%`, background: 'var(--state-warn)' }"></span>
+              </div>
+              <div class="dashboard-net-proc__stats">
+                <div class="dashboard-net-proc__stat is-total">
+                  <i class="mdi mdi-memory"></i>
+                  <strong>{{ formatBytesValue(proc.mem_rss || 0) }}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="selectedKpiId === 'disk' && selectedKpiDetail" class="dashboard-kpi-drawer">
+          <div class="dashboard-kpi-drawer__hero">
+            <div>
+              <div class="dashboard-kpi-drawer__value">{{ selectedKpiDetail.value }}</div>
+              <div class="dashboard-kpi-drawer__delta" :class="`is-${selectedKpiDetail.deltaTone}`">{{ selectedKpiDetail.deltaLabel || 'No delta yet' }}</div>
+            </div>
+            <div class="dashboard-kpi-drawer__status">Live Feed</div>
+          </div>
+          
+          <h4 class="dashboard-kpi-drawer__heading">Active Processes</h4>
+          <div v-if="!diskProcesses.length" class="dashboard-kpi-drawer__empty">No processes found.</div>
+          <div v-else class="dashboard-network-procs">
+            <div v-for="proc in diskProcesses" :key="proc.pid" class="dashboard-net-proc">
+              <div class="dashboard-net-proc__ident">
+                <div class="dashboard-net-proc__icon"><i class="mdi mdi-harddisk"></i></div>
+                <div>
+                  <div class="dashboard-net-proc__name">{{ proc.name }}</div>
+                  <div class="dashboard-net-proc__pid">PID {{ proc.pid }} · {{ proc.user || 'unknown' }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-else-if="selectedKpiDetail" class="dashboard-kpi-drawer">
         <div class="dashboard-kpi-drawer__hero">
           <div>
@@ -813,8 +903,35 @@ export default {
       metricTimestamps: 'metricTimestamps',
       wsConnected: 'wsConnected',
       lastMetricTs: 'lastMetricTs',
+      processes: 'processes',
       socketProcesses: 'networkProcesses'
     }),
+    cpuProcesses() {
+      if (!this.processes) return []
+      const ranked = [...this.processes]
+        .sort((a, b) => (Number(b.cpu_pct) || 0) - (Number(a.cpu_pct) || 0))
+        .slice(0, 10)
+      const maxCpu = Math.max(...ranked.map(p => Number(p.cpu_pct) || 0), 1)
+      return ranked.map(p => ({
+        ...p,
+        valShare: Math.max(2, Math.round(((Number(p.cpu_pct) || 0) / maxCpu) * 100))
+      }))
+    },
+    ramProcesses() {
+      if (!this.processes) return []
+      const ranked = [...this.processes]
+        .sort((a, b) => (Number(b.mem_rss) || 0) - (Number(a.mem_rss) || 0))
+        .slice(0, 10)
+      const maxMem = Math.max(...ranked.map(p => Number(p.mem_rss) || 0), 1)
+      return ranked.map(p => ({
+        ...p,
+        valShare: Math.max(2, Math.round(((Number(p.mem_rss) || 0) / maxMem) * 100))
+      }))
+    },
+    diskProcesses() {
+      if (!this.processes) return []
+      return [...this.processes].slice(0, 10).map(p => ({ ...p, valShare: 50 }))
+    },
     networkProcesses() {
       if (!this.socketProcesses) return []
       const ranked = [...this.socketProcesses]
@@ -1106,6 +1223,9 @@ export default {
       return String(value).replace(/\b\w/g, char => char.toUpperCase())
     },
     formatTimestamp,
+    formatBytesValue(value) {
+      return fmtBytes(value)
+    },
     formatPercentValue(value) {
       return fmtPercent(value)
     },

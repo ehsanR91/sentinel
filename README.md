@@ -354,37 +354,141 @@ SentinelCore may use narrowly scoped passwordless `sudo` for UFW access where re
 
 ## Development Setup
 
-### Frontend
+This section covers everything needed to run SentinelCore locally for development with live-reload on both the backend and frontend.
+
+### Prerequisites
+
+| Tool | Purpose | Install |
+|------|---------|----------|
+| Go ≥ 1.21 | Backend | <https://go.dev/dl/> |
+| Node.js ≥ 18 | Frontend | <https://nodejs.org> |
+| [Air](https://github.com/air-verse/air) | Go live-reload | `go install github.com/air-verse/air@latest` |
+
+---
+
+### 1. Enable dev mode (`.dev` flag)
+
+Create an empty `.dev` file inside the `backend/` directory:
 
 ```bash
-cd sentinelcore/frontend
-npm install
-npm run serve
-npm run build
+touch backend/.dev
 ```
 
-### Backend
+When this file is present the backend automatically applies development defaults so you do not need a real deployment or database setup:
+
+| Setting | Dev value |
+|---------|-----------|
+| Port | `8888` |
+| Secret gate path | `/dev/` → `http://localhost:8888/dev/` |
+| Admin username | `admin` |
+| Admin password | `admin` |
+| JWT secret | injected automatically (dummy) |
+
+> Remove `backend/.dev` before any production build or deploy.
+
+---
+
+### 2. Install sudoers entries for privileged commands
+
+Many backend features (UFW, systemctl, apt, sysctl, etc.) call `sudo -n` for passwordless privilege escalation. Without the sudoers file installed these calls fail silently or return errors.
+
+Run the dev sudoers setup script once:
 
 ```bash
-cd sentinelcore/backend
-go mod tidy
+sudo bash deploy-dev.sh
+```
+
+This will:
+
+- Auto-detect your username from `$SUDO_USER`
+- Substitute it into `deploy/sentinelcore.sudoers`
+- Write `/etc/sudoers.d/sentinelcore` (chmod 440)
+- Validate syntax with `visudo -c`
+- Write `/etc/sudoers.d/sentinelcore-ufw` (UFW-specific entry)
+
+You can also specify the user explicitly:
+
+```bash
+sudo bash deploy-dev.sh --user myuser
+```
+
+To remove the entries later:
+
+```bash
+sudo rm /etc/sudoers.d/sentinelcore /etc/sudoers.d/sentinelcore-ufw
+```
+
+---
+
+### 3. Backend — run with Air (live reload)
+
+Air watches `.go` files and recompiles automatically on save. Its config lives at `backend/.air.toml`.
+
+```bash
+cd backend
+air
+```
+
+The backend will start at `http://127.0.0.1:8888` (dev mode) and rebuild on every `.go` file save.
+
+To run without Air (single run):
+
+```bash
+cd backend
 go run ./cmd/sentinelcore/
 ```
 
-Or build it:
+To build a binary manually:
 
 ```bash
+cd backend
 go build -o sentinelcore ./cmd/sentinelcore/
 ./sentinelcore
 ```
 
-Default listen address is:
+---
 
-`127.0.0.1:8080`
+### 4. Frontend — run with Vite (HMR)
+
+```bash
+cd frontend
+npm install       # first time only
+npm run dev
+```
+
+The Vite dev server starts at `http://localhost:5173` and proxies all `/api` and WebSocket requests to the backend at `http://127.0.0.1:8888` automatically.
+
+To build the frontend for production:
+
+```bash
+npm run build
+```
+
+---
+
+### 5. Full dev workflow (two terminals)
+
+**Terminal 1 — backend:**
+
+```bash
+touch backend/.dev          # enable dev mode (once)
+cd backend && air           # live-reload backend on :8888
+```
+
+**Terminal 2 — frontend:**
+
+```bash
+cd frontend && npm run dev  # HMR frontend on :5173
+```
+
+Open `http://localhost:5173/dev/` in your browser.
+Login with `admin` / `admin`.
+
+---
 
 ### Local development note
 
-For development you can still inject config via environment variables, but production should use the deploy script and the secure bootstrap flow.
+For development you can inject config via environment variables or the `.dev` flag. Production must use `deploy-sentinel.sh` and the secure bootstrap flow — never the `admin`/`admin` defaults.
 
 ---
 
@@ -443,38 +547,3 @@ SentinelCore currently provides the following important protections:
 ## License
 
 MIT
-
-## Development Setup
-
-To run the backend and frontend separately for development with Hot Module Replacement (HMR) and live-reloading:
-
-### 1. Backend (Go) with Live Reloading
-
-We use [Air](https://github.com/air-verse/air) for live-reloading the Go backend.
-
-1. **Install `air`** (if you haven't already):
-   ```bash
-   go install github.com/air-verse/air@latest
-   ```
-
-2. **Run Air**:
-   Open a terminal, navigate to the `backend/` directory, and start `air`:
-   ```bash
-   cd backend
-   air
-   ```
-   *The backend will now run on `http://127.0.0.1:8080` and auto-recompile when `.go` files are saved.*
-
-### 2. Frontend (Vue) with HMR
-
-1. **Install Dependencies**:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. **Run the Vite Dev Server**:
-   ```bash
-   npm run dev
-   ```
-   *The frontend will start (usually on `http://localhost:5173`) and proxy API/WS requests seamlessly to your backend.*
