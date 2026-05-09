@@ -37,10 +37,15 @@ var gatePassthroughPaths = map[string]bool{
 
 // GateMiddleware blocks all requests that don't carry a valid sc_gate cookie.
 // The activation route must be registered separately (see ActivateGateHandler).
-func GateMiddleware(jwtSecret string) func(http.Handler) http.Handler {
+func GateMiddleware(jwtSecret string, isDev bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Allow PWA/service-worker assets through without gate cookie.
+                        if isDev {
+                                next.ServeHTTP(w, r)
+                                return
+                        }
+
 			if gatePassthroughPaths[r.URL.Path] {
 				next.ServeHTTP(w, r)
 				return

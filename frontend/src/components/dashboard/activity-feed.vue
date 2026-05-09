@@ -17,10 +17,11 @@
           {{ tab.label }}
           <span>{{ tab.count }}</span>
         </button>
+        <button type="button" class="activity-feed__tab" style="padding: 0 8px;" @click="isCollapsed = !isCollapsed"><i class="mdi" :class="isCollapsed ? 'mdi-chevron-down' : 'mdi-chevron-up'"></i></button>
       </div>
     </div>
 
-    <div class="activity-feed__body">
+    <div class="activity-feed__body" v-show="!isCollapsed">
       <div v-if="!activeItems.length" class="activity-feed__empty">
         <i class="mdi mdi-timeline-clock-outline"></i>
         <span>No recent activity. New alerts, logins, audit events, and maintenance runs will appear here.</span>
@@ -55,6 +56,7 @@ export default {
   emits: ['open-item'],
   data() {
     return {
+      isCollapsed: false,
       activeTab: 'all'
     }
   },

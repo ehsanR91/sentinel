@@ -445,7 +445,7 @@ export default {
   background: var(--text-primary);
   border: 2px solid var(--surface-1);
   transform: translateX(-50%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-sm);
 }
 
 .kpi-card__skeleton {

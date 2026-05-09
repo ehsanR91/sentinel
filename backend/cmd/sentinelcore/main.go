@@ -154,8 +154,7 @@ func main() {
 	r.Use(api.IPAllowlist())
 
 	// ── Secret link gate (wraps EVERYTHING below) ──────────────────────────────
-	r.Use(api.GateMiddleware(cfg.JWTSecret))
-
+        r.Use(api.GateMiddleware(cfg.JWTSecret, cfg.IsDev))
 	// ── Public auth routes (inside gate, no JWT needed) ────────────────────────
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/logout", h.Logout)

@@ -675,7 +675,7 @@
   flex-shrink: 0;
   padding: 0.75rem;
   border-top: 1px solid var(--sc-border);
-  background: rgba(3, 8, 18, 0.18);
+  background: transparent;
 }
 
 .server-footer-card {
@@ -686,6 +686,15 @@
   background: rgba(255, 255, 255, 0.03);
   color: var(--sc-text);
   text-align: left;
+}
+
+[data-theme="light"] .sidebar-footer {
+  background: transparent;
+}
+
+[data-theme="light"] .server-footer-card {
+  background: transparent;
+  border-color: var(--sc-border);
 }
 
 .server-footer-card__top,

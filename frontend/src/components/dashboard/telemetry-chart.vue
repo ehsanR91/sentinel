@@ -28,6 +28,7 @@
         <button type="button" class="telemetry-card__toggle" @click="lockScale = !lockScale">
           {{ lockScale ? 'Lock 0–100' : 'Auto scale' }}
         </button>
+        <button type="button" class="telemetry-card__toggle telemetry-card__collapse" @click="isCollapsed = !isCollapsed"><i class="mdi" :class="isCollapsed ? 'mdi-chevron-down' : 'mdi-chevron-up'"></i></button>
         <div class="telemetry-card__live" :class="{ 'is-paused': paused || !live }">
           <span class="telemetry-card__live-dot"></span>
           {{ paused ? 'PAUSED' : live ? 'LIVE' : 'IDLE' }}
@@ -35,12 +36,12 @@
       </div>
     </div>
 
-    <div class="telemetry-card__body" @mouseenter="pauseLive" @mouseleave="resumeLive">
+    <div class="telemetry-card__body" v-show="!isCollapsed" @mouseenter="pauseLive" @mouseleave="resumeLive">
       <apexchart
         type="area"
         :height="height"
         :options="chartOptions"
-        :series="chartSeries"
+        :series="normalizedChartSeries"
       />
     </div>
   </article>
@@ -48,7 +49,31 @@
 
 <script>
 function numericValues(series = []) {
-  return series.flatMap(item => (item.data || []).map(value => Number(value)).filter(value => Number.isFinite(value)))
+  return series.flatMap(item => (item.data || [])
+    .map(point => Number(typeof point === 'object' && point !== null ? point.y : point))
+    .filter(value => Number.isFinite(value)))
+}
+
+function pointTimestamp(point) {
+  const value = typeof point === 'object' && point !== null ? point.x : null
+  const timestamp = Number(value)
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function rangeDurationMs(range) {
+  return {
+    '1m': 60_000,
+    '5m': 300_000,
+    '15m': 900_000,
+    '1h': 3_600_000
+  }[range] || 60_000
+}
+
+function relativeLabel(timestamp) {
+  const secondsAgo = Math.max(0, Math.round((Date.now() - Number(timestamp || Date.now())) / 1000))
+  if (secondsAgo >= 3600) return `${Math.round(secondsAgo / 3600)}h ago`
+  if (secondsAgo >= 60) return `${Math.round(secondsAgo / 60)}m ago`
+  return `${secondsAgo}s ago`
 }
 
 function lastEnabledRange(ranges = []) {
@@ -80,6 +105,7 @@ export default {
   },
   data() {
     return {
+      isCollapsed: false,
       paused: false,
       frozenSeries: [],
       selectedRange: lastEnabledRange(this.rangeOptions),
@@ -94,34 +120,38 @@ export default {
     chartSeries() {
       return this.paused ? this.frozenSeries : this.series
     },
+    normalizedChartSeries() {
+      return this.chartSeries.map(item => ({
+        ...item,
+        data: (item.data || []).map((point, index) => {
+          if (typeof point === 'object' && point !== null) return point
+          return {
+            x: Date.now() - ((item.data || []).length - 1 - index) * 1000,
+            y: point
+          }
+        })
+      }))
+    },
     yBounds() {
       if (this.lockScale || this.percentScale) {
         return { min: 0, max: 100 }
       }
-      const values = numericValues(this.chartSeries)
+      const values = numericValues(this.normalizedChartSeries)
       if (!values.length) return { min: 0, max: 10 }
-      const min = Math.min(...values)
-      const max = Math.max(...values)
-      const span = Math.max(max - min, max * 0.1, 1)
+      const sorted = [...values].sort((left, right) => left - right)
+      const min = sorted[Math.floor(sorted.length * 0.05)] ?? sorted[0]
+      const max = sorted[Math.ceil(sorted.length * 0.95) - 1] ?? sorted[sorted.length - 1]
+      const span = Math.max(max - min, max * 0.12, 1)
       const lower = Math.max(0, min - span * 0.25)
       const upper = max + span * 0.2
       return { min: Number(lower.toFixed(2)), max: Number(upper.toFixed(2)) }
     },
-    xCategories() {
-      const sampleCount = Math.max(...this.chartSeries.map(item => item.data?.length || 0), 0)
-      const ranges = {
-        '1m': 60,
-        '5m': 300,
-        '15m': 900,
-        '1h': 3600
-      }
-      const duration = ranges[this.selectedRange] || 60
-      return Array.from({ length: sampleCount }, (_, index) => {
-        const secondsAgo = duration - Math.round((index / Math.max(sampleCount - 1, 1)) * duration)
-        if (secondsAgo >= 3600) return `${Math.round(secondsAgo / 3600)}h`
-        if (secondsAgo >= 60) return `${Math.round(secondsAgo / 60)}m`
-        return `${secondsAgo}s`
-      })
+    xBounds() {
+      const timestamps = this.normalizedChartSeries
+        .flatMap(item => (item.data || []).map(pointTimestamp))
+        .filter(value => value !== null)
+      const max = timestamps.length ? Math.max(...timestamps) : Date.now()
+      return { min: max - rangeDurationMs(this.selectedRange), max }
     },
     chartOptions() {
       const labelColor = 'var(--text-tertiary)'
@@ -133,7 +163,7 @@ export default {
           stacked: this.stacked,
           toolbar: { show: false },
           zoom: { enabled: false },
-          animations: { enabled: !this.paused },
+          animations: { enabled: false },
           background: 'transparent',
           foreColor: labelColor,
           parentHeightOffset: 0
@@ -164,17 +194,16 @@ export default {
         dataLabels: { enabled: false },
         markers: { size: 0, hover: { size: 5 } },
         xaxis: {
-          categories: this.xCategories,
+          type: 'datetime',
+          min: this.xBounds.min,
+          max: this.xBounds.max,
           axisBorder: { show: false },
           axisTicks: { show: false },
           labels: {
             show: true,
+            datetimeUTC: false,
             style: { colors: labelColor, fontSize: '11px' },
-            formatter: (value, timestamp, opts) => {
-              const index = opts?.dataPointIndex ?? 0
-              const cadence = Math.max(1, Math.floor(this.xCategories.length / 6))
-              return index % cadence === 0 ? value : ''
-            }
+            formatter: value => relativeLabel(value)
           },
           crosshairs: {
             show: true,
@@ -193,7 +222,7 @@ export default {
           theme: this.currentTheme,
           shared: true,
           x: {
-            formatter: (value, ctx) => this.xCategories[ctx.dataPointIndex] || value
+            formatter: value => relativeLabel(value)
           },
           y: {
             formatter: value => this.formatValue(value)

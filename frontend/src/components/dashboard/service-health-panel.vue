@@ -21,8 +21,10 @@
         </div>
         <AppButton variant="secondary" size="sm" icon="mdi mdi-restart" label="Restart all stopped" :disabled="!counts.stopped || busyAll" @click="restartStopped" />
         <AppButton variant="secondary" size="sm" icon="mdi mdi-refresh" label="Reload panel" :loading="loading" @click="refreshServices" />
+        <button type="button" class="service-health__filter" style="padding: 0 8px; margin-left: 8px;" @click="isCollapsed = !isCollapsed"><i class="mdi" :class="isCollapsed ? 'mdi-chevron-down' : 'mdi-chevron-up'"></i></button>
       </div>
     </div>
+    <div v-show="!isCollapsed">
 
     <div v-if="loading && !services.length" class="service-health__grid" aria-hidden="true">
       <div v-for="n in 8" :key="`svc-skeleton-${n}`" class="service-health__tile service-health__tile--skeleton"></div>
@@ -44,15 +46,25 @@
         <div class="service-health__tile-top">
           <div class="service-health__identity">
             <span class="service-health__dot" :class="`service-health__dot--${service.state}`"></span>
-            <div>
-              <div class="service-health__name">{{ service.label }}</div>
-              <div class="service-health__subtext">{{ serviceDetail(service) }}</div>
+              <div class="service-health__name-group">
+                <Tooltip :label="`Service: ${service.label || service.name}`" as-child>
+                  <div class="service-health__name">{{ service.label || service.name }}</div>
+                </Tooltip>
+                <div class="service-health__subtext">{{ serviceDetail(service) }}</div>
+              </div>
             </div>
-          </div>
-          <span class="service-health__pill" :class="`service-health__pill--${service.state}`">{{ service.state }}</span>
-        </div>
-
-        <div class="service-health__history" aria-label="Uptime history">
+            <Tooltip
+              v-if="service.state === 'disabled'"
+              label="Service disabled"
+              :description="`${service.label || service.name} is not installed or is currently unavailable on this host.`"
+              variant="rich"
+              as-child
+            >
+              <span class="service-health__disabled-marker" aria-label="Service disabled">
+                <i class="mdi mdi-power-plug-off-outline"></i>
+              </span>
+            </Tooltip>
+            <span v-else class="service-health__pill" :class="`service-health__pill--${service.state}`">{{ service.state }}</span>
           <UptimeBar :history="service.history" :max-segments="24" />
         </div>
 
@@ -64,7 +76,7 @@
           </Tooltip>
           <Tooltip label="Logs" as-child>
             <button type="button" class="service-health__action-icon" @click.stop="openLogs(service)">
-              <i class="mdi mdi-file-document-box-outline"></i>
+              <i class="mdi mdi-file-document-outline"></i>
             </button>
           </Tooltip>
           <Tooltip :label="service.running ? 'Stop' : 'Options'" as-child>
@@ -79,6 +91,7 @@
           </Tooltip>
         </div>
       </article>
+    </div>
     </div>
   </section>
 </template>
@@ -99,6 +112,7 @@ export default {
   components: { AppButton, Tooltip, UptimeBar },
   data() {
     return {
+      isCollapsed: false,
       services: [],
       serviceHistory: {},
       activeFilter: 'all',
@@ -322,6 +336,13 @@ export default {
   background: rgba(255, 106, 106, 0.05);
 }
 
+.service-health__tile--disabled {
+  background:
+    linear-gradient(135deg, rgba(255, 106, 106, 0.12), rgba(255, 106, 106, 0.035)),
+    var(--surface-2);
+  border-color: rgba(255, 106, 106, 0.24);
+}
+
 .service-health__tile--skeleton {
   min-height: 146px;
   background: linear-gradient(90deg, rgba(138, 164, 200, 0.14) 25%, rgba(138, 164, 200, 0.28) 50%, rgba(138, 164, 200, 0.14) 75%);
@@ -341,9 +362,14 @@ export default {
   min-width: 0;
 }
 
+.service-health__name-group {
+  min-width: 0;
+}
+
 .service-health__identity {
   align-items: flex-start;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .service-health__identity > div {
@@ -391,6 +417,19 @@ export default {
 .service-health__pill--stopped { background: var(--state-warn-bg); color: var(--state-warn-fg); }
 .service-health__pill--disabled { background: var(--state-muted-bg); color: var(--state-muted-fg); }
 .service-health__pill--failed { background: var(--state-error-bg); color: var(--state-error-fg); }
+
+.service-health__disabled-marker {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--state-error-fg);
+  background: var(--state-error-bg);
+  border: 1px solid rgba(255, 106, 106, 0.24);
+}
 
 .service-health__history {
   display: flex;

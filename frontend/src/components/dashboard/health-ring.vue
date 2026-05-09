@@ -443,24 +443,37 @@ export default {
 .health-anchor__issues {
   padding-top: 6px;
   border-top: 1px solid var(--dashboard-panel-border);
+  min-width: 0;
 }
 
 .health-anchor__issue-list {
   display: flex;
   flex-direction: column;
   margin-top: 6px;
+  max-height: 168px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+.health-anchor__issue-list::-webkit-scrollbar {
+  width: 4px;
+}
+.health-anchor__issue-list::-webkit-scrollbar-thumb {
+  background: var(--dashboard-panel-border);
+  border-radius: 4px;
 }
 
 .health-anchor__issue-row {
   display: grid;
-  grid-template-columns: 3px 64px 1fr auto;
+  grid-template-columns: 3px min-content 1fr auto;
   grid-template-rows: auto auto;
   column-gap: 8px;
   padding: 8px 12px 8px 0;
   border-bottom: 1px solid var(--border-subtle);
   background: transparent;
   overflow: hidden;
-  max-height: 56px;
+  min-height: 52px;
 }
 
 .health-anchor__issue-accent-bar {

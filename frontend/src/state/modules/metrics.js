@@ -42,6 +42,12 @@ function sanitizeSnap (snap) {
   return sanitized
 }
 
+function clampPercent (value) {
+  const num = sanitizeNumber(value)
+  if (num === null) return null
+  return Math.max(0, Math.min(100, num))
+}
+
 function assertFiniteHistory (history, name) {
   if (!import.meta.env.DEV) return
   history.forEach((value, index) => {
@@ -55,6 +61,11 @@ function initHistory () {
   return Array(HISTORY_LEN).fill(0)
 }
 
+function initTimestampHistory () {
+  const now = Date.now()
+  return Array.from({ length: HISTORY_LEN }, (_, index) => now - (HISTORY_LEN - 1 - index) * 1000)
+}
+
 export default {
   namespaced: true,
 
@@ -66,6 +77,7 @@ export default {
     diskHistory: initHistory(),
     netRxHistory: initHistory(),
     netTxHistory: initHistory(),
+    metricTimestamps: initTimestampHistory(),
     lastMetricTs: 0,
     wsConnected: false,
     processes: [],
@@ -81,10 +93,11 @@ export default {
       const sanitizedSnap = sanitizeSnap(snap)
       state.snap = sanitizedSnap
 
-      const cpuPoint = sanitizeNumber(snap.cpu_pct)
-      const ramPoint = sanitizeNumber(snap.ram_pct)
-      const swapPoint = sanitizeNumber(snap.swap_pct)
-      const diskPoint = sanitizeNumber(snap.disk_pct)
+      const metricTs = (sanitizeNumber(sanitizedSnap.ts) || Math.floor(Date.now() / 1000)) * 1000
+      const cpuPoint = clampPercent(snap.cpu_pct)
+      const ramPoint = clampPercent(snap.ram_pct)
+      const swapPoint = clampPercent(snap.swap_pct)
+      const diskPoint = clampPercent(snap.disk_pct)
       const rxPoint = sanitizeNumber(snap.net_rx_rate)
       const txPoint = sanitizeNumber(snap.net_tx_rate)
 
@@ -94,7 +107,8 @@ export default {
       state.diskHistory = [...state.diskHistory.slice(1), diskPoint]
       state.netRxHistory = [...state.netRxHistory.slice(1), rxPoint]
       state.netTxHistory = [...state.netTxHistory.slice(1), txPoint]
-      state.lastMetricTs = sanitizedSnap.ts || Math.floor(Date.now() / 1000)
+      state.metricTimestamps = [...state.metricTimestamps.slice(1), metricTs]
+      state.lastMetricTs = Math.floor(metricTs / 1000)
       state.liveSummary = {
         unreadAlerts: sanitizedSnap.unread_alerts || 0,
         activeBans: sanitizedSnap.active_bans || 0
@@ -168,6 +182,7 @@ export default {
     diskHistory: s => s.diskHistory,
     netRxHistory: s => s.netRxHistory,
     netTxHistory: s => s.netTxHistory,
+    metricTimestamps: s => s.metricTimestamps,
     lastMetricTs: s => s.lastMetricTs,
     wsConnected: s => s.wsConnected,
     processes: s => s.processes,

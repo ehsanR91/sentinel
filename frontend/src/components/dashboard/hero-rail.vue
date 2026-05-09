@@ -120,6 +120,7 @@ export default {
   width: 100%;
   overflow: hidden;
   position: relative;
+  border-radius: 24px;
 }
 
 .hero-rail {
@@ -132,6 +133,14 @@ export default {
   padding-bottom: 12px; /* Extra space for focus rings/shadows */
   scroll-behavior: smooth;
   align-items: stretch;
+}
+
+[data-theme="light"] .hero-rail-container {
+  overflow: clip;
+}
+
+[data-theme="light"] .hero-rail {
+  padding: 1px 1px 8px;
 }
 
 .hero-rail::-webkit-scrollbar {
@@ -174,13 +183,13 @@ export default {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
   transition: all 0.2s ease;
 }
 
 .hero-rail-nav:hover {
   background-color: var(--bg-surface-hover, #f5f5f5);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-lg);
 }
 
 .hero-rail-nav--left {
