@@ -1,6 +1,6 @@
 import ws from '@/services/ws'
 
-const HISTORY_LEN = 60
+const HISTORY_LEN = 3600
 const NUMERIC_SNAP_KEYS = [
   'cpu_pct', 'ram_pct', 'swap_pct', 'disk_pct',
   'ram_used', 'ram_total', 'swap_used', 'swap_total',
@@ -58,12 +58,26 @@ function assertFiniteHistory (history, name) {
 }
 
 function initHistory () {
-  return Array(HISTORY_LEN).fill(0)
+  return Array(HISTORY_LEN).fill(null)
 }
 
 function initTimestampHistory () {
   const now = Date.now()
   return Array.from({ length: HISTORY_LEN }, (_, index) => now - (HISTORY_LEN - 1 - index) * 1000)
+}
+
+function rangeToSeconds (range) {
+  return { '1m': 60, '5m': 300, '15m': 900, '1h': 3600 }[range] || 60
+}
+
+function sliceHistory (values, timestamps, range) {
+  const seconds = rangeToSeconds(range)
+  const cutoff = Date.now() - seconds * 1000
+  const start = timestamps.findIndex(ts => ts >= cutoff)
+  const from = start === -1 ? 0 : start
+  const ts = timestamps.slice(from)
+  const vals = values.slice(from)
+  return ts.map((t, i) => ({ x: t, y: vals[i] }))
 }
 
 export default {
@@ -81,6 +95,7 @@ export default {
     lastMetricTs: 0,
     wsConnected: false,
     processes: [],
+    networkProcesses: [],
     services: [],
     liveSummary: {
       unreadAlerts: 0,
@@ -125,6 +140,7 @@ export default {
     },
     SET_WS_CONNECTED (state, val) { state.wsConnected = val },
     SET_PROCESSES (state, list) { state.processes = list },
+    SET_NETWORK_PROCESSES (state, list) { state.networkProcesses = list },
     SET_SERVICES (state, list) { state.services = list },
     RESET_LIVE_SUMMARY (state) {
       state.liveSummary = {
@@ -165,6 +181,16 @@ export default {
       } catch (_) {}
     },
 
+    async fetchNetworkProcesses ({ commit }) {
+      try {
+        const { default: api } = await import('@/services/api')
+        const { data } = await api.getNetworkProcesses(50)
+        commit('SET_NETWORK_PROCESSES', data)
+      } catch (_) {
+        commit('SET_NETWORK_PROCESSES', [])
+      }
+    },
+
     async fetchServices ({ commit }) {
       try {
         const { default: api } = await import('@/services/api')
@@ -186,7 +212,15 @@ export default {
     lastMetricTs: s => s.lastMetricTs,
     wsConnected: s => s.wsConnected,
     processes: s => s.processes,
+    networkProcesses: s => s.networkProcesses,
     services: s => s.services,
-    liveSummary: s => s.liveSummary
+    liveSummary: s => s.liveSummary,
+    historySlice: (s) => (key, range) => {
+      const histMap = {
+        cpu: s.cpuHistory, ram: s.ramHistory, swap: s.swapHistory,
+        disk: s.diskHistory, netRx: s.netRxHistory, netTx: s.netTxHistory
+      }
+      return sliceHistory(histMap[key] || [], s.metricTimestamps, range)
+    }
   }
 }

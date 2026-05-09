@@ -29,36 +29,26 @@
           {{ lockScale ? 'Lock 0–100' : 'Auto scale' }}
         </button>
         <button type="button" class="telemetry-card__toggle telemetry-card__collapse" @click="isCollapsed = !isCollapsed"><i class="mdi" :class="isCollapsed ? 'mdi-chevron-down' : 'mdi-chevron-up'"></i></button>
-        <div class="telemetry-card__live" :class="{ 'is-paused': paused || !live }">
+        <div class="telemetry-card__live" :class="{ 'is-paused': !live }">
           <span class="telemetry-card__live-dot"></span>
-          {{ paused ? 'PAUSED' : live ? 'LIVE' : 'IDLE' }}
+          {{ live ? 'LIVE' : 'IDLE' }}
         </div>
       </div>
     </div>
 
-    <div class="telemetry-card__body" v-show="!isCollapsed" @mouseenter="pauseLive" @mouseleave="resumeLive">
+    <div class="telemetry-card__body" v-show="!isCollapsed">
       <apexchart
+        ref="chart"
         type="area"
         :height="height"
-        :options="chartOptions"
-        :series="normalizedChartSeries"
+        :options="staticChartOptions"
+        :series="[]"
       />
     </div>
   </article>
 </template>
 
 <script>
-function numericValues(series = []) {
-  return series.flatMap(item => (item.data || [])
-    .map(point => Number(typeof point === 'object' && point !== null ? point.y : point))
-    .filter(value => Number.isFinite(value)))
-}
-
-function pointTimestamp(point) {
-  const value = typeof point === 'object' && point !== null ? point.x : null
-  const timestamp = Number(value)
-  return Number.isFinite(timestamp) ? timestamp : null
-}
 
 function rangeDurationMs(range) {
   return {
@@ -106,55 +96,28 @@ export default {
   data() {
     return {
       isCollapsed: false,
-      paused: false,
-      frozenSeries: [],
       selectedRange: lastEnabledRange(this.rangeOptions),
       lockScale: false,
-      currentTheme: 'dark'
+      currentTheme: 'dark',
+      rafId: null,
+      pendingUpdate: false
     }
   },
   computed: {
     normalizedRanges() {
       return this.rangeOptions.map(option => ({ enabled: option.enabled !== false, ...option }))
     },
-    chartSeries() {
-      return this.paused ? this.frozenSeries : this.series
-    },
-    normalizedChartSeries() {
-      return this.chartSeries.map(item => ({
+    visibleSeries() {
+      return this.series.map(item => ({
         ...item,
-        data: (item.data || []).map((point, index) => {
-          if (typeof point === 'object' && point !== null) return point
-          return {
-            x: Date.now() - ((item.data || []).length - 1 - index) * 1000,
-            y: point
-          }
-        })
+        data: (item.data || []).filter(point =>
+          typeof point === 'object' && point !== null && point.x != null
+        )
       }))
     },
-    yBounds() {
-      if (this.lockScale || this.percentScale) {
-        return { min: 0, max: 100 }
-      }
-      const values = numericValues(this.normalizedChartSeries)
-      if (!values.length) return { min: 0, max: 10 }
-      const sorted = [...values].sort((left, right) => left - right)
-      const min = sorted[Math.floor(sorted.length * 0.05)] ?? sorted[0]
-      const max = sorted[Math.ceil(sorted.length * 0.95) - 1] ?? sorted[sorted.length - 1]
-      const span = Math.max(max - min, max * 0.12, 1)
-      const lower = Math.max(0, min - span * 0.25)
-      const upper = max + span * 0.2
-      return { min: Number(lower.toFixed(2)), max: Number(upper.toFixed(2)) }
-    },
-    xBounds() {
-      const timestamps = this.normalizedChartSeries
-        .flatMap(item => (item.data || []).map(pointTimestamp))
-        .filter(value => value !== null)
-      const max = timestamps.length ? Math.max(...timestamps) : Date.now()
-      return { min: max - rangeDurationMs(this.selectedRange), max }
-    },
-    chartOptions() {
+    staticChartOptions() {
       const labelColor = 'var(--text-tertiary)'
+      const self = this
       return {
         chart: {
           id: `dashboard-${this._.uid}`,
@@ -166,37 +129,24 @@ export default {
           animations: { enabled: false },
           background: 'transparent',
           foreColor: labelColor,
-          parentHeightOffset: 0
+          parentHeightOffset: 0,
+          events: {}
         },
-        stroke: {
-          curve: 'smooth',
-          width: this.chartSeries.map(() => 2.4)
-        },
+        stroke: { curve: 'smooth', width: this.series.map(() => 2.4) },
         fill: {
           type: 'gradient',
-          gradient: {
-            shadeIntensity: 0.2,
-            opacityFrom: 0.28,
-            opacityTo: 0.04,
-            stops: [0, 100]
-          }
+          gradient: { shadeIntensity: 0.2, opacityFrom: 0.28, opacityTo: 0.04, stops: [0, 100] }
         },
         grid: {
           borderColor: 'var(--dashboard-panel-border)',
           strokeDashArray: 5,
           padding: { left: 4, right: 8, top: 4, bottom: 0 }
         },
-        legend: {
-          position: 'top',
-          horizontalAlign: 'left',
-          labels: { colors: 'var(--text-secondary)' }
-        },
+        legend: { position: 'top', horizontalAlign: 'left', labels: { colors: 'var(--text-secondary)' } },
         dataLabels: { enabled: false },
-        markers: { size: 0, hover: { size: 5 } },
+        markers: { size: 0 },
         xaxis: {
           type: 'datetime',
-          min: this.xBounds.min,
-          max: this.xBounds.max,
           axisBorder: { show: false },
           axisTicks: { show: false },
           labels: {
@@ -205,28 +155,23 @@ export default {
             style: { colors: labelColor, fontSize: '11px' },
             formatter: value => relativeLabel(value)
           },
-          crosshairs: {
-            show: true,
-            stroke: { color: 'var(--accent)', dashArray: 4 }
-          }
+          crosshairs: { show: true, stroke: { color: 'var(--accent)', dashArray: 4 } },
+          tooltip: { enabled: false }
         },
         yaxis: {
-          min: this.yBounds.min,
-          max: this.yBounds.max,
+          tickAmount: 5,
           labels: {
             style: { colors: labelColor, fontSize: '11px' },
-            formatter: value => this.formatValue(value)
+            formatter: value => self.formatValue(value)
           }
         },
         tooltip: {
           theme: this.currentTheme,
           shared: true,
-          x: {
-            formatter: value => relativeLabel(value)
-          },
-          y: {
-            formatter: value => this.formatValue(value)
-          }
+          intersect: false,
+          fixed: { enabled: true, position: 'topLeft', offsetX: 10, offsetY: 10 },
+          x: { formatter: value => relativeLabel(value) },
+          y: { formatter: value => self.formatValue(value) }
         },
         annotations: {
           yaxis: this.thresholds.map(threshold => ({
@@ -236,11 +181,7 @@ export default {
             label: {
               text: threshold.label,
               borderColor: threshold.color,
-              style: {
-                color: '#08111f',
-                background: threshold.color,
-                fontSize: '10px'
-              }
+              style: { color: '#08111f', background: threshold.color, fontSize: '10px' }
             }
           }))
         },
@@ -249,14 +190,20 @@ export default {
     }
   },
   watch: {
-    series: {
+    visibleSeries: {
       deep: true,
-      immediate: true,
-      handler(value) {
-        if (!this.paused) {
-          this.frozenSeries = value.map(item => ({ ...item, data: [...(item.data || [])] }))
-        }
+      handler() {
+        this._scheduleUpdate()
       }
+    },
+    selectedRange() {
+      this._scheduleUpdate()
+    },
+    lockScale() {
+      this._scheduleUpdate()
+    },
+    currentTheme(val) {
+      this.$refs.chart?.updateOptions({ theme: { mode: val }, tooltip: { theme: val } }, false, false)
     }
   },
   mounted() {
@@ -269,10 +216,12 @@ export default {
     }
     window.addEventListener('storage', this._onStorageChange)
     window.addEventListener('sc:theme-change', this._onThemeChange)
+    this._scheduleUpdate()
   },
   beforeUnmount() {
     window.removeEventListener('storage', this._onStorageChange)
     window.removeEventListener('sc:theme-change', this._onThemeChange)
+    if (this.rafId) cancelAnimationFrame(this.rafId)
   },
   methods: {
     formatValue(value) {
@@ -280,12 +229,43 @@ export default {
       if (Math.abs(value) >= 100) return Math.round(value)
       return Number(value).toFixed(1)
     },
-    pauseLive() {
-      this.paused = true
-      this.frozenSeries = this.series.map(item => ({ ...item, data: [...(item.data || [])] }))
+    _scheduleUpdate() {
+      if (this.pendingUpdate) return
+      this.pendingUpdate = true
+      this.rafId = requestAnimationFrame(() => {
+        this.pendingUpdate = false
+        this._applyUpdate()
+      })
     },
-    resumeLive() {
-      this.paused = false
+    _applyUpdate() {
+      const chart = this.$refs.chart
+      if (!chart) return
+      const series = this.visibleSeries
+      const allPts = series.flatMap(s => s.data)
+      const dur = rangeDurationMs(this.selectedRange)
+      const now = Date.now()
+      const xMin = now - dur
+      const xMax = now
+      let yMin = 0
+      let yMax = 10
+      if (!this.lockScale && !this.percentScale && allPts.length) {
+        const ys = allPts.map(p => Number(p.y)).filter(Number.isFinite)
+        if (ys.length) {
+          const rawMin = Math.min(...ys)
+          const rawMax = Math.max(...ys)
+          const span = rawMax - rawMin || 1
+          yMin = Math.max(0, rawMin - span * 0.12)
+          yMax = rawMax + span * 0.12
+        }
+      } else if (this.lockScale || this.percentScale) {
+        yMin = 0
+        yMax = 100
+      }
+      chart.updateOptions({
+        xaxis: { min: xMin, max: xMax },
+        yaxis: { min: Number(yMin.toFixed(1)), max: Number(yMax.toFixed(1)), tickAmount: 5 }
+      }, false, false, false)
+      chart.updateSeries(series, false)
     }
   }
 }

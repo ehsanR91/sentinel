@@ -131,6 +131,10 @@ h1, h2, h3, h4, h5, h6,
   color: var(--sc-text-secondary);
 }
 
+.btn {
+  letter-spacing: 0.01em;
+}
+
 .btn-sc-primary,
 .btn-primary,
 .btn-success,
@@ -167,30 +171,44 @@ h1, h2, h3, h4, h5, h6,
     background: var(--sc-bg-secondary) !important;
     border-color: var(--sc-blue) !important;
     color: var(--sc-text) !important;
+    box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.16) !important;
   }
   &::placeholder { color: var(--sc-text-muted) !important; }
 
-  option { background: var(--sc-bg-card); }
+  option {
+    background: var(--sc-bg-card);
+    color: var(--sc-text);
+    padding: 6px 10px;
+  }
+}
+
+.form-select {
+  min-width: 0;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .dropdown-menu {
   background: var(--sc-bg-card) !important;
   border-color: var(--sc-border) !important;
-  box-shadow: 0 8px 24px var(--sc-shadow) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 32px var(--sc-shadow), 0 2px 8px rgba(0,0,0,0.18) !important;
+  padding: 5px !important;
 
   .dropdown-item {
     color: var(--sc-text-secondary) !important;
-    &:hover {
-      background: var(--sc-bg-secondary) !important;
+    border-radius: 6px !important;
+    &:hover, &:focus {
+      background: rgba(74, 158, 255, 0.09) !important;
       color: var(--sc-text) !important;
     }
     &.active {
-      background: rgba(74, 158, 255, 0.12) !important;
+      background: rgba(74, 158, 255, 0.14) !important;
       color: var(--sc-blue) !important;
     }
     i { color: var(--sc-text-muted) !important; }
   }
-  .dropdown-divider { border-color: var(--sc-border) !important; }
+  .dropdown-divider { border-color: var(--sc-border) !important; margin: 4px 0 !important; }
 }
 
 .modal-content {

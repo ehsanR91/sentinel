@@ -88,6 +88,7 @@ export default {
   // System
   getMetrics: () => api.get('/system/metrics'),
   getProcesses: (limit = 50) => api.get(`/system/processes?limit=${limit}`),
+  getNetworkProcesses: (limit = 50) => api.get(`/system/network-processes?limit=${limit}`),
   getServices: () => api.get('/system/services'),
   getHealth: () => api.get('/system/health'),
   fixHealthIssue: (data) => api.post('/system/health/fix', data),
@@ -151,12 +152,6 @@ export default {
 
   // Logs
   getLogs: (source, lines = 200) => api.get(`/logs?source=${source}&lines=${lines}`),
-
-  // Alerts
-  getAlerts: (params = {}) => api.get('/alerts', { params }),
-  markAlertRead: (id) => api.put(`/alerts/${id}/read`),
-  markAlertAsRead: (id) => api.put(`/alerts/${id}/read`),
-  markAlertsAsRead: (ids) => api.put('/alerts/read', { ids }),
 
   // Tasks
   getTasks: () => api.get('/tasks'),

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 
 	goproc "github.com/shirou/gopsutil/v3/process"
 )
@@ -20,6 +22,28 @@ type ProcessInfo struct {
 	Cmdline string  `json:"cmdline"`
 }
 
+// NetworkProcessInfo describes a process with active network sockets.
+type NetworkProcessInfo struct {
+	PID         int32   `json:"pid"`
+	Name        string  `json:"name"`
+	User        string  `json:"user"`
+	CPUPct      float64 `json:"cpu_pct"`
+	MemPct      float32 `json:"mem_pct"`
+	MemRSS      uint64  `json:"mem_rss"`
+	Status      string  `json:"status"`
+	Cmdline     string  `json:"cmdline"`
+	CreateTime  int64   `json:"create_time"`
+	UptimeSec   int64   `json:"uptime_sec"`
+	Connections int     `json:"connections"`
+	TCP         int     `json:"tcp"`
+	UDP         int     `json:"udp"`
+	Listen      int     `json:"listen"`
+	Established int     `json:"established"`
+	RxRate      uint64  `json:"rx_rate"`
+	TxRate      uint64  `json:"tx_rate"`
+	RateSource  string  `json:"rate_source"`
+}
+
 // TopProcesses returns the top N processes sorted by CPU% descending.
 func TopProcesses(n int) []ProcessInfo {
 	procs, err := goproc.Processes()
@@ -29,13 +53,13 @@ func TopProcesses(n int) []ProcessInfo {
 
 	result := make([]ProcessInfo, 0, len(procs))
 	for _, p := range procs {
-		name, _    := p.Name()
-		cpuPct, _  := p.CPUPercent()
-		memPct, _  := p.MemoryPercent()
+		name, _ := p.Name()
+		cpuPct, _ := p.CPUPercent()
+		memPct, _ := p.MemoryPercent()
 		memInfo, _ := p.MemoryInfo()
 		statuses, _ := p.Status()
-		user, _    := p.Username()
-		cmd, _     := p.Cmdline()
+		user, _ := p.Username()
+		cmd, _ := p.Cmdline()
 
 		status := "sleeping"
 		if len(statuses) > 0 {
@@ -71,6 +95,99 @@ func TopProcesses(n int) []ProcessInfo {
 		return result[:n]
 	}
 	return result
+}
+
+// TopNetworkProcesses returns processes with active network sockets.
+func TopNetworkProcesses(n int) []NetworkProcessInfo {
+	procs, err := goproc.Processes()
+	if err != nil {
+		return []NetworkProcessInfo{}
+	}
+
+	result := make([]NetworkProcessInfo, 0, len(procs))
+	for _, p := range procs {
+		conns, err := p.Connections()
+		if err != nil || len(conns) == 0 {
+			continue
+		}
+
+		name, _ := p.Name()
+		cpuPct, _ := p.CPUPercent()
+		memPct, _ := p.MemoryPercent()
+		memInfo, _ := p.MemoryInfo()
+		statuses, _ := p.Status()
+		user, _ := p.Username()
+		cmd, _ := p.Cmdline()
+		createTime, _ := p.CreateTime()
+
+		status := "sleeping"
+		if len(statuses) > 0 {
+			status = statuses[0]
+		}
+		if cmd != "" && len(cmd) > 80 {
+			cmd = cmd[:80] + "…"
+		}
+
+		rss := uint64(0)
+		if memInfo != nil {
+			rss = memInfo.RSS
+		}
+
+		info := NetworkProcessInfo{
+			PID:         p.Pid,
+			Name:        name,
+			User:        user,
+			CPUPct:      round2(cpuPct),
+			MemPct:      float32(int(float64(memPct)*10+0.5)) / 10,
+			MemRSS:      rss,
+			Status:      status,
+			Cmdline:     cmd,
+			CreateTime:  createTime,
+			UptimeSec:   processUptimeSeconds(createTime),
+			Connections: len(conns),
+			RateSource:  "socket-count",
+		}
+
+		for _, conn := range conns {
+			switch conn.Type {
+			case syscall.SOCK_STREAM:
+				info.TCP++
+			case syscall.SOCK_DGRAM:
+				info.UDP++
+			}
+			switch strings.ToLower(conn.Status) {
+			case "listen":
+				info.Listen++
+			case "established":
+				info.Established++
+			}
+		}
+
+		result = append(result, info)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Established != result[j].Established {
+			return result[i].Established > result[j].Established
+		}
+		return result[i].Connections > result[j].Connections
+	})
+
+	if len(result) > n {
+		return result[:n]
+	}
+	return result
+}
+
+func processUptimeSeconds(createTimeMs int64) int64 {
+	if createTimeMs <= 0 {
+		return 0
+	}
+	uptime := time.Since(time.UnixMilli(createTimeMs)).Seconds()
+	if uptime < 0 {
+		return 0
+	}
+	return int64(uptime)
 }
 
 // SuspiciousProcess describes a process flagged by heuristic detection.

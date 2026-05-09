@@ -406,15 +406,27 @@
               <strong>{{ formatRateValue(snap.net_tx_rate) }}</strong>
             </div>
           </div>
-          <h4 class="dashboard-kpi-drawer__heading">Top bandwidth processes</h4>
-          <div v-if="!networkProcesses.length" class="dashboard-kpi-drawer__empty">No network processes found.</div>
+          <h4 class="dashboard-kpi-drawer__heading">Top network-active processes</h4>
+          <div v-if="!networkProcesses.length" class="dashboard-kpi-drawer__empty">No active network sockets found. Some process socket details may require elevated service permissions.</div>
           <div v-else class="dashboard-network-procs">
             <div v-for="proc in networkProcesses" :key="proc.pid" class="dashboard-net-proc">
               <div class="dashboard-net-proc__ident">
                 <div class="dashboard-net-proc__icon"><i class="mdi mdi-application-outline"></i></div>
                 <div>
-                  <div class="dashboard-net-proc__name">{{ proc.name }}</div>
-                  <div class="dashboard-net-proc__pid">PID {{ proc.pid }} · {{ proc.user || 'unknown' }}</div>
+                  <div class="dashboard-net-proc__name">
+                    {{ proc.name }}
+                    <Tooltip label="What is this Process?" as-child>
+                      <a
+                        :href="`https://www.google.com/search?q=what is ${encodeURIComponent(proc.name)} process in linux`"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="dashboard-net-proc__info"
+                      >
+                        <i class="mdi mdi-information-outline"></i>
+                      </a>
+                    </Tooltip>
+                  </div>
+                  <div class="dashboard-net-proc__pid">PID {{ proc.pid }} · {{ proc.user || 'unknown' }} · alive {{ formatDuration(proc.uptime_sec) }}</div>
                 </div>
               </div>
               <div class="dashboard-net-proc__meter" aria-hidden="true">
@@ -423,17 +435,27 @@
               </div>
               <div class="dashboard-net-proc__stats">
                 <div class="dashboard-net-proc__stat is-total">
-                  <span>Total</span>
-                  <strong>{{ formatRateValue(proc.pseudoTotal) }}</strong>
+                  <span>{{ proc.totalRate ? 'Total throughput' : 'Socket activity' }}</span>
+                  <strong>{{ proc.totalRate ? formatRateValue(proc.totalRate) : `${proc.connections} conn · ${proc.established} est` }}</strong>
                 </div>
                 <div class="dashboard-net-proc__split">
                   <div class="dashboard-net-proc__stat is-ingress">
                     <i class="mdi mdi-arrow-down-bold"></i>
-                    <span>{{ formatRateValue(proc.pseudoRx) }}</span>
+                    <span>{{ proc.rxRate ? formatRateValue(proc.rxRate) : `${proc.tcp} TCP` }}</span>
                   </div>
                   <div class="dashboard-net-proc__stat is-egress">
                     <i class="mdi mdi-arrow-up-bold"></i>
-                    <span>{{ formatRateValue(proc.pseudoTx) }}</span>
+                    <span>{{ proc.txRate ? formatRateValue(proc.txRate) : `${proc.udp} UDP` }}</span>
+                  </div>
+                </div>
+                <div class="dashboard-net-proc__split">
+                  <div class="dashboard-net-proc__stat">
+                    <i class="mdi mdi-chip"></i>
+                    <span>{{ Number(proc.cpu_pct || 0).toFixed(1) }}% CPU</span>
+                  </div>
+                  <div class="dashboard-net-proc__stat">
+                    <i class="mdi mdi-memory"></i>
+                    <span>{{ formatBytes(proc.mem_rss) }}</span>
                   </div>
                 </div>
               </div>
@@ -775,6 +797,7 @@ export default {
       healthLoading: false,
       lastLoadedAt: 0,
       refreshTimer: null,
+      networkProcessTimer: null,
       persistLayoutTimer: null,
       derivedHistory: {
         activeBans: [],
@@ -785,22 +808,36 @@ export default {
     }
   },
   computed: {
-    ...mapGetters('metrics', ['snap', 'cpuHistory', 'ramHistory', 'swapHistory', 'diskHistory', 'netRxHistory', 'netTxHistory', 'metricTimestamps', 'wsConnected', 'lastMetricTs', 'processes']),
+    ...mapGetters('metrics', {
+      snap: 'snap',
+      cpuHistory: 'cpuHistory',
+      ramHistory: 'ramHistory',
+      swapHistory: 'swapHistory',
+      diskHistory: 'diskHistory',
+      netRxHistory: 'netRxHistory',
+      netTxHistory: 'netTxHistory',
+      metricTimestamps: 'metricTimestamps',
+      wsConnected: 'wsConnected',
+      lastMetricTs: 'lastMetricTs',
+      socketProcesses: 'networkProcesses'
+    }),
     networkProcesses() {
-      if (!this.processes) return []
-      const ranked = [...this.processes]
+      if (!this.socketProcesses) return []
+      const ranked = [...this.socketProcesses]
         .map(p => {
-          const pseudoRx = Math.floor(((p.pid * 17) % 5000) * 1024 * (p.cpu_pct + 1));
-          const pseudoTx = Math.floor(((p.pid * 23) % 4000) * 1024 * (p.cpu_pct + 1));
-          return { ...p, pseudoRx, pseudoTx, pseudoTotal: pseudoRx + pseudoTx }
+          const rxRate = Number(p.rx_rate || 0)
+          const txRate = Number(p.tx_rate || 0)
+          const totalRate = rxRate + txRate
+          const activityScore = totalRate || Number(p.established || 0) * 3 + Number(p.connections || 0)
+          return { ...p, rxRate, txRate, totalRate, activityScore }
         })
-        .sort((a, b) => b.pseudoTotal - a.pseudoTotal)
+        .sort((a, b) => b.activityScore - a.activityScore)
         .slice(0, 10)
-      const maxTotal = Math.max(...ranked.map(process => process.pseudoTotal), 1)
+      const maxTotal = Math.max(...ranked.map(process => process.activityScore), 1)
       return ranked.map(process => ({
         ...process,
-        rxShare: Math.max(4, Math.round((process.pseudoRx / maxTotal) * 100)),
-        txShare: Math.max(4, Math.round((process.pseudoTx / maxTotal) * 100))
+        rxShare: Math.max(4, Math.round(((process.rxRate || process.established || 0) / maxTotal) * 100)),
+        txShare: Math.max(4, Math.round(((process.txRate || process.connections || 0) / maxTotal) * 100))
       }))
     },
     presetOptions() {
@@ -812,13 +849,15 @@ export default {
       ]
     },
     telemetryRanges() {
-      const enough = this.cpuHistory.filter(value => Number.isFinite(Number(value))).length >= 45
       return [
         { key: '1m', label: '1m', enabled: true },
-        { key: '5m', label: '5m', enabled: enough },
-        { key: '15m', label: '15m', enabled: false },
-        { key: '1h', label: '1h', enabled: false }
+        { key: '5m', label: '5m', enabled: true },
+        { key: '15m', label: '15m', enabled: true },
+        { key: '1h', label: '1h', enabled: true }
       ]
+    },
+    historySlice() {
+      return this.$store.getters['metrics/historySlice']
     },
     lockCpuToPercent() {
       return false
@@ -901,18 +940,18 @@ export default {
       ]
     },
     cpuTelemetrySeries() {
-      return [{ name: 'CPU', data: this.withMetricTimestamps(this.cpuHistory), color: '#6ba8ff' }]
+      return [{ name: 'CPU', data: this.historySlice('cpu', '1h'), color: '#6ba8ff' }]
     },
     memoryTelemetrySeries() {
       return [
-        { name: 'RAM', data: this.withMetricTimestamps(this.ramHistory), color: '#7c3aed' },
-        { name: 'Swap', data: this.withMetricTimestamps(this.swapHistory), color: '#f3b54a' }
+        { name: 'RAM', data: this.historySlice('ram', '1h'), color: '#7c3aed' },
+        { name: 'Swap', data: this.historySlice('swap', '1h'), color: '#f3b54a' }
       ]
     },
     networkTelemetrySeries() {
       return [
-        { name: 'Ingress', data: this.withMetricTimestamps(this.netRxHistory), color: '#6ba8ff' },
-        { name: 'Egress', data: this.withMetricTimestamps(this.netTxHistory), color: '#3ad38a' }
+        { name: 'Ingress', data: this.historySlice('netRx', '1h'), color: '#6ba8ff' },
+        { name: 'Egress', data: this.historySlice('netTx', '1h'), color: '#3ad38a' }
       ]
     },
     cpuTelemetryThresholds() {
@@ -1029,6 +1068,7 @@ export default {
   async mounted() {
     document.addEventListener('fullscreenchange', this.onFullscreenChange)
     this.$store.dispatch('metrics/startLive')
+    await this.refreshNetworkProcesses()
     await this.loadDashboardState()
     this.scheduleRefreshTimer()
     await this.loadAll()
@@ -1045,6 +1085,10 @@ export default {
     if (this.persistLayoutTimer) {
       clearTimeout(this.persistLayoutTimer)
       this.persistLayoutTimer = null
+    }
+    if (this.networkProcessTimer) {
+      clearInterval(this.networkProcessTimer)
+      this.networkProcessTimer = null
     }
   },
   methods: {
@@ -1073,6 +1117,20 @@ export default {
     },
     formatRateValue(value) {
         return fmtRate(value)
+    },
+    formatDuration(seconds) {
+      return fmtUptime(seconds)
+    },
+    formatBytes(bytes) {
+      return fmtBytes(bytes)
+    },
+    async refreshNetworkProcesses() {
+      await this.$store.dispatch('metrics/fetchNetworkProcesses')
+      if (!this.networkProcessTimer) {
+        this.networkProcessTimer = setInterval(() => {
+          this.$store.dispatch('metrics/fetchNetworkProcesses')
+        }, 10000)
+      }
     },
     withMetricTimestamps(history = []) {
       const timestamps = Array.isArray(this.metricTimestamps) ? this.metricTimestamps : []
@@ -2204,6 +2262,18 @@ export default {
   display: block;
   color: var(--text-primary);
   font-weight: 700;
+}
+
+.dashboard-net-proc__info {
+  margin-left: 6px;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.dashboard-net-proc__info:hover {
+  opacity: 1;
+  color: var(--accent);
 }
 
 .dashboard-network-procs {

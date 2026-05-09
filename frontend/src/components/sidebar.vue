@@ -391,7 +391,7 @@
         :aria-label="effectiveCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
         @click="toggleCollapse"
       >
-        <i class="mdi" :class="effectiveCollapsed ? 'mdi-bracket-right' : 'mdi-bracket-left'"></i>
+        <i class="mdi" :class="effectiveCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-left'"></i>
       </button>
     </div>
 
@@ -573,6 +573,7 @@ export default {
       searchQuery: '',
       sectionState: safeParse(localStorage.getItem(SECTION_STATE_KEY), {}),
       parentState: safeParse(localStorage.getItem(PARENT_STATE_KEY), {}),
+      autoExpandedParents: {},
       hiddenSections: safeParse(localStorage.getItem(HIDDEN_SECTIONS_KEY), []),
       pinnedIds: safeParse(localStorage.getItem(PINNED_KEY), []),
       visitedItems: safeParse(localStorage.getItem(VISITED_KEY), {}),
@@ -959,20 +960,21 @@ export default {
       this.saveState(PARENT_STATE_KEY, this.parentState)
     },
     isParentExpanded(item) {
-      if (item.children?.some(child => this.isItemActive(child) || this.itemMatchesQuery(child))) {
+      if (this.searchQuery && item.children?.some(child => this.itemMatchesQuery(child))) {
         return true
       }
-      return this.parentState[item.id] === true
+      return this.parentState[item.id] === true || this.autoExpandedParents[item.id] === true
     },
     syncExpandedState() {
+      const next = {}
       this.sectionDefinitions.forEach(section => {
         section.items.forEach(item => {
           if (item.children?.some(child => this.isItemActive(child))) {
-            this.parentState[item.id] = true
+            next[item.id] = true
           }
         })
       })
-      this.saveState(PARENT_STATE_KEY, this.parentState)
+      this.autoExpandedParents = next
     },
     itemSearchText(item) {
       return [item.label, item.sectionLabel, item.parentLabel, ...(item.keywords || [])].filter(Boolean).join(' ').toLowerCase()

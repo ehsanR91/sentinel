@@ -154,7 +154,7 @@ func main() {
 	r.Use(api.IPAllowlist())
 
 	// ── Secret link gate (wraps EVERYTHING below) ──────────────────────────────
-        r.Use(api.GateMiddleware(cfg.JWTSecret, cfg.IsDev))
+	r.Use(api.GateMiddleware(cfg.JWTSecret, cfg.IsDev))
 	// ── Public auth routes (inside gate, no JWT needed) ────────────────────────
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/logout", h.Logout)
@@ -185,6 +185,7 @@ func main() {
 		// Read-only system data (all authenticated users)
 		r.Get("/api/v1/system/metrics", h.GetMetrics)
 		r.Get("/api/v1/system/processes", h.GetProcesses)
+		r.Get("/api/v1/system/network-processes", h.GetNetworkProcesses)
 		r.Get("/api/v1/system/services", h.GetServices)
 		r.Get("/api/v1/system/suspicious", h.GetSuspiciousProcesses)
 		r.Get("/api/v1/system/disk-usage", h.GetDiskUsageTree)

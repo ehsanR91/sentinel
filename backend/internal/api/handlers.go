@@ -560,6 +560,16 @@ func (h *Handlers) GetProcesses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, monitoring.TopProcesses(n))
 }
 
+func (h *Handlers) GetNetworkProcesses(w http.ResponseWriter, r *http.Request) {
+	n := 50
+	if q := r.URL.Query().Get("limit"); q != "" {
+		if v, err := strconv.Atoi(q); err == nil && v > 0 {
+			n = v
+		}
+	}
+	writeJSON(w, http.StatusOK, monitoring.TopNetworkProcesses(n))
+}
+
 func (h *Handlers) GetSuspiciousProcesses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, monitoring.DetectSuspiciousProcesses())
 }

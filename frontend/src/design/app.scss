@@ -97,10 +97,27 @@ code, pre, kbd {
 
 // ─── Buttons ──────────────────────────────────────────────────────────────────
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-size: var(--font-size-13);
   font-weight: 500;
+  line-height: 1;
   border-radius: var(--radius-md);
-  transition: var(--transition-fast);
+  padding: 0.42rem 0.85rem;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.12s ease;
+  white-space: nowrap;
+
+  &:not(:disabled):hover { transform: translateY(-1px); }
+  &:not(:disabled):active { transform: translateY(0); }
+  &:disabled { opacity: 0.52; cursor: not-allowed; }
+}
+
+.btn-sm {
+  font-size: var(--font-size-12);
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-sm);
 }
 
 .btn-sc-primary,
@@ -113,22 +130,26 @@ code, pre, kbd {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--text-inverse);
-  box-shadow: var(--shadow-glow-accent);
-  &:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent);
+  &:not(:disabled):hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
 }
 
 .btn-sc-danger {
   background: var(--state-error-bg);
   border-color: var(--state-error-border);
   color: var(--state-error-fg);
-  &:hover { background: var(--state-error); border-color: var(--state-error); color: var(--text-inverse); }
+  &:not(:disabled):hover { background: var(--state-error); border-color: var(--state-error); color: var(--text-inverse); }
 }
 
 .btn-sc-success {
   background: var(--state-ok-bg);
   border-color: var(--state-ok-border);
   color: var(--state-ok-fg);
-  &:hover { background: var(--state-ok); border-color: var(--state-ok); color: var(--text-inverse); }
+  &:not(:disabled):hover { background: var(--state-ok); border-color: var(--state-ok); color: var(--text-inverse); }
 }
 
 // ─── Tables ───────────────────────────────────────────────────────────────────
@@ -164,16 +185,38 @@ code, pre, kbd {
   color: var(--text-primary);
   font-size: var(--font-size-13);
   border-radius: var(--radius-md);
-  
+  min-height: 34px;
+  padding: 0.38rem 0.75rem;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+
   &:focus {
     background: var(--surface-2);
     border-color: var(--accent);
     color: var(--text-primary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
     outline: none;
   }
-  
-  &::placeholder { color: var(--text-tertiary); }
+
+  &::placeholder { color: var(--text-tertiary); opacity: 0.7; }
+}
+
+.form-select {
+  min-width: 0;
+  padding-right: 2.25rem;
+  background-size: 14px 14px;
+  cursor: pointer;
+
+  option {
+    background: var(--surface-2);
+    color: var(--text-primary);
+    padding: 6px 10px;
+  }
+}
+
+.form-control-sm, .form-select-sm {
+  min-height: 30px;
+  padding: 0.28rem 0.6rem;
+  font-size: var(--font-size-12);
 }
 
 .form-label {
@@ -191,26 +234,43 @@ code, pre, kbd {
 
 // ─── Dropdown ─────────────────────────────────────────────────────────────────
 .dropdown-menu {
-  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  background: color-mix(in srgb, var(--surface-1) 97%, transparent);
   border: 1px solid var(--border-default);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.36), 0 2px 8px rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(var(--sc-glass-blur));
   -webkit-backdrop-filter: blur(var(--sc-glass-blur));
-  
+  padding: 5px;
+  min-width: 160px;
+
   .dropdown-item {
     color: var(--text-secondary);
     font-size: var(--font-size-13);
-    padding: var(--space-8) var(--space-16);
-    
-    &:hover {
-      background: var(--surface-3);
+    padding: 7px var(--space-12);
+    border-radius: var(--radius-sm);
+    transition: background 0.13s ease, color 0.13s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+
+    &:hover, &:focus {
+      background: color-mix(in srgb, var(--accent) 10%, var(--surface-3));
       color: var(--text-primary);
     }
-    
-    i { margin-right: 8px; color: var(--text-tertiary); }
+
+    &.active, &:active {
+      background: color-mix(in srgb, var(--accent) 16%, var(--surface-3));
+      color: var(--accent);
+    }
+
+    i { font-size: 15px; color: var(--text-tertiary); flex-shrink: 0; }
   }
-  
-  .dropdown-divider { border-color: var(--border-default); }
+
+  .dropdown-divider {
+    border-color: var(--border-subtle);
+    margin: 4px 0;
+  }
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
@@ -424,6 +484,10 @@ code, pre, kbd {
 .sc-toolbar {
   display: grid;
   gap: var(--space-12);
+}
+
+.sc-toolbar .card-body {
+  padding: 5px;
 }
 
 .sc-toolbar__bar {
