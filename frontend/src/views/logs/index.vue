@@ -14,44 +14,44 @@
       <div class="card-body py-2">
         <div class="row g-2 align-items-center">
           <div class="col-md-3">
-            <select v-model="source" class="form-select form-select-sm" @change="loadLogs">
-              <option value="auth">auth.log</option>
-              <option value="syslog">syslog</option>
-              <option value="kern">kern.log</option>
-              <option value="nginx">nginx/access.log</option>
-              <option value="nginx-error">nginx/error.log</option>
-              <option value="docker">docker daemon</option>
-              <option value="crowdsec">crowdsec</option>
-              <option value="fail2ban">fail2ban</option>
-              <option value="journal">journald (all)</option>
-            </select>
+            <ScSelect v-model="source" :options="[
+              {value:'auth',label:'auth.log'},
+              {value:'syslog',label:'syslog'},
+              {value:'kern',label:'kern.log'},
+              {value:'nginx',label:'nginx/access.log'},
+              {value:'nginx-error',label:'nginx/error.log'},
+              {value:'docker',label:'docker daemon'},
+              {value:'crowdsec',label:'crowdsec'},
+              {value:'fail2ban',label:'fail2ban'},
+              {value:'journal',label:'journald (all)'}
+            ]" size="sm" @change="loadLogs" />
           </div>
           <div class="col-md-2">
-            <select v-model="severityFilter" class="form-select form-select-sm">
-              <option value="">All levels</option>
-              <option value="error">ERROR</option>
-              <option value="warn">WARN</option>
-              <option value="info">INFO</option>
-            </select>
+            <ScSelect v-model="severityFilter" :options="[
+              {value:'',label:'All levels'},
+              {value:'error',label:'ERROR'},
+              {value:'warn',label:'WARN'},
+              {value:'info',label:'INFO'}
+            ]" size="sm" />
           </div>
           <div class="col-md-4">
             <input v-model="searchText" class="form-control form-control-sm" placeholder="Search / regex filter…" />
           </div>
           <div class="col-md-2">
-            <select v-model="lines" class="form-select form-select-sm" @change="loadLogs">
-              <option :value="20">20 lines</option>
-              <option :value="100">100 lines</option>
-              <option :value="500">500 lines</option>
-              <option :value="1000">1000 lines</option>
-            </select>
+            <ScSelect v-model="lines" :options="[
+              {value:20,label:'20 lines'},
+              {value:100,label:'100 lines'},
+              {value:500,label:'500 lines'},
+              {value:1000,label:'1000 lines'}
+            ]" size="sm" @change="loadLogs" />
           </div>
           <div class="col-md-1">
-            <select v-model.number="autoRefreshSec" class="form-select form-select-sm" :disabled="!streaming" @change="restartPolling">
-              <option :value="2">2s</option>
-              <option :value="5">5s</option>
-              <option :value="10">10s</option>
-              <option :value="30">30s</option>
-            </select>
+            <ScSelect v-model="autoRefreshSec" :options="[
+              {value:2,label:'2s'},
+              {value:5,label:'5s'},
+              {value:10,label:'10s'},
+              {value:30,label:'30s'}
+            ]" size="sm" :disabled="!streaming" @change="restartPolling" />
           </div>
           <div class="col-md-1">
             <Tooltip label="Clear logs" description="Remove the current in-memory log buffer from this view." variant="rich" as-child>

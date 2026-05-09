@@ -7,7 +7,9 @@
     </RouterView>
 
     <CommandPalette />
-    <div id="sc-tooltip-root"></div>
+    <Teleport to="body">
+      <div id="sc-tooltip-root"></div>
+    </Teleport>
 
     <Transition name="dash-preload">
       <div

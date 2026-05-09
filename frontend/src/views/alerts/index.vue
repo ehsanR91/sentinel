@@ -50,24 +50,9 @@
       @clear-all="clearFilters"
     >
       <template #controls>
-        <select v-model="readFilter" class="form-select sc-focus-ring toolbar-select">
-          <option value="all">All states</option>
-          <option value="unread">Unread</option>
-          <option value="read">Read</option>
-        </select>
-        <select v-model="sourceFilter" class="form-select sc-focus-ring toolbar-select">
-          <option value="">All sources</option>
-          <option v-for="source in sourceOptions" :key="source" :value="source">{{ source }}</option>
-        </select>
-        <select v-model="datePreset" class="form-select sc-focus-ring toolbar-select" @change="applyDatePreset(datePreset)">
-          <option value="15m">Last 15m</option>
-          <option value="1h">Last 1h</option>
-          <option value="6h">Last 6h</option>
-          <option value="24h">Last 24h</option>
-          <option value="7d">Last 7d</option>
-          <option value="custom">Custom</option>
-          <option value="all">All time</option>
-        </select>
+        <ScSelect v-model="readFilter" :options="[{value:'all',label:'All states'},{value:'unread',label:'Unread'},{value:'read',label:'Read'}]" size="sm" />
+        <ScSelect v-model="sourceFilter" :options="[{value:'',label:'All sources'},...sourceOptions.map(s=>({value:s,label:s}))]" size="sm" />
+        <ScSelect v-model="datePreset" :options="[{value:'15m',label:'Last 15m'},{value:'1h',label:'Last 1h'},{value:'6h',label:'Last 6h'},{value:'24h',label:'Last 24h'},{value:'7d',label:'Last 7d'},{value:'custom',label:'Custom'},{value:'all',label:'All time'}]" size="sm" @change="applyDatePreset(datePreset)" />
         <template v-if="datePreset === 'custom'">
           <input v-model="customStart" type="datetime-local" class="form-control sc-focus-ring toolbar-input" />
           <input v-model="customEnd" type="datetime-local" class="form-control sc-focus-ring toolbar-input" />
@@ -94,10 +79,7 @@
       <template #meta>
         <span class="sc-inline-note">{{ resultLabel }}</span>
         <span class="sc-inline-note">Last updated {{ lastUpdatedLabel }}</span>
-        <select v-model="density" class="form-select sc-focus-ring toolbar-select toolbar-select--narrow" @change="persistDensity">
-          <option value="comfortable">Comfortable</option>
-          <option value="compact">Compact</option>
-        </select>
+        <ScSelect v-model="density" :options="[{value:'comfortable',label:'Comfortable'},{value:'compact',label:'Compact'}]" size="sm" style="width:130px" @change="persistDensity" />
         <AppButton :variant="multiSelect ? 'primary' : 'secondary'" size="md" icon="mdi mdi-checkbox-multiple-marked-outline" :label="multiSelect ? 'Selecting' : 'Select'" @click="toggleMultiSelect" />
       </template>
     </FilterToolbar>

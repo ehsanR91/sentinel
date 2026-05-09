@@ -62,11 +62,11 @@
   --shadow-md: 0 16px 38px rgba(1, 8, 20, 0.28);
   --shadow-lg: 0 24px 70px rgba(1, 8, 20, 0.45);
   --shadow-glow-accent: 0 0 0 1px rgba(107, 168, 255, 0.24), 0 10px 30px rgba(107, 168, 255, 0.22);
-  --z-popover: 60;
-  --z-drawer: 50;
-  --z-modal: 70;
-  --z-tooltip: 80;
-  --z-toast: 90;
+  --z-popover: 3000;
+  --z-drawer: 2800;
+  --z-modal: 4500;
+  --z-tooltip: 10500;
+  --z-toast: 5000;
   --font-size-11: 11px;
   --font-size-12: 12px;
   --font-size-13: 13px;
@@ -248,11 +248,11 @@
   
   // Transitions
   --transition-base: all 0.2s ease;
-  --z-popover: 60;
-  --z-drawer: 50;
-  --z-modal: 70;
-  --z-tooltip: 80;
-  --z-toast: 90;
+  --z-popover: 3000;
+  --z-drawer: 2800;
+  --z-modal: 4500;
+  --z-tooltip: 10500;
+  --z-toast: 5000;
   --tooltip-surface: rgba(245, 245, 247, 0.78);
   --tooltip-border: rgba(0, 0, 0, 0.06);
   --tooltip-inner-highlight: rgba(255, 255, 255, 0.42);

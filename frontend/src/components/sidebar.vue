@@ -12,7 +12,7 @@
     :style="sidebarStyle"
   >
     <div class="sidebar-header">
-      <div class="sidebar-brand-row">
+      <div ref="brandRow" class="sidebar-brand-row">
         <router-link
           to="/dashboard"
           class="sidebar-brand"
@@ -49,50 +49,46 @@
           </Tooltip>
         </div>
 
-        <div v-if="brandMenuOpen" class="sidebar-popover brand-popover" role="menu">
-          <div class="sidebar-popover__title">Workspace</div>
-          <button type="button" class="sidebar-popover__item" @click="openCommandPalette">
-            <i class="mdi mdi-magnify"></i>
-            <span>Open command palette</span>
-            <kbd>Ctrl K</kbd>
-          </button>
-          <button type="button" class="sidebar-popover__item" @click="goToDashboard">
-            <i class="mdi mdi-view-dashboard-outline"></i>
-            <span>Go to dashboard</span>
-          </button>
-          <div class="sidebar-popover__group">
-            <label class="sidebar-pref-row">
-              <span>Density</span>
-              <select :value="sidebarDensity" @change="setSidebarDensity($event.target.value)">
-                <option value="comfortable">Comfortable</option>
-                <option value="compact">Compact</option>
-              </select>
-            </label>
-            <label class="sidebar-pref-row">
-              <span>Position</span>
-              <select :value="sidebarPosition" @change="setSidebarPosition($event.target.value)">
-                <option value="left">Left</option>
-                <option value="right">Right</option>
-              </select>
-            </label>
+        <Teleport to="body">
+          <div v-if="brandMenuOpen" class="sidebar-popover brand-popover" role="menu" :style="brandPopoverStyle">
+            <div class="sidebar-popover__title">Workspace</div>
+            <button type="button" class="sidebar-popover__item" @click="openCommandPalette">
+              <i class="mdi mdi-magnify"></i>
+              <span>Open command palette</span>
+              <kbd>Ctrl K</kbd>
+            </button>
+            <button type="button" class="sidebar-popover__item" @click="goToDashboard">
+              <i class="mdi mdi-view-dashboard-outline"></i>
+              <span>Go to dashboard</span>
+            </button>
+            <div class="sidebar-popover__group">
+              <label class="sidebar-pref-row">
+                <span>Density</span>
+                <ScSelect :model-value="sidebarDensity" :options="[{value:'comfortable',label:'Comfortable'},{value:'compact',label:'Compact'}]" size="sm" style="width:130px" @change="setSidebarDensity" />
+              </label>
+              <label class="sidebar-pref-row">
+                <span>Position</span>
+                <ScSelect :model-value="sidebarPosition" :options="[{value:'left',label:'Left'},{value:'right',label:'Right'}]" size="sm" style="width:130px" @change="setSidebarPosition" />
+              </label>
+            </div>
+            <div class="sidebar-popover__group sidebar-popover__group--stacked">
+              <div class="sidebar-popover__label">Visible sections</div>
+              <label v-for="section in sectionDefinitions" :key="`pref-${section.id}`" class="sidebar-checkbox-row">
+                <input
+                  type="checkbox"
+                  :checked="!hiddenSections.includes(section.id)"
+                  @change="toggleSectionVisibility(section.id)"
+                >
+                <span>{{ section.label }}</span>
+              </label>
+              <button type="button" class="sidebar-reset-link" @click="resetSectionVisibility">Show all</button>
+            </div>
+            <div class="sidebar-popover__footer">
+              <span>v{{ appVersion }}</span>
+              <button type="button" class="sidebar-popover__link" @click="logout">Sign out</button>
+            </div>
           </div>
-          <div class="sidebar-popover__group sidebar-popover__group--stacked">
-            <div class="sidebar-popover__label">Visible sections</div>
-            <label v-for="section in sectionDefinitions" :key="`pref-${section.id}`" class="sidebar-checkbox-row">
-              <input
-                type="checkbox"
-                :checked="!hiddenSections.includes(section.id)"
-                @change="toggleSectionVisibility(section.id)"
-              >
-              <span>{{ section.label }}</span>
-            </label>
-            <button type="button" class="sidebar-reset-link" @click="resetSectionVisibility">Show all</button>
-          </div>
-          <div class="sidebar-popover__footer">
-            <span>v{{ appVersion }}</span>
-            <button type="button" class="sidebar-popover__link" @click="logout">Sign out</button>
-          </div>
-        </div>
+        </Teleport>
       </div>
 
       <div v-show="!effectiveCollapsed" class="sidebar-search-wrap">
@@ -587,6 +583,7 @@ export default {
       contextMenu: { item: null, x: 0, y: 0 },
       draggingPinId: null,
       brandMenuOpen: false,
+      brandPopoverTop: 0,
       footerMenuOpen: false,
       serverSwitcherOpen: false,
       serverDrawerOpen: false,
@@ -702,6 +699,13 @@ export default {
     },
     appVersion() {
       return appConfig.version || '1.0.0'
+    },
+    brandPopoverStyle() {
+      const top = this.brandPopoverTop || 60
+      if (this.sidebarPosition === 'right') {
+        return { top: `${top}px`, left: 'auto', right: '10px' }
+      }
+      return { top: `${top}px`, left: '10px', right: 'auto' }
     }
   },
   watch: {
@@ -792,8 +796,13 @@ export default {
       localStorage.setItem(key, JSON.stringify(value))
     },
     toggleBrandMenu() {
+      const willOpen = !this.brandMenuOpen
       this.closeContextMenus()
-      this.brandMenuOpen = !this.brandMenuOpen
+      if (willOpen) {
+        const rect = this.$refs.brandRow?.getBoundingClientRect()
+        this.brandPopoverTop = rect ? rect.bottom + 8 : 60
+        this.brandMenuOpen = true
+      }
     },
     closeContextMenus() {
       this.contextMenu = { item: null, x: 0, y: 0 }
@@ -802,7 +811,7 @@ export default {
       this.serverSwitcherOpen = false
     },
     onGlobalClick(event) {
-      if (!this.$refs.sidebarRoot?.contains(event.target)) {
+      if (!this.$refs.sidebarRoot?.contains(event.target) && !event.target.closest('.brand-popover')) {
         this.closeContextMenus()
         this.hideTooltip()
       }

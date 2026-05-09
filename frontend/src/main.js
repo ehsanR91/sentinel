@@ -13,6 +13,7 @@ import { pwaState, promptInstall } from '@/plugins/pwa'
 import '@/utils/console-guard'
 
 import '@/design/index.scss'
+import ScSelect from '@/components/ui/sc-select.vue'
 
 // Online/offline state helper (used for offline PWA behavior)
 window.__sc_is_online__ = navigator.onLine
@@ -38,6 +39,7 @@ app.config.globalProperties.$isOnline = () => window.__sc_is_online__
 app.config.globalProperties.$pwaState = pwaState
 app.config.globalProperties.$promptInstall = promptInstall
 
+app.component('ScSelect', ScSelect)
 app.use(router)
 app.use(store)
 app.use(VueApexCharts)

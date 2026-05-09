@@ -57,10 +57,7 @@
           </div>
           <div class="col-xl-2 col-md-6">
             <label class="form-label">Schedule</label>
-            <select v-model="form.schedule_kind" class="form-select form-select-sm">
-              <option value="manual">manual</option>
-              <option value="interval">interval</option>
-            </select>
+            <ScSelect v-model="form.schedule_kind" :options="[{value:'manual',label:'Manual'},{value:'interval',label:'Interval'}]" size="sm" />
           </div>
           <div class="col-xl-2 col-md-6">
             <label class="form-label">Interval (sec)</label>

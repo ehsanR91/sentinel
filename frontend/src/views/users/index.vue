@@ -119,9 +119,7 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Role</label>
-                <select v-model="newUser.role" class="form-select">
-                  <option>viewer</option><option>operator</option><option>admin</option>
-                </select>
+                <ScSelect v-model="newUser.role" :options="[{value:'viewer',label:'Viewer'},{value:'operator',label:'Operator'},{value:'admin',label:'Admin'}]" />
               </div>
               <div class="col-6">
                 <label class="form-label">Password</label>
@@ -152,9 +150,7 @@
             <div class="row g-3">
               <div class="col-6">
                 <label class="form-label">Role</label>
-                <select v-model="editForm.role" class="form-select">
-                  <option>viewer</option><option>operator</option><option>admin</option><option>superadmin</option>
-                </select>
+                <ScSelect v-model="editForm.role" :options="[{value:'viewer',label:'Viewer'},{value:'operator',label:'Operator'},{value:'admin',label:'Admin'},{value:'superadmin',label:'Superadmin'}]" />
               </div>
               <div class="col-6">
                 <label class="form-label">Email</label>

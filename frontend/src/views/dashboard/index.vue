@@ -27,17 +27,11 @@
           />
           <label class="dashboard-select-wrap">
             <span>Preset</span>
-            <select v-model="activePreset" class="dashboard-select" @change="applyPreset(activePreset)">
-              <option v-for="preset in presetOptions" :key="preset.value" :value="preset.value">{{ preset.label }}</option>
-            </select>
+            <ScSelect v-model="activePreset" :options="presetOptions" size="sm" @change="applyPreset(activePreset)" />
           </label>
           <label class="dashboard-select-wrap dashboard-select-wrap--compact">
             <span>Refresh</span>
-            <select v-model.number="auxRefreshSec" class="dashboard-select" @change="persistDashboardState">
-              <option :value="30">30s</option>
-              <option :value="60">60s</option>
-              <option :value="120">2m</option>
-            </select>
+            <ScSelect v-model="auxRefreshSec" :options="[{value:30,label:'30s'},{value:60,label:'60s'},{value:120,label:'2m'}]" size="sm" @change="persistDashboardState" />
           </label>
           <AppButton variant="secondary" size="sm" icon="mdi mdi-view-grid-plus-outline" label="Add widget" @click="showWidgetCatalog = true" />
           <div class="dashboard-refresh-block">

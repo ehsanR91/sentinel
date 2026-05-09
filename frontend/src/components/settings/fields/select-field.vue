@@ -1,15 +1,13 @@
 <template>
-  <select
-    :id="inputId"
-    :value="modelValue"
-    class="select-control sc-focus-ring"
-    :class="{ 'is-error': error }"
+  <ScSelect
+    :input-id="inputId"
+    :model-value="modelValue"
+    :options="options"
     :disabled="disabled"
-    @change="$emit('update:modelValue', $event.target.value)"
+    :class="{ 'is-error': error }"
+    @update:model-value="$emit('update:modelValue', $event)"
     @blur="$emit('blur')"
-  >
-    <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
-  </select>
+  />
 </template>
 
 <script>
@@ -25,19 +23,3 @@ export default {
   emits: ['update:modelValue', 'blur']
 }
 </script>
-
-<style scoped>
-.select-control {
-  width: 100%;
-  min-height: 44px;
-  padding: 0.75rem 0.9rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  color: var(--text-primary);
-}
-
-.select-control.is-error {
-  border-color: var(--danger);
-}
-</style>

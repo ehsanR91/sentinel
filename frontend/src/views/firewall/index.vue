@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="Firewall" icon="mdi mdi-firewall" :items="[{text:'Firewall',active:true,icon:'mdi mdi-shield-lock'}]">
+    <PageHeader title="Firewall" icon="mdi mdi-shield-lock" :items="[{text:'Firewall',active:true,icon:'mdi mdi-shield-lock'}]">
       <template #actions>
         <button class="btn btn-sm btn-sc-primary" @click="showAddRule = true">
           <i class="mdi mdi-plus me-1"></i> Add Rule
@@ -22,8 +22,8 @@
       </div>
     </div>
 
-    <!-- Loading state -->
-    <div v-if="loading" class="text-center py-5">
+    <!-- Loading state (initial load only) -->
+    <div v-if="initialLoading" class="text-center py-5">
       <div class="spinner-border text-primary" style="width:2rem;height:2rem"></div>
       <div style="color:#5a7499;font-size:0.8rem;margin-top:0.5rem">Loading firewall rules…</div>
     </div>
@@ -265,6 +265,7 @@ export default {
   data() {
   return {
   loading: false,
+  initialLoading: true,
   addingRule: false,
   bulkBlocking: false,
   ufwActive: false,
@@ -298,9 +299,8 @@ export default {
   },
 
   mounted() {
-    this.loadRules()
-    // Refresh connections every 10 seconds for real-time updates
-    this.connTimer = setInterval(() => this.loadRules(), 10000)
+    this.loadRules(true)
+    this.connTimer = setInterval(() => this.loadRules(false), 15000)
   },
   
   beforeUnmount() {
@@ -324,20 +324,50 @@ export default {
       return s === 'ESTAB' || s === 'ESTABLISHED'
     },
   
-    async loadRules() {
-      this.loading = true
+    async loadRules(isInitial = false) {
+      if (isInitial) this.initialLoading = true
       try {
         const res = await api.getFirewallRules()
         const data = res.data
         this.ufwActive = data.enabled ?? false
-        this.rules = data.rules || []
-        // Ensure connections is always an array
-        this.connections = Array.isArray(data.connections) ? data.connections : []
+        const newRules = data.rules || []
+        const newConns = Array.isArray(data.connections) ? data.connections : []
+        if (isInitial) {
+          this.rules = newRules
+          this.connections = newConns
+        } else {
+          this._mergeById(this.rules, newRules, 'number')
+          this._mergeByIdx(this.connections, newConns)
+        }
       } catch (err) {
-        this.$swal({ toast: true, position: 'top-end', icon: 'error', title: 'Failed to load firewall rules', showConfirmButton: false, timer: 3000 })
+        if (isInitial) {
+          this.$swal({ toast: true, position: 'top-end', icon: 'error', title: 'Failed to load firewall rules', showConfirmButton: false, timer: 3000 })
+        }
       } finally {
-        this.loading = false
+        if (isInitial) this.initialLoading = false
       }
+    },
+
+    _mergeById(current, incoming, key) {
+      const inMap = new Map(incoming.map(r => [r[key], r]))
+      // update/add
+      incoming.forEach(r => {
+        const idx = current.findIndex(c => c[key] === r[key])
+        if (idx >= 0) Object.assign(current[idx], r)
+        else current.push(r)
+      })
+      // remove stale
+      for (let i = current.length - 1; i >= 0; i--) {
+        if (!inMap.has(current[i][key])) current.splice(i, 1)
+      }
+    },
+
+    _mergeByIdx(current, incoming) {
+      incoming.forEach((r, i) => {
+        if (i < current.length) Object.assign(current[i], r)
+        else current.push(r)
+      })
+      if (current.length > incoming.length) current.splice(incoming.length)
     },
 
     reloadUfw() {
