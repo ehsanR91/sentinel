@@ -5,6 +5,31 @@ html {
   scroll-behavior: smooth;
 }
 
+// ─── Global scrollable pill-nav ───────────────────────────────────────────────
+// Apply .sc-pill-nav to any horizontal pill/tab strip to make it scroll
+// gracefully when it overflows, stay centered when it fits.
+.sc-pill-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  justify-content: center;
+  padding-bottom: 2px; // keep thin scrollbar off content
+
+  // Hide scrollbar visually but keep it functional
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+
+  // Snap each pill
+  > * {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+}
+
 .wrapper {
   display: flex;
   min-height: 100vh;
@@ -59,13 +84,29 @@ html {
   }
 }
 
+// All page-level view containers use calc(100vw - 4vw) for consistent breathing
+// room, mirroring what .dashboard-page uses in its scoped styles.
+.sc-view {
+  width: calc(100vw - 4vw);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
 // ─── Mobile responsive fixes ──────────────────────────────────────────────────
 
-// Tables inside cards scroll horizontally instead of overflowing the viewport.
-// Uses :has() (Chrome 105+, Safari 15.4+, Firefox 121+). Older browsers fall
-// back to the current (broken) behaviour, which is acceptable as progressive
-// enhancement for a sysadmin panel.
-@media (max-width: 768px) {
+// On mobile (sidebar hidden) the available content width is 100vw minus the
+// left+right padding of .content-page (each 0.75rem = 1.5rem total).
+// Constrain view containers and key grid items so nothing bleeds off-screen.
+@media (max-width: 767px) {
+  .sc-view,
+  .dashboard-kpi-grid__item,
+  .dashboard-footer-strip,
+  .dashboard-panel {
+    max-width: calc(100vw - 4vw);
+  }
+
+  // Tables inside cards scroll horizontally instead of overflowing the viewport.
   .card-body:has(table) {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;

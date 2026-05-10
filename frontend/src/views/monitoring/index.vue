@@ -105,17 +105,17 @@
           <input v-model="procFilter" class="form-control form-control-sm" placeholder="Filter…" style="width:160px" />
         </div>
       </div>
-      <div class="card-body p-0" style="max-height:320px;overflow-y:auto">
-        <table class="table mb-0">
+      <div class="card-body p-0" style="max-height:320px;overflow:auto">
+        <table class="table mb-0" style="min-width:560px">
           <thead>
             <tr>
-              <th style="cursor:pointer" @click="sortProcess('pid')"><span style="font-size:0.72rem">PID</span> <i class="mdi" :class="sortIcon('pid')"></i></th>
-              <th style="cursor:pointer" @click="sortProcess('name')"><span style="font-size:0.72rem">Name</span> <i class="mdi" :class="sortIcon('name')"></i></th>
-              <th style="cursor:pointer" @click="sortProcess('user')"><span style="font-size:0.72rem">User</span> <i class="mdi" :class="sortIcon('user')"></i></th>
-              <th style="cursor:pointer" @click="sortProcess('cpu')"><span style="font-size:0.72rem">CPU %</span> <i class="mdi" :class="sortIcon('cpu')"></i></th>
-              <th style="cursor:pointer" @click="sortProcess('mem')"><span style="font-size:0.72rem">MEM %</span> <i class="mdi" :class="sortIcon('mem')"></i></th>
-              <th style="cursor:pointer" @click="sortProcess('rss')"><span style="font-size:0.72rem">MEM RSS</span> <i class="mdi" :class="sortIcon('rss')"></i></th>
-              <th style="cursor:pointer" @click="sortProcess('status')"><span style="font-size:0.72rem">Status</span> <i class="mdi" :class="sortIcon('status')"></i></th>
+              <th style="cursor:pointer;white-space:nowrap" @click="sortProcess('pid')"><span style="font-size:0.72rem">PID</span> <i class="mdi" :class="sortIcon('pid')"></i></th>
+              <th style="cursor:pointer;white-space:nowrap" @click="sortProcess('name')"><span style="font-size:0.72rem">Name</span> <i class="mdi" :class="sortIcon('name')"></i></th>
+              <th style="cursor:pointer;white-space:nowrap" @click="sortProcess('user')"><span style="font-size:0.72rem">User</span> <i class="mdi" :class="sortIcon('user')"></i></th>
+              <th style="cursor:pointer;white-space:nowrap" @click="sortProcess('cpu')"><span style="font-size:0.72rem">CPU%</span> <i class="mdi" :class="sortIcon('cpu')"></i></th>
+              <th style="cursor:pointer;white-space:nowrap" @click="sortProcess('mem')"><span style="font-size:0.72rem">MEM%</span> <i class="mdi" :class="sortIcon('mem')"></i></th>
+              <th style="cursor:pointer;white-space:nowrap" @click="sortProcess('rss')"><span style="font-size:0.72rem">MEM RSS</span> <i class="mdi" :class="sortIcon('rss')"></i></th>
+              <th style="cursor:pointer;white-space:nowrap" @click="sortProcess('status')"><span style="font-size:0.72rem">Status</span> <i class="mdi" :class="sortIcon('status')"></i></th>
             </tr>
           </thead>
           <tbody>

@@ -626,6 +626,7 @@ import KPICard from '@/components/dashboard/kpi-card.vue'
 import TelemetryChart from '@/components/dashboard/telemetry-chart.vue'
 import ActivityFeed from '@/components/dashboard/activity-feed.vue'
 import ServiceHealthPanel from '@/components/dashboard/service-health-panel.vue'
+import Tooltip from '@/components/ui/tooltip.vue'
 import draggable from 'vuedraggable'
 import { getHealthStatusWord, getHealthTone } from '@/utils/health'
 import api from '@/services/api'
@@ -886,6 +887,7 @@ export default {
     TelemetryChart,
     ActivityFeed,
     ServiceHealthPanel,
+    Tooltip,
     draggable
   },
   data() {
@@ -957,6 +959,12 @@ export default {
     netRxHistory() { return this.metricsStore.netRxHistory },
     netTxHistory() { return this.metricsStore.netTxHistory },
     metricTimestamps() { return this.metricsStore.metricTimestamps },
+    cpuSlice1h()   { return this.metricsStore.cpuSlice1h },
+    ramSlice1h()   { return this.metricsStore.ramSlice1h },
+    swapSlice1h()  { return this.metricsStore.swapSlice1h },
+    diskSlice1h()  { return this.metricsStore.diskSlice1h },
+    netRxSlice1h() { return this.metricsStore.netRxSlice1h },
+    netTxSlice1h() { return this.metricsStore.netTxSlice1h },
     wsConnected() { return this.metricsStore.wsConnected },
     lastMetricTs() { return this.metricsStore.lastMetricTs },
     processes() { return this.metricsStore.processes },
@@ -1243,7 +1251,7 @@ export default {
         deltaLabel: delta.label,
         deltaDirection: delta.direction,
         deltaTone: delta.tone,
-        sparkline: compactSeries(this.cpuHistory),
+        sparkline: this.cpuSlice1h,
         contextLines: [
           `Load ${Number(this.snap.load1 || 0).toFixed(2)} · ${Number(this.snap.load5 || 0).toFixed(2)} · ${Number(this.snap.load15 || 0).toFixed(2)}`,
           `Updated ${this.formatRelativeFromNow(this.lastMetricTs * 1000)}`
@@ -1265,8 +1273,8 @@ export default {
         deltaLabel: delta.label,
         deltaDirection: delta.direction,
         deltaTone: delta.tone,
-        sparkline: compactSeries(this.ramHistory),
-        sparklineSecondary: compactSeries(this.swapHistory),
+        sparkline: this.ramSlice1h,
+        sparklineSecondary: this.swapSlice1h,
         contextLines: [
           `${fmtBytes(this.snap.ram_used)} / ${fmtBytes(this.snap.ram_total)} · swap ${fmtPercent(this.snap.swap_pct)}`,
           `${fmtBytes(this.snap.swap_used)} / ${fmtBytes(this.snap.swap_total)}`
@@ -1287,7 +1295,7 @@ export default {
         deltaLabel: delta.label,
         deltaDirection: delta.direction,
         deltaTone: delta.tone,
-        sparkline: compactSeries(this.diskHistory),
+        sparkline: this.diskSlice1h,
         contextLines: [
           `${fmtBytes(this.snap.disk_used)} / ${fmtBytes(this.snap.disk_total)}`,
           `${fmtBytes(this.snap.disk_free)} free on /`
@@ -1309,8 +1317,8 @@ export default {
         deltaLabel: delta.label,
         deltaDirection: delta.direction,
         deltaTone: delta.tone,
-        sparkline: compactSeries(this.netRxHistory),
-        sparklineSecondary: compactSeries(this.netTxHistory),
+        sparkline: this.netRxSlice1h,
+        sparklineSecondary: this.netTxSlice1h,
         contextLines: [
           `in ${this.formatRateValue(this.snap.net_rx_rate)} · out ${fmtRate(this.snap.net_tx_rate)}`,
           `${fmtBytes(this.snap.net_rx_total)} rx · ${fmtBytes(this.snap.net_tx_total)} tx`
@@ -1332,6 +1340,7 @@ export default {
         deltaDirection: delta.direction,
         deltaTone: delta.tone,
         sparkline: compactSeries(this.derivedHistory.activeBans),
+        sparkColor: Number(this.secStats.activeBans || 0) >= 10 ? 'var(--state-error)' : Number(this.secStats.activeBans || 0) >= 5 ? 'var(--state-warn, #f5a623)' : 'var(--dashboard-spark-line)',
         contextLines: [
           'fail2ban + CrowdSec pressure',
           `${this.secStats.ufwActive ? 'Firewall active' : 'Firewall inactive'}`
@@ -1353,6 +1362,7 @@ export default {
         deltaDirection: delta.direction,
         deltaTone: delta.tone,
         sparkline: compactSeries(this.derivedHistory.failedLogins),
+        sparkColor: Number(this.secStats.failedLogins || 0) >= 50 ? 'var(--state-error)' : Number(this.secStats.failedLogins || 0) >= 10 ? 'var(--state-warn, #f5a623)' : 'var(--dashboard-spark-line)',
         contextLines: [
           `Last attempt ${this.loginAttempts[0]?.ts ? this.formatRelativeFromNow(this.loginAttempts[0].ts * 1000) : 'unknown'}`,
           '24h aggregate across all auth sources'
@@ -1376,7 +1386,12 @@ export default {
         deltaLabel: delta.label,
         deltaDirection: delta.direction,
         deltaTone: delta.tone,
-        sparkline: compactSeries(this.derivedHistory.containersRunning),
+        variant: 'stat-grid',
+        statItems: [
+          { label: 'Running',  value: this.dockerInfo.containers_running  || 0, tone: (this.dockerInfo.containers_running || 0) > 0 ? 'ok' : 'default' },
+          { label: 'Stopped',  value: (this.dockerInfo.containers_total || 0) - (this.dockerInfo.containers_running || 0), tone: ((this.dockerInfo.containers_total || 0) - (this.dockerInfo.containers_running || 0)) > 0 ? 'warn' : 'default' },
+          { label: 'Updates',  value: this.updates.count || 0, tone: (this.updates.count || 0) > 0 ? 'warn' : 'ok' }
+        ],
         contextLines: [
           `${this.dockerInfo.containers_running || 0} running · ${this.dockerInfo.containers_total || 0} total`,
           `Updates ${this.updates.count || 0} pending`
@@ -1388,22 +1403,52 @@ export default {
       }
     },
     kpiUptime() {
+      // Build a presence series from cpuSlice1h: each sampled point = 100 (up),
+      // null gaps become 0 (down). This lets the sparkline show real up/down history.
+      const rawSlice = this.cpuSlice1h
+      const presenceSeries = rawSlice.map(pt => ({
+        x: pt.x,
+        y: pt.y !== null && Number.isFinite(pt.y) ? 100 : 0
+      }))
+
+      // Uptime % = fraction of sampled points where system was reachable
+      const total = presenceSeries.length
+      const upCount = presenceSeries.filter(p => p.y === 100).length
+      const uptimePct = total > 0 ? Math.round((upCount / total) * 100) : 100
+
+      let statusText, deltaTone, deltaDir
+      if (!this.wsConnected) {
+        statusText = 'Disconnected — check agent'
+        deltaTone = 'bad'; deltaDir = 'down'
+      } else if (this.isMetricStale) {
+        statusText = 'Stream stale — reconnecting'
+        deltaTone = 'bad'; deltaDir = 'down'
+      } else if (uptimePct >= 99) {
+        statusText = '100% uptime this hour'
+        deltaTone = 'good'; deltaDir = 'up'
+      } else {
+        statusText = `${uptimePct}% uptime this hour`
+        deltaTone = uptimePct >= 90 ? 'neutral' : 'bad'
+        deltaDir = uptimePct >= 90 ? 'neutral' : 'down'
+      }
+
       return {
         label: 'Uptime',
         icon: 'mdi mdi-timer-outline',
         value: fmtUptime(this.snap.uptime),
-        deltaLabel: '— stable',
-        deltaDirection: 'neutral',
-        deltaTone: 'neutral',
-        sparkline: [],
+        deltaLabel: statusText,
+        deltaDirection: deltaDir,
+        deltaTone: deltaTone,
+        sparkline: presenceSeries,
+        sparkColor: this.isMetricStale || !this.wsConnected ? 'var(--state-error)' : 'var(--state-ok)',
         contextLines: [
           `Host ${this.snap.hostname || 'node'} · kernel ${this.snap.kernel || 'unknown'}`,
           `Last sync ${this.formatRelativeFromNow(this.lastLoadedAt)}`
         ],
         live: this.wsConnected,
         stale: this.isMetricStale,
-        rangeLabel: 'host lifetime',
-        tone: 'ok'
+        rangeLabel: '1h window',
+        tone: this.isMetricStale || !this.wsConnected ? 'error' : uptimePct >= 99 ? 'ok' : 'warn'
       }
     },
     // Assembles individual cached KPI computeds — only re-evaluates when any
@@ -1658,6 +1703,26 @@ export default {
       this.persistLayoutTimer = window.setTimeout(() => {
         this.saveDashboardState(payload)
       }, 250)
+    },
+    persistDashboardState() {
+      const payload = {
+        layoutEditMode: this.layoutEditMode,
+        activePreset: this.activePreset,
+        auxRefreshSec: this.auxRefreshSec,
+        kpiWidgets: this.kpiWidgets,
+        hiddenKpis: this.hiddenKpis,
+        sectionWidgets: this.sectionWidgets,
+        hiddenSections: this.hiddenSections
+      }
+      try {
+        localStorage.setItem(DASHBOARD_STATE_KEY, JSON.stringify(payload))
+      } catch {
+        // storage quota exceeded — ignore
+      }
+      this.scheduleDashboardPersist(payload)
+    },
+    toggleLayoutEdit() {
+      this.layoutEditMode = !this.layoutEditMode
     },
     async saveDashboardState(payload) {
       if (!this.authStore.loggedIn) return
@@ -1943,7 +2008,8 @@ export default {
 .dashboard-page {
   display: flex;
   flex-direction: column;
-  width: 100%;
+  width: calc(100vw - 4vw);
+  max-width: 100%;
   min-width: 0;
   gap: 18px;
   padding-inline: clamp(2px, 0.35vw, 6px);

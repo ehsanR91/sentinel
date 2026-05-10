@@ -10,6 +10,7 @@ import { pinia } from '@/stores'
 import '@/utils/console-guard'
 
 import '@/design/index.scss'
+import 'sweetalert2/dist/sweetalert2.min.css'
 import ScSelect from '@/components/ui/sc-select.vue'
 
 // Online/offline state helper (used for offline PWA behavior)
@@ -55,10 +56,7 @@ const swalOptions = {
 let _swal = null
 async function _getSwal () {
   if (_swal) return _swal
-  const [{ default: Swal }] = await Promise.all([
-    import('sweetalert2'),
-    import('sweetalert2/dist/sweetalert2.min.css')
-  ])
+  const { default: Swal } = await import('sweetalert2')
   _swal = Swal.mixin(swalOptions)
   return _swal
 }

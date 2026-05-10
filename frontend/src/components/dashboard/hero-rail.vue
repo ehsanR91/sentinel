@@ -102,7 +102,9 @@ export default {
       canScrollLeft,
       canScrollRight,
       handleScroll,
-      scrollBy
+      scrollBy,
+      activeCardId,
+      toggleCard
     }
   }
 }
@@ -173,31 +175,32 @@ export default {
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
-  background-color: var(--bg-surface, #ffffff);
-  border: 1px solid var(--border-color, #e0e0e0);
-  color: var(--text-primary, #333333);
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 22px;
   cursor: pointer;
   box-shadow: var(--shadow-md);
-  transition: all 0.2s ease;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .hero-rail-nav:hover {
-  background-color: var(--bg-surface-hover, #f5f5f5);
+  background: var(--surface-3);
   box-shadow: var(--shadow-lg);
 }
 
 .hero-rail-nav--left {
-  left: -20px;
+  left: 2px;
 }
 
 .hero-rail-nav--right {
-  right: -20px;
+  right: 2px;
 }
 
 /* 

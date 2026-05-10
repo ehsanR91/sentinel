@@ -509,7 +509,9 @@ export default {
       showCopyFallbackModal: false,
       fallbackTextareaText: '',
       showSelectionModal: false,
-      selectionTextareaText: ''
+      selectionTextareaText: '',
+      // Selection captured at context-menu open time (clicking menu item clears window.getSelection)
+      _capturedSelection: ''
     }
   },
 
@@ -868,6 +870,9 @@ export default {
       // Don't show if clicking on input
       if (e.target.tagName === 'INPUT') return
 
+      // Capture selection NOW before the right-click can clear it
+      this._capturedSelection = window.getSelection?.()?.toString?.() || ''
+
       const menuWidth = 200
       const menuHeight = 150
       this.contextMenu.left = Math.min(e.clientX, window.innerWidth - menuWidth - 12)
@@ -905,8 +910,7 @@ export default {
     },
 
     async copySelection() {
-      const selection = window.getSelection()
-      const text = selection?.toString?.() || ''
+      const text = this._capturedSelection || window.getSelection()?.toString?.() || ''
       if (!text.trim()) return
 
       try {
@@ -922,8 +926,8 @@ export default {
     },
 
     openCopySelectionModal() {
-      const selection = window.getSelection?.()?.toString?.() || ''
-      this.selectionTextareaText = selection.trim()
+      const text = this._capturedSelection || window.getSelection?.()?.toString?.() || ''
+      this.selectionTextareaText = text.trim()
       this.showSelectionModal = true
       this.contextMenu.visible = false
       this.$nextTick(() => {

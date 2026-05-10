@@ -84,14 +84,14 @@
         <div v-else-if="filteredLogs.length === 0" class="text-center py-4 log-empty-text">
           No log entries matching criteria
         </div>
-        <div v-else style="overflow-x:auto">
-          <table class="table mb-0" style="font-size:0.75rem">
-            <thead>
+        <div v-else style="overflow-x:auto;max-height:60vh;overflow-y:auto">
+          <table class="table mb-0" style="font-size:0.75rem;min-width:560px">
+            <thead style="position:sticky;top:0;z-index:1;background:var(--sc-bg-card,#0d1b2a)">
               <tr>
-                <th style="width:80px">Level</th>
-                <th style="width:160px">Timestamp</th>
-                <th style="width:120px">Source</th>
                 <th>Message</th>
+                <th style="width:80px">Level</th>
+                <th style="width:120px;white-space:nowrap">Source</th>
+                <th style="width:160px;white-space:nowrap">Timestamp</th>
               </tr>
             </thead>
             <tbody>
@@ -100,14 +100,14 @@
                 :key="entry.key"
                 :class="rowClass(entry.level)"
               >
+                <td :class="{ 'log-line-flash': entry.flash }" class="log-message" :style="{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }">{{ entry.msg }}</td>
                 <td>
                   <span class="badge rounded-pill" :style="badgeStyle(entry.level)">
                     {{ entry.level.toUpperCase() }}
                   </span>
                 </td>
-                <td class="font-mono log-timestamp" :style="{ whiteSpace: 'nowrap' }">{{ entry.ts }}</td>
                 <td class="font-mono log-source" :style="{ whiteSpace: 'nowrap' }">{{ entry.src }}</td>
-                <td :class="{ 'log-line-flash': entry.flash }" class="log-message" :style="{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }">{{ entry.msg }}</td>
+                <td class="font-mono log-timestamp" :style="{ whiteSpace: 'nowrap' }">{{ entry.ts }}</td>
               </tr>
             </tbody>
           </table>
