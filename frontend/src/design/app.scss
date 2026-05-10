@@ -226,13 +226,60 @@ code, pre, kbd {
   margin-bottom: 0.35rem;
 }
 
-// ─── Scrollbar ────────────────────────────────────────────────────────────────
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--surface-0); }
-::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+// ─── Scrollbar — thin themed pill ───────────────────────────────────────────────────────
+html {
+  // Firefox
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
 
-// ─── Dropdown ─────────────────────────────────────────────────────────────────
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+// ─── Text selection ─────────────────────────────────────────────────────────────────
+::selection {
+  background: rgba(107, 168, 255, 0.28);
+  color: inherit;
+}
+
+// ─── Focus visible — keyboard navigation ring ─────────────────────────────────────────
+// Show ring only for keyboard nav (not mouse/touch); suppress browser default.
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+// ─── Touch quality ─────────────────────────────────────────────────────────────────
+// Remove the grey flash on tap (iOS / old Android).
+a, button, input, select, textarea, label,
+[role="button"], [role="tab"], [role="menuitem"], [role="option"],
+[tabindex] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+// Remove iOS long-press callout menu on buttons & links.
+button, a {
+  -webkit-touch-callout: none;
+}
+
+// Eliminate the 300 ms click delay on mobile (iOS 9+, Android Chrome 55+).
+// This makes every tap feel instant.
+a, button, input[type="submit"], input[type="button"], input[type="reset"],
+label, [role="button"], [role="tab"], [role="menuitem"], summary {
+  touch-action: manipulation;
+}
+
 .dropdown-menu {
   background: color-mix(in srgb, var(--surface-1) 97%, transparent);
   border: 1px solid var(--border-default);
