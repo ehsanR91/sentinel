@@ -141,7 +141,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 		return collectTopProcessSnapshotBundle(prev, now, opts.topLimit)
 	}
 
-	procs, err := goproc.Processes()
+	pids, err := listProcPIDs()
 	if err != nil {
 		return processSnapshotBundle{
 			top:        []ProcessInfo{},
@@ -156,72 +156,84 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 		totalMem = vm.Total
 	}
 
-	procByPID := make(map[int32]*goproc.Process, len(procs))
-	nextPrev := make(map[int32]processCPUSample, len(procs))
-	topCandidates := make([]processCandidate, 0, len(procs))
-	networkCandidates := make([]processCandidate, 0, len(procs)/2)
+	procByPID := make(map[int32]*goproc.Process, len(pids)/2)
+	nextPrev := make(map[int32]processCPUSample, len(pids))
+	topCandidates := make([]processCandidate, 0, len(pids))
+	networkCandidates := make([]processCandidate, 0, len(pids)/2)
 	suspiciousCandidates := make([]processCandidate, 0, 8)
 
-	for _, p := range procs {
-		procByPID[p.Pid] = p
-
-		statSample, statErr := readProcStatSample(p.Pid, now, opts.includeNetworkTimes)
+	for _, pid := range pids {
+		statSample, statErr := readProcStatSample(pid, now, opts.includeNetworkTimes)
 		name := statSample.name
 		if name == "" {
-			name, _ = p.Name()
-		}
-		if name == "" {
-			name = strconv.FormatInt(int64(p.Pid), 10)
+			name = strconv.FormatInt(int64(pid), 10)
 		}
 
-		sample, cpuPct, ok := sampleProcessCPU(p.Pid, statSample, p, prev, now, statErr == nil)
+		sample, cpuPct, ok := sampleProcessCPU(pid, statSample, nil, prev, now, statErr == nil)
 		if ok {
-			nextPrev[p.Pid] = sample
+			nextPrev[pid] = sample
 		}
 
 		candidate := processCandidate{
-			pid:        p.Pid,
+			pid:        pid,
 			name:       name,
 			cpuPct:     cpuPct,
 			createTime: statSample.createTimeMs,
 		}
 
+		var proc *goproc.Process
+		getProc := func() *goproc.Process {
+			if proc != nil {
+				return proc
+			}
+			proc, _ = goproc.NewProcess(pid)
+			return proc
+		}
+
 		cmdline := ""
 		if needsCmdlineInspection(name) {
-			cmdline, _ = p.Cmdline()
+			if p := getProc(); p != nil {
+				cmdline, _ = p.Cmdline()
+			}
 		}
 		if reason, risk := suspiciousMatch(name, cmdline); reason != "" {
 			candidate.reason = reason
 			candidate.risk = risk
 			candidate.cmdline = cmdline
+			if p := getProc(); p != nil {
+				procByPID[pid] = p
+			}
 		}
 
 		if opts.includeNetwork || opts.includeSuspicious {
-			conns, err := p.Connections()
-			if err == nil && len(conns) > 0 {
-			candidate.connections = len(conns)
-			for _, conn := range conns {
-				switch conn.Type {
-				case syscall.SOCK_STREAM:
-					candidate.tcp++
-				case syscall.SOCK_DGRAM:
-					candidate.udp++
+			if p := getProc(); p != nil {
+				conns, err := p.Connections()
+				if err == nil && len(conns) > 0 {
+					procByPID[pid] = p
+					candidate.connections = len(conns)
+					for _, conn := range conns {
+						switch conn.Type {
+						case syscall.SOCK_STREAM:
+							candidate.tcp++
+						case syscall.SOCK_DGRAM:
+							candidate.udp++
+						}
+						switch strings.ToLower(conn.Status) {
+						case "listen":
+							candidate.listen++
+						case "established":
+							candidate.established++
+						}
+					}
+					if opts.includeNetwork {
+						networkCandidates = append(networkCandidates, candidate)
+					}
+					if candidate.reason == "" && candidate.connections > suspiciousConnectionCount {
+						candidate.reason = fmt.Sprintf("Excessive network connections: %d", candidate.connections)
+						candidate.risk = "medium"
+					}
 				}
-				switch strings.ToLower(conn.Status) {
-				case "listen":
-					candidate.listen++
-				case "established":
-					candidate.established++
-				}
 			}
-			if opts.includeNetwork {
-				networkCandidates = append(networkCandidates, candidate)
-			}
-			if candidate.reason == "" && candidate.connections > suspiciousConnectionCount {
-				candidate.reason = fmt.Sprintf("Excessive network connections: %d", candidate.connections)
-				candidate.risk = "medium"
-			}
-		}
 		}
 
 		if opts.topLimit > 0 {
