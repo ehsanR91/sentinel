@@ -50,7 +50,7 @@
 
     <!-- ── Disk partitions + Network ─────────────────────────────────────── -->
     <div class="row g-3 mb-4">
-      <div class="col-xl-5">
+      <div class="col-12 col-xl-5">
         <div class="card sc-panel-card">
           <div class="card-header"><h6><i class="mdi mdi-harddisk me-2" style="color:#f5a623"></i>Disk Partitions</h6></div>
           <div class="card-body">
@@ -71,7 +71,7 @@
         </div>
       </div>
 
-      <div class="col-xl-7">
+      <div class="col-12 col-xl-7">
         <div class="card sc-panel-card">
           <div class="card-header"><h6><i class="mdi mdi-swap-vertical me-2" style="color:#22d67c"></i>Network Interfaces</h6></div>
           <div class="card-body p-0">

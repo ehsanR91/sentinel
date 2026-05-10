@@ -59,6 +59,37 @@ html {
   }
 }
 
+// ─── Mobile responsive fixes ──────────────────────────────────────────────────
+
+// Tables inside cards scroll horizontally instead of overflowing the viewport.
+// Uses :has() (Chrome 105+, Safari 15.4+, Firefox 121+). Older browsers fall
+// back to the current (broken) behaviour, which is acceptable as progressive
+// enhancement for a sysadmin panel.
+@media (max-width: 768px) {
+  .card-body:has(table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+// Card headers that use flexbox can push items off-screen on narrow devices.
+// Allow them to wrap so toolbar items drop to a second line instead.
+@media (max-width: 640px) {
+  .card-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  // Remove fixed pixel widths from inline search inputs inside headers so they
+  // flex properly instead of forcing overflow.
+  .card-header input[style*="width"],
+  .card-header select[style*="width"] {
+    width: 100% !important;
+    max-width: 200px;
+    min-width: 0;
+  }
+}
+
 // Smooth animations
 @keyframes fadeIn {
   from {

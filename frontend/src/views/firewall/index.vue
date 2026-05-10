@@ -31,7 +31,7 @@
     <template v-else>
       <div class="row g-3 mb-4">
         <!-- UFW Rules table -->
-        <div class="col-xl-8">
+        <div class="col-12 col-xl-8">
           <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
               <h6><i class="mdi mdi-wall me-2" style="color:#4a9eff"></i>UFW Rules ({{ rules.length }})</h6>
@@ -81,7 +81,7 @@
         </div>
 
         <!-- Quick block + stats -->
-        <div class="col-xl-4">
+        <div class="col-12 col-xl-4">
         <div class="card mb-3">
         <div class="card-header d-flex align-items-center justify-content-between">
         <h6><i class="mdi mdi-block-helper me-2" style="color:#f04040"></i>Quick Block IP</h6>
