@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/user"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/shirou/gopsutil/v3/mem"
 )
 
 // ProcessInfo holds per-process data.
@@ -55,7 +52,7 @@ const (
 	suspiciousConnectionCount   = 50
 	procStatClockTicks          = 100
 	bootTimeCacheTTL            = 10 * time.Minute
-	auxiliaryProcessRefreshMin  = 30 * time.Second
+	auxiliaryProcessRefreshMin  = 60 * time.Second
 )
 
 type processCPUSample struct {
@@ -149,10 +146,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 		}
 	}
 
-	totalMem := uint64(0)
-	if vm, err := mem.VirtualMemory(); err == nil {
-		totalMem = vm.Total
-	}
+	totalMem := getTotalMem(now)
 
 	var inodeMap map[uint64]procNetSocket
 	if opts.includeNetwork || opts.includeSuspicious {
@@ -344,10 +338,7 @@ func collectTopProcessSnapshotBundle(prev map[int32]processCPUSample, now time.T
 		return processSnapshotBundle{top: []ProcessInfo{}, cpuPrev: map[int32]processCPUSample{}}
 	}
 
-	totalMem := uint64(0)
-	if vm, err := mem.VirtualMemory(); err == nil {
-		totalMem = vm.Total
-	}
+	totalMem := getTotalMem(now)
 
 	nextPrev := make(map[int32]processCPUSample, len(pids))
 	topCandidates := make([]processCandidate, 0, len(pids))
@@ -556,12 +547,18 @@ func loadProcessDetail(
 }
 
 func readProcStatSample(pid int32, now time.Time, includeCreateTime bool) (procStatSample, error) {
-	path := filepath.Join("/proc", strconv.FormatInt(int64(pid), 10), "stat")
-	raw, err := os.ReadFile(path)
+	path := fmt.Sprintf("/proc/%d/stat", pid)
+	f, err := os.Open(path)
 	if err != nil {
 		return procStatSample{}, err
 	}
-	line := strings.TrimSpace(string(raw))
+	var buf [512]byte
+	n, err := f.Read(buf[:])
+	f.Close()
+	if err != nil && n == 0 {
+		return procStatSample{}, err
+	}
+	line := strings.TrimSpace(string(buf[:n]))
 	openIdx := strings.IndexByte(line, '(')
 	closeIdx := strings.LastIndexByte(line, ')')
 	if openIdx < 0 || closeIdx <= openIdx {
@@ -587,7 +584,7 @@ func readProcStatSample(pid int32, now time.Time, includeCreateTime bool) (procS
 	createTimeMs := int64(0)
 	if includeCreateTime {
 		if bootTimeSec := cachedBootTimeSeconds(now); bootTimeSec > 0 {
-		createTimeMs = (bootTimeSec * 1000) + int64((float64(startTicks)/float64(procStatClockTicks))*1000)
+			createTimeMs = (bootTimeSec * 1000) + int64((float64(startTicks)/float64(procStatClockTicks))*1000)
 		}
 	}
 	return procStatSample{
@@ -732,6 +729,7 @@ func addNetProtoFile(m map[uint64]procNetSocket, path string, isTCP bool) {
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 256*1024)
 	scanner.Scan() // skip header line
 	for scanner.Scan() {
 		// Fields: sl local_addr rem_addr state tx:rx ... inode ...
