@@ -47,9 +47,7 @@
     }
 
     .sidebar-brand-actions {
-      position: absolute;
-      top: 0.7rem;
-      right: 0.5rem;
+      display: none;
     }
 
     .sidebar-section-toggle {
@@ -65,7 +63,8 @@
     .sidebar-subnav,
     .server-footer-card__title-wrap,
     .server-footer-card__metrics,
-    .server-footer-card__health {
+    .server-footer-card__health,
+    .server-footer-card .sidebar-icon-btn {
       display: none !important;
     }
 
@@ -867,6 +866,12 @@
   bottom: 0.75rem;
 }
 
+#sidebar-menu.collapsed .sidebar-footer-toggle {
+  position: static;
+  display: flex !important;
+  margin: 0.5rem auto 0;
+}
+
 .sidebar-jump-hint {
   position: absolute;
   right: 0.9rem;
@@ -995,7 +1000,9 @@
   }
 }
 
-@media (max-width: 767px) {
+// Overlay sidebar: covers mobile AND tablet (<992px).
+// The sidebar slides in as a full-width panel over the content — no content push.
+@media (max-width: 991px) {
   #sidebar-menu {
     width: min(86vw, 320px);
     transform: translateX(-102%);
@@ -1028,6 +1035,7 @@
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
   }
 
+  // At this range the sidebar is always an overlay — no margin offsets needed.
   .wrapper.sidebar-collapsed .page-content,
   .wrapper.sidebar-right .page-content,
   .wrapper.sidebar-right.sidebar-collapsed .page-content {

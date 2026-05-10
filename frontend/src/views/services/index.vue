@@ -620,6 +620,9 @@ export default {
       if (s.active_state === 'inactive') return 'Disabled'
       return 'Exited'
     },
+    statusText(s) {
+      return this.statusLabel(s)
+    },
     statusTooltip(s) {
       const label = this.statusLabel(s)
       if (label === 'Active') return 'The service is installed and running fine.'

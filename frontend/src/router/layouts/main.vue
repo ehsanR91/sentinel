@@ -73,7 +73,7 @@ export default {
       return this.layoutStore.sidebarPosition
     },
     isMobileViewport() {
-      return this.viewportWidth < 768
+      return this.viewportWidth < 992
     },
     isCompactViewport() {
       return this.viewportWidth < 1100 && !this.isMobileViewport

@@ -79,6 +79,10 @@
   --line-height-base: 1.45;
   --line-height-loose: 1.65;
   --sc-bg-body: #0a0e1a;
+  --sc-page-bg:
+    radial-gradient(ellipse at 18% 14%, rgba(74, 158, 255, 0.10), transparent 42%),
+    radial-gradient(ellipse at 82% 88%, rgba(167, 139, 250, 0.07), transparent 38%),
+    #0a0e1a;
   --sc-bg-card: #0f1629;
   --sc-bg-sidebar: #080c18;
   --sc-bg-topbar: #0f1629;
@@ -212,6 +216,10 @@
   --state-pending-border: rgba(37, 99, 235, 0.24);
   --state-pending-fg: #1d4ed8;
   --sc-bg-body: #f0f4f8;
+  --sc-page-bg:
+    radial-gradient(ellipse at 18% 14%, rgba(37, 99, 235, 0.08), transparent 42%),
+    radial-gradient(ellipse at 82% 88%, rgba(109, 40, 217, 0.05), transparent 38%),
+    #f0f4f8;
   --sc-bg-card: #ffffff;
   --sc-bg-sidebar: #ffffff;
   --sc-bg-topbar: #ffffff;

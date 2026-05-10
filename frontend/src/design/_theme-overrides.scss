@@ -6,10 +6,13 @@ body {
   color: var(--sc-text) !important;
 }
 
-.page-content,
+.page-content {
+  background: var(--sc-page-bg, var(--sc-bg-body)) !important;
+  color: var(--sc-text) !important;
+}
 .content-page,
 .wrapper {
-  background: var(--sc-bg-body) !important;
+  background: transparent !important;
   color: var(--sc-text) !important;
 }
 
