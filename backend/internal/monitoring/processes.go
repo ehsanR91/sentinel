@@ -1,11 +1,15 @@
 package monitoring
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"os/user"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -51,6 +55,9 @@ const (
 	processSnapshotLimit        = 100
 	networkProcessSnapshotLimit = 100
 	suspiciousConnectionCount   = 50
+	procStatClockTicks          = 100
+	bootTimeCacheTTL            = 10 * time.Minute
+	auxiliaryProcessRefreshMin  = 30 * time.Second
 )
 
 type processCPUSample struct {
@@ -65,10 +72,19 @@ type processSnapshotBundle struct {
 	cpuPrev    map[int32]processCPUSample
 }
 
+type processRefreshOptions struct {
+	topLimit            int
+	networkLimit        int
+	includeNetwork      bool
+	includeSuspicious   bool
+	includeNetworkTimes bool
+}
+
 type processCandidate struct {
 	pid         int32
 	name        string
 	cpuPct      float64
+	createTime  int64
 	connections int
 	tcp         int
 	udp         int
@@ -85,18 +101,41 @@ type processDetail struct {
 	cmdline    string
 	memRSS     uint64
 	memPct     float32
-	createTime int64
 }
 
-func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time, topLimit, networkLimit int) processSnapshotBundle {
+type procStatSample struct {
+	name            string
+	totalCPUSeconds float64
+	createTimeMs    int64
+}
+
+type cachedBootTime struct {
+	mu        sync.RWMutex
+	bootTime  int64
+	expiresAt time.Time
+}
+
+var procBootTimeCache cachedBootTime
+
+func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time, opts processRefreshOptions) processSnapshotBundle {
 	if now.IsZero() {
 		now = time.Now()
 	}
-	if topLimit <= 0 {
-		topLimit = processSnapshotLimit
+	if opts.topLimit < 0 {
+		opts.topLimit = 0
 	}
-	if networkLimit <= 0 {
-		networkLimit = networkProcessSnapshotLimit
+	if opts.topLimit == 0 && !opts.includeNetwork && !opts.includeSuspicious {
+		return processSnapshotBundle{cpuPrev: appendProcessCPUSamples(nil, prev)}
+	}
+	if opts.topLimit > 0 && opts.topLimit < processSnapshotLimit {
+		// keep provided limit
+	} else if opts.topLimit > 0 {
+		opts.topLimit = processSnapshotLimit
+	}
+	if opts.includeNetwork {
+		if opts.networkLimit <= 0 || opts.networkLimit > networkProcessSnapshotLimit {
+			opts.networkLimit = networkProcessSnapshotLimit
+		}
 	}
 
 	procs, err := goproc.Processes()
@@ -123,20 +162,25 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 	for _, p := range procs {
 		procByPID[p.Pid] = p
 
-		name, _ := p.Name()
+		statSample, statErr := readProcStatSample(p.Pid, now, opts.includeNetworkTimes)
+		name := statSample.name
+		if name == "" {
+			name, _ = p.Name()
+		}
 		if name == "" {
 			name = strconv.FormatInt(int64(p.Pid), 10)
 		}
 
-		sample, cpuPct, ok := sampleProcessCPU(p, prev, now)
+		sample, cpuPct, ok := sampleProcessCPU(statSample, p, prev, now, statErr == nil)
 		if ok {
 			nextPrev[p.Pid] = sample
 		}
 
 		candidate := processCandidate{
-			pid:    p.Pid,
-			name:   name,
-			cpuPct: cpuPct,
+			pid:        p.Pid,
+			name:       name,
+			cpuPct:     cpuPct,
+			createTime: statSample.createTimeMs,
 		}
 
 		cmdline := ""
@@ -149,8 +193,9 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			candidate.cmdline = cmdline
 		}
 
-		conns, err := p.Connections()
-		if err == nil && len(conns) > 0 {
+		if opts.includeNetwork || opts.includeSuspicious {
+			conns, err := p.Connections()
+			if err == nil && len(conns) > 0 {
 			candidate.connections = len(conns)
 			for _, conn := range conns {
 				switch conn.Type {
@@ -166,47 +211,56 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 					candidate.established++
 				}
 			}
-			networkCandidates = append(networkCandidates, candidate)
+			if opts.includeNetwork {
+				networkCandidates = append(networkCandidates, candidate)
+			}
 			if candidate.reason == "" && candidate.connections > suspiciousConnectionCount {
 				candidate.reason = fmt.Sprintf("Excessive network connections: %d", candidate.connections)
 				candidate.risk = "medium"
 			}
 		}
+		}
 
-		topCandidates = append(topCandidates, candidate)
-		if candidate.reason != "" {
+		if opts.topLimit > 0 {
+			topCandidates = append(topCandidates, candidate)
+		}
+		if opts.includeSuspicious && candidate.reason != "" {
 			suspiciousCandidates = append(suspiciousCandidates, candidate)
 		}
 	}
 
-	sort.Slice(topCandidates, func(i, j int) bool {
-		if topCandidates[i].cpuPct == topCandidates[j].cpuPct {
-			return topCandidates[i].pid < topCandidates[j].pid
-		}
-		return topCandidates[i].cpuPct > topCandidates[j].cpuPct
-	})
-	sort.Slice(networkCandidates, func(i, j int) bool {
-		if networkCandidates[i].established != networkCandidates[j].established {
-			return networkCandidates[i].established > networkCandidates[j].established
-		}
-		if networkCandidates[i].connections != networkCandidates[j].connections {
-			return networkCandidates[i].connections > networkCandidates[j].connections
-		}
-		return networkCandidates[i].cpuPct > networkCandidates[j].cpuPct
-	})
-
-	if len(topCandidates) > topLimit {
-		topCandidates = topCandidates[:topLimit]
+	if len(topCandidates) > 0 {
+		sort.Slice(topCandidates, func(i, j int) bool {
+			if topCandidates[i].cpuPct == topCandidates[j].cpuPct {
+				return topCandidates[i].pid < topCandidates[j].pid
+			}
+			return topCandidates[i].cpuPct > topCandidates[j].cpuPct
+		})
 	}
-	if len(networkCandidates) > networkLimit {
-		networkCandidates = networkCandidates[:networkLimit]
+	if len(networkCandidates) > 0 {
+		sort.Slice(networkCandidates, func(i, j int) bool {
+			if networkCandidates[i].established != networkCandidates[j].established {
+				return networkCandidates[i].established > networkCandidates[j].established
+			}
+			if networkCandidates[i].connections != networkCandidates[j].connections {
+				return networkCandidates[i].connections > networkCandidates[j].connections
+			}
+			return networkCandidates[i].cpuPct > networkCandidates[j].cpuPct
+		})
+	}
+
+	if opts.topLimit > 0 && len(topCandidates) > opts.topLimit {
+		topCandidates = topCandidates[:opts.topLimit]
+	}
+	if opts.includeNetwork && len(networkCandidates) > opts.networkLimit {
+		networkCandidates = networkCandidates[:opts.networkLimit]
 	}
 
 	userCache := map[uint32]string{}
 	detailCache := map[int32]processDetail{}
 	top := make([]ProcessInfo, 0, len(topCandidates))
 	for _, candidate := range topCandidates {
-		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true, false)
+		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, false)
 		top = append(top, ProcessInfo{
 			PID:     candidate.pid,
 			Name:    candidate.name,
@@ -215,13 +269,19 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			MemPct:  detail.memPct,
 			MemRSS:  detail.memRSS,
 			Status:  detail.status,
-			Cmdline: detail.cmdline,
+			Cmdline: "",
 		})
 	}
 
 	network := make([]NetworkProcessInfo, 0, len(networkCandidates))
 	for _, candidate := range networkCandidates {
-		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true, true)
+		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, false)
+		createTime := int64(0)
+		uptimeSec := int64(0)
+		if opts.includeNetworkTimes {
+			createTime = candidate.createTime
+			uptimeSec = processUptimeSeconds(candidate.createTime)
+		}
 		network = append(network, NetworkProcessInfo{
 			PID:         candidate.pid,
 			Name:        candidate.name,
@@ -230,9 +290,9 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			MemPct:      detail.memPct,
 			MemRSS:      detail.memRSS,
 			Status:      detail.status,
-			Cmdline:     detail.cmdline,
-			CreateTime:  detail.createTime,
-			UptimeSec:   processUptimeSeconds(detail.createTime),
+			Cmdline:     "",
+			CreateTime:  createTime,
+			UptimeSec:   uptimeSec,
 			Connections: candidate.connections,
 			TCP:         candidate.tcp,
 			UDP:         candidate.udp,
@@ -249,7 +309,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			continue
 		}
 		seen[candidate.pid] = true
-		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true, false)
+		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true)
 		cmdline := candidate.cmdline
 		if cmdline == "" {
 			cmdline = detail.cmdline
@@ -270,6 +330,19 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 		suspicious: suspicious,
 		cpuPrev:    nextPrev,
 	}
+}
+
+func appendProcessCPUSamples(dst, src map[int32]processCPUSample) map[int32]processCPUSample {
+	if len(src) == 0 {
+		return map[int32]processCPUSample{}
+	}
+	if dst == nil {
+		dst = make(map[int32]processCPUSample, len(src))
+	}
+	for pid, sample := range src {
+		dst[pid] = sample
+	}
+	return dst
 }
 
 func processUptimeSeconds(createTimeMs int64) int64 {
@@ -313,12 +386,15 @@ var suspiciousPatterns = []struct{ kw, reason, risk string }{
 	{"ruby -e", "Inline Ruby execution", "medium"},
 }
 
-func sampleProcessCPU(p *goproc.Process, prev map[int32]processCPUSample, now time.Time) (processCPUSample, float64, bool) {
-	times, err := p.Times()
-	if err != nil || times == nil {
-		return processCPUSample{}, 0, false
+func sampleProcessCPU(stat procStatSample, p *goproc.Process, prev map[int32]processCPUSample, now time.Time, hasStat bool) (processCPUSample, float64, bool) {
+	total := stat.totalCPUSeconds
+	if !hasStat {
+		times, err := p.Times()
+		if err != nil || times == nil {
+			return processCPUSample{}, 0, false
+		}
+		total = times.User + times.System
 	}
-	total := times.User + times.System
 	sample := processCPUSample{total: total, seenAt: now}
 	last, ok := prev[p.Pid]
 	if !ok || last.seenAt.IsZero() || total < last.total {
@@ -366,13 +442,12 @@ func loadProcessDetail(
 	userCache map[uint32]string,
 	detailCache map[int32]processDetail,
 	needCmdline bool,
-	needCreateTime bool,
 ) processDetail {
 	if p == nil {
 		return processDetail{}
 	}
 	if cached, ok := detailCache[p.Pid]; ok {
-		if (!needCmdline || cached.cmdline != "") && (!needCreateTime || cached.createTime != 0) {
+		if !needCmdline || cached.cmdline != "" {
 			return cached
 		}
 	}
@@ -401,11 +476,87 @@ func loadProcessDetail(
 		cmdline, _ := p.Cmdline()
 		detail.cmdline = truncateProcessText(cmdline, 80)
 	}
-	if needCreateTime && detail.createTime == 0 {
-		detail.createTime, _ = p.CreateTime()
-	}
 	detailCache[p.Pid] = detail
 	return detail
+}
+
+func readProcStatSample(pid int32, now time.Time, includeCreateTime bool) (procStatSample, error) {
+	path := filepath.Join("/proc", strconv.FormatInt(int64(pid), 10), "stat")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return procStatSample{}, err
+	}
+	line := strings.TrimSpace(string(raw))
+	openIdx := strings.IndexByte(line, '(')
+	closeIdx := strings.LastIndexByte(line, ')')
+	if openIdx < 0 || closeIdx <= openIdx {
+		return procStatSample{}, fmt.Errorf("unexpected proc stat format")
+	}
+	name := line[openIdx+1 : closeIdx]
+	fields := strings.Fields(strings.TrimSpace(line[closeIdx+1:]))
+	if len(fields) < 20 {
+		return procStatSample{}, fmt.Errorf("unexpected proc stat field count")
+	}
+	utimeTicks, err := strconv.ParseUint(fields[11], 10, 64)
+	if err != nil {
+		return procStatSample{}, err
+	}
+	stimeTicks, err := strconv.ParseUint(fields[12], 10, 64)
+	if err != nil {
+		return procStatSample{}, err
+	}
+	startTicks, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return procStatSample{}, err
+	}
+	createTimeMs := int64(0)
+	if includeCreateTime {
+		if bootTimeSec := cachedBootTimeSeconds(now); bootTimeSec > 0 {
+		createTimeMs = (bootTimeSec * 1000) + int64((float64(startTicks)/float64(procStatClockTicks))*1000)
+		}
+	}
+	return procStatSample{
+		name:            name,
+		totalCPUSeconds: float64(utimeTicks+stimeTicks) / float64(procStatClockTicks),
+		createTimeMs:    createTimeMs,
+	}, nil
+}
+
+func cachedBootTimeSeconds(now time.Time) int64 {
+	procBootTimeCache.mu.RLock()
+	if procBootTimeCache.bootTime > 0 && now.Before(procBootTimeCache.expiresAt) {
+		bootTime := procBootTimeCache.bootTime
+		procBootTimeCache.mu.RUnlock()
+		return bootTime
+	}
+	procBootTimeCache.mu.RUnlock()
+
+	raw, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(raw)))
+	bootTime := int64(0)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "btime ") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line, "btime "))
+		bootTime, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return 0
+		}
+		break
+	}
+	if bootTime <= 0 {
+		return 0
+	}
+	procBootTimeCache.mu.Lock()
+	procBootTimeCache.bootTime = bootTime
+	procBootTimeCache.expiresAt = now.Add(bootTimeCacheTTL)
+	procBootTimeCache.mu.Unlock()
+	return bootTime
 }
 
 func resolveProcessUser(p *goproc.Process, userCache map[uint32]string) string {

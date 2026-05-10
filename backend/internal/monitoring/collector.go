@@ -87,6 +87,8 @@ type Collector struct {
 	netProcs    []NetworkProcessInfo
 	suspicious  []SuspiciousProcess
 	procCPUPrev map[int32]processCPUSample
+	procEvery   time.Duration
+	auxEvery    time.Duration
 }
 
 func NewCollector() *Collector {
@@ -111,7 +113,10 @@ func (c *Collector) Start(interval, slowEvery time.Duration) {
 
 	// Warm up: first cpu.Percent call always returns 0
 	cpu.Percent(0, true) //nolint
-	c.refreshProcessSnapshots()
+	c.procEvery = normalizedProcessRefreshInterval(slowEvery)
+	c.auxEvery = normalizedAuxiliaryProcessRefreshInterval(c.procEvery)
+	c.refreshTopProcessSnapshots()
+	c.refreshAuxiliaryProcessSnapshots()
 
 	go func() {
 		ticker := time.NewTicker(interval)
@@ -132,18 +137,18 @@ func (c *Collector) Start(interval, slowEvery time.Duration) {
 	}()
 
 	go func() {
-		refreshEvery := slowEvery
-		if refreshEvery <= 0 {
-			refreshEvery = 30 * time.Second
-		}
-		if refreshEvery < 10*time.Second {
-			refreshEvery = 10 * time.Second
-		}
-
-		ticker := time.NewTicker(refreshEvery)
+		ticker := time.NewTicker(c.procEvery)
 		defer ticker.Stop()
 		for range ticker.C {
-			c.refreshProcessSnapshots()
+			c.refreshTopProcessSnapshots()
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(c.auxEvery)
+		defer ticker.Stop()
+		for range ticker.C {
+			c.refreshAuxiliaryProcessSnapshots()
 		}
 	}()
 }
@@ -161,7 +166,7 @@ func (c *Collector) Latest() *SystemSnapshot {
 func (c *Collector) TopProcesses(limit int) []ProcessInfo {
 	items := c.snapshotTopProcesses()
 	if len(items) == 0 {
-		c.refreshProcessSnapshots()
+		c.refreshTopProcessSnapshots()
 		items = c.snapshotTopProcesses()
 	}
 	if limit > 0 && len(items) > limit {
@@ -173,7 +178,7 @@ func (c *Collector) TopProcesses(limit int) []ProcessInfo {
 func (c *Collector) TopNetworkProcesses(limit int) []NetworkProcessInfo {
 	items := c.snapshotNetworkProcesses()
 	if len(items) == 0 {
-		c.refreshProcessSnapshots()
+		c.refreshAuxiliaryProcessSnapshots()
 		items = c.snapshotNetworkProcesses()
 	}
 	if limit > 0 && len(items) > limit {
@@ -185,7 +190,7 @@ func (c *Collector) TopNetworkProcesses(limit int) []NetworkProcessInfo {
 func (c *Collector) SuspiciousProcesses() []SuspiciousProcess {
 	items := c.snapshotSuspiciousProcesses()
 	if len(items) == 0 {
-		c.refreshProcessSnapshots()
+		c.refreshAuxiliaryProcessSnapshots()
 		items = c.snapshotSuspiciousProcesses()
 	}
 	return items
@@ -315,31 +320,25 @@ func (c *Collector) refreshPartitions(now time.Time) {
 	c.mu.Unlock()
 }
 
-func (c *Collector) refreshProcessSnapshots() {
-	bundle := collectProcessSnapshotBundle(c.procCPUPrev, time.Now(), processSnapshotLimit, networkProcessSnapshotLimit)
+func (c *Collector) refreshTopProcessSnapshots() {
+	bundle := collectProcessSnapshotBundle(c.procCPUPrev, time.Now(), processRefreshOptions{topLimit: processSnapshotLimit})
 	c.procMu.Lock()
 	c.topProcs = append([]ProcessInfo(nil), bundle.top...)
-	c.netProcs = append([]NetworkProcessInfo(nil), bundle.network...)
-	c.suspicious = append([]SuspiciousProcess(nil), bundle.suspicious...)
 	c.procCPUPrev = bundle.cpuPrev
 	c.procMu.Unlock()
 }
 
-func (c *Collector) setTopProcesses(items []ProcessInfo) {
+func (c *Collector) refreshAuxiliaryProcessSnapshots() {
+	bundle := collectProcessSnapshotBundle(c.procCPUPrev, time.Now(), processRefreshOptions{
+		includeNetwork:      true,
+		networkLimit:        networkProcessSnapshotLimit,
+		includeSuspicious:   true,
+		includeNetworkTimes: true,
+	})
 	c.procMu.Lock()
-	c.topProcs = append([]ProcessInfo(nil), items...)
-	c.procMu.Unlock()
-}
-
-func (c *Collector) setNetworkProcesses(items []NetworkProcessInfo) {
-	c.procMu.Lock()
-	c.netProcs = append([]NetworkProcessInfo(nil), items...)
-	c.procMu.Unlock()
-}
-
-func (c *Collector) setSuspiciousProcesses(items []SuspiciousProcess) {
-	c.procMu.Lock()
-	c.suspicious = append([]SuspiciousProcess(nil), items...)
+	c.netProcs = append([]NetworkProcessInfo(nil), bundle.network...)
+	c.suspicious = append([]SuspiciousProcess(nil), bundle.suspicious...)
+	c.procCPUPrev = bundle.cpuPrev
 	c.procMu.Unlock()
 }
 
@@ -363,4 +362,25 @@ func (c *Collector) snapshotSuspiciousProcesses() []SuspiciousProcess {
 
 func round2(f float64) float64 {
 	return float64(int(f*100+0.5)) / 100
+}
+
+func normalizedProcessRefreshInterval(refreshEvery time.Duration) time.Duration {
+	if refreshEvery <= 0 {
+		refreshEvery = 30 * time.Second
+	}
+	if refreshEvery < 10*time.Second {
+		return 10 * time.Second
+	}
+	return refreshEvery
+}
+
+func normalizedAuxiliaryProcessRefreshInterval(procEvery time.Duration) time.Duration {
+	if procEvery <= 0 {
+		procEvery = 30 * time.Second
+	}
+	auxEvery := procEvery * 2
+	if auxEvery < auxiliaryProcessRefreshMin {
+		return auxiliaryProcessRefreshMin
+	}
+	return auxEvery
 }
