@@ -664,20 +664,33 @@ export default {
       }
     },
     sidebarStyle() {
-      if (!this.isMobileViewport || !this.sidebarOpen) return {}
-      if (this.touchCurrentX > 0 && this.touchStartX > 0) {
-        const diff = this.sidebarPosition === 'right'
+      if (!this.isMobileViewport) return {}
+      const isRight = this.sidebarPosition === 'right'
+      const sidebarW = Math.min(window.innerWidth * 0.86, 320)
+
+      // ── Open gesture (main.vue drives this via store) ──────────────────────
+      const openDrag = this.layoutStore.swipeOpenDrag
+      if (!this.sidebarOpen && openDrag !== null) {
+        const offPx = sidebarW * 1.02
+        const translateX = isRight
+          ? offPx * (1 - openDrag)     // right edge → slide in from right
+          : -offPx * (1 - openDrag)    // left  edge → slide in from left
+        return { transform: `translateX(${translateX}px)`, transition: 'none' }
+      }
+
+      // ── Close gesture (sidebar own touch, live follow) ─────────────────────
+      if (this.sidebarOpen && this.touchCurrentX > 0 && this.touchStartX > 0) {
+        const diff = isRight
           ? Math.max(0, this.touchCurrentX - this.touchStartX)
           : Math.min(0, this.touchCurrentX - this.touchStartX)
-        return {
-          transform: `translateX(${diff}px)`,
-          transition: 'none'
-        }
+        return { transform: `translateX(${diff}px)`, transition: 'none' }
       }
-      return {
-        transform: 'translateX(0)',
-        transition: 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1)'
+
+      // ── Resting state ──────────────────────────────────────────────────────
+      if (this.sidebarOpen) {
+        return { transform: 'translateX(0)', transition: 'transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1)' }
       }
+      return {}
     },
     visibleSections() {
       return this.sectionDefinitions.filter(section => {

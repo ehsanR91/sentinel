@@ -124,6 +124,13 @@ export default [
     ]
   },
   {
+    // Popout terminal — no MainLayout chrome, own browser window
+    path: '/terminal/popout',
+    name: 'TerminalPopout',
+    component: () => import('@/views/terminal/index.vue'),
+    meta: { title: 'Terminal', popout: true, roles: ['admin', 'superadmin'] }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/errors/404.vue'),

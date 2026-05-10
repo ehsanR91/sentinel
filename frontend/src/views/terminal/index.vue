@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <PageHeader title="Terminal" icon="mdi mdi-terminal" :items="[{text:'Terminal',active:true,icon:'mdi mdi-console-line'}]">
+  <div :class="{ 'terminal-popout-root': isPopout }">
+    <PageHeader v-if="!isPopout" title="Terminal" icon="mdi mdi-console" :items="[{text:'Terminal',active:true,icon:'mdi mdi-console-line'}]">
       <template #actions>
         <!-- Elevation badge -->
         <span v-if="elevated" class="badge me-2 d-flex align-items-center gap-1" style="background:rgba(240,64,64,0.15);color:#f04040;font-size:0.72rem;padding:4px 10px;border-radius:6px">
@@ -22,7 +22,7 @@
     </PageHeader>
 
     <!-- Security notice -->
-    <div class="alert d-flex align-items-start gap-2 mb-3 py-2" style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.2);border-radius:6px;font-size:0.78rem;color:#f5a623">
+    <div v-if="!isPopout" class="alert d-flex align-items-start gap-2 mb-3 py-2" style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.2);border-radius:6px;font-size:0.78rem;color:#f5a623">
       <i class="mdi mdi-alert-outline" style="font-size:1rem;margin-top:1px"></i>
       <div>
         <strong>Audited Session</strong> — All commands are logged. This terminal runs as
@@ -38,7 +38,7 @@
     </div>
 
     <div class="row g-3">
-      <div class="col-xl-9">
+      <div :class="isPopout ? 'col-12' : 'col-xl-9'">
         <div class="card" style="background:#040810;border-color:#1e2d4a">
           <!-- Title bar -->
           <div class="card-header d-flex align-items-center justify-content-between" style="background:#0a0e1a;border-bottom:1px solid #1e2d4a;padding:.5rem 1rem">
@@ -51,11 +51,33 @@
             <div class="d-flex align-items-center gap-2">
               <span class="status-dot" :class="connected ? 'online' : 'offline'"></span>
               <span style="font-size:0.7rem;color:#5a7499">{{ connected ? 'Connected' : (connecting ? 'Connecting…' : 'Disconnected') }}</span>
+              <button
+                v-if="!isPopout"
+                class="terminal-window-btn"
+                :class="{ active: popoutOpen }"
+                :title="popoutOpen ? 'Focus popout terminal' : 'Pop out terminal'"
+                @click="openPopout"
+              ><i class="mdi mdi-open-in-new"></i></button>
+              <button
+                v-else
+                class="terminal-window-btn terminal-popback-btn"
+                title="Pop back into main app"
+                @click="popBackIn"
+              ><i class="mdi mdi-arrow-collapse-left"></i></button>
             </div>
           </div>
 
+          <!-- Risk legend strip -->
+          <div class="term-risk-legend">
+            <span class="term-risk-badge term-risk-badge--ok">NORMAL</span><span class="term-risk-label">runs immediately</span>
+            <span class="term-risk-sep"></span>
+            <span class="term-risk-badge term-risk-badge--warn">HIGH RISK</span><span class="term-risk-label">requires 2FA</span>
+            <span class="term-risk-sep"></span>
+            <span class="term-risk-badge term-risk-badge--err">BLOCKED</span><span class="term-risk-label">always denied</span>
+          </div>
+
           <!-- Output -->
-          <div ref="termOutput" class="log-terminal" style="height:480px;overflow-y:auto;border-radius:0" @click="focusInput" @scroll.passive="onTerminalScroll" @mouseup="autoCopySelection" @contextmenu.prevent="showContextMenu" @touchstart.passive="handleTouchStart" @touchend="handleTouchEnd">
+          <div ref="termOutput" class="log-terminal" :style="`height:${isPopout ? 'calc(100vh - 90px)' : '480px'};overflow-y:auto;border-radius:0`" @click="focusInput" @scroll.passive="onTerminalScroll" @mouseup="autoCopySelection" @contextmenu.prevent="showContextMenu" @touchstart.passive="handleTouchStart" @touchend="handleTouchEnd">
             <div v-for="(line, i) in termLines" :key="i">
               <span v-if="line.type === 'cmd'" style="user-select:none">
                 <span style="color:#22d67c;font-family:monospace;font-size:0.78rem">{{ sessionUser }}@{{ hostname }}</span>
@@ -87,6 +109,7 @@
                 @keydown.up.prevent="navigateHistory(-1)"
                 @keydown.down.prevent="navigateHistory(1)"
                 @keydown.tab.prevent="autoComplete"
+                @paste.prevent="handlePaste"
                 autocomplete="off"
                 spellcheck="false"
               />
@@ -114,6 +137,11 @@
         </div>
         <div class="context-menu-divider"></div>
         <div class="context-menu-section">
+          <div class="context-menu-item" @click="openQuickCmdPalette">
+            <i class="mdi mdi-lightning-bolt"></i>
+            <span>Quick Commands</span>
+            <i class="mdi mdi-chevron-right" style="margin-left:auto;opacity:0.5"></i>
+          </div>
           <div class="context-menu-item" @click="clearTerminal">
             <i class="mdi mdi-delete-empty"></i>
             <span>Clear Terminal</span>
@@ -121,13 +149,53 @@
         </div>
       </div>
 
+      <!-- Quick Commands Palette -->
+      <div v-if="quickCmdPalette.visible" ref="quickCmdPalette" class="quick-cmd-palette" :style="{ left: quickCmdPalette.left + 'px', top: quickCmdPalette.top + 'px' }" @click.stop>
+        <div class="quick-cmd-palette__header">
+          <i class="mdi mdi-lightning-bolt" style="color:#f5a623"></i>
+          <span>Quick Commands</span>
+          <button class="quick-cmd-palette__close" @click="quickCmdPalette.visible = false"><i class="mdi mdi-close"></i></button>
+        </div>
+        <div class="quick-cmd-palette__search-wrap">
+          <i class="mdi mdi-magnify"></i>
+          <input
+            ref="quickCmdSearch"
+            v-model="quickCmdPalette.search"
+            class="quick-cmd-palette__search"
+            placeholder="Search commands…"
+            autocomplete="off"
+            spellcheck="false"
+            @click.stop
+            @keydown.escape="quickCmdPalette.visible = false"
+          />
+        </div>
+        <div class="quick-cmd-palette__list">
+          <template v-if="filteredQuickCmds.length">
+            <template v-for="(group, cat) in groupedQuickCmds" :key="cat">
+              <div class="quick-cmd-palette__category">{{ cat }}</div>
+              <div
+                v-for="cmd in group"
+                :key="cmd.cmd"
+                class="quick-cmd-palette__item"
+                @click="runQuickFromMenu(cmd.cmd)"
+              >
+                <span class="quick-cmd-palette__label">{{ cmd.label }}</span>
+                <code class="quick-cmd-palette__cmd">{{ cmd.cmd }}</code>
+              </div>
+            </template>
+          </template>
+          <div v-else class="quick-cmd-palette__empty">No commands match</div>
+        </div>
+      </div>
+
       <!-- Sidebar -->
-      <div class="col-xl-3">
+      <div v-if="!isPopout" class="col-xl-3">
         <div class="card mb-3">
-          <div class="card-header">
-            <h6><i class="mdi mdi-information-outline me-2" style="color:#4a9eff"></i>Session Info</h6>
+          <div class="card-header d-flex align-items-center justify-content-between" style="cursor:pointer" @click="showSessionInfo = !showSessionInfo">
+            <h6 class="mb-0"><i class="mdi mdi-information-outline me-2" style="color:#4a9eff"></i>Session Info</h6>
+            <i :class="`mdi mdi-chevron-${showSessionInfo ? 'up' : 'down'}`" style="color:#5a7499;font-size:0.85rem"></i>
           </div>
-          <div class="card-body" style="font-size:0.78rem">
+          <div v-if="showSessionInfo" class="card-body" style="font-size:0.78rem">
             <div class="d-flex justify-content-between mb-2">
               <span style="color:#5a7499">User</span>
               <span class="font-mono" style="color:#c9d8f0">{{ sessionUser }}</span>
@@ -151,27 +219,6 @@
             <div class="d-flex justify-content-between">
               <span style="color:#5a7499">Session start</span>
               <span style="color:#8aa4c8">{{ sessionStart }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Risk legend -->
-        <div class="card mb-3">
-          <div class="card-header">
-            <h6><i class="mdi mdi-shield-outline me-2" style="color:#a78bfa"></i>Command Risk Levels</h6>
-          </div>
-          <div class="card-body" style="font-size:0.72rem">
-            <div class="d-flex align-items-center gap-2 mb-2">
-              <span class="badge" style="background:rgba(34,214,124,0.12);color:#22d67c;font-size:0.6rem">NORMAL</span>
-              <span style="color:#8aa4c8">Runs immediately</span>
-            </div>
-            <div class="d-flex align-items-center gap-2 mb-2">
-              <span class="badge" style="background:rgba(245,166,35,0.12);color:#f5a623;font-size:0.6rem">HIGH RISK</span>
-              <span style="color:#8aa4c8">Requires 2FA unlock</span>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-              <span class="badge" style="background:rgba(240,64,64,0.12);color:#f04040;font-size:0.6rem">BLOCKED</span>
-              <span style="color:#8aa4c8">Always denied</span>
             </div>
           </div>
         </div>
@@ -222,20 +269,34 @@
         </div>
 
         <div class="card">
-          <div class="card-header">
-            <h6><i class="mdi mdi-lightning-bolt me-2" style="color:#f5a623"></i>Quick Commands</h6>
+          <div class="card-header d-flex align-items-center justify-content-between" style="cursor:pointer" @click="showQuickCmds = !showQuickCmds">
+            <h6 class="mb-0"><i class="mdi mdi-lightning-bolt me-2" style="color:#f5a623"></i>Quick Commands</h6>
+            <i :class="`mdi mdi-chevron-${showQuickCmds ? 'up' : 'down'}`" style="color:#5a7499;font-size:0.85rem"></i>
           </div>
-          <div class="card-body d-flex flex-column gap-1">
-            <button
-              v-for="cmd in quickCmds"
-              :key="cmd.label"
-              class="btn btn-sm text-start"
-              style="background:#0d1321;border:1px solid #1e2d4a;color:#8aa4c8;font-family:monospace;font-size:0.72rem"
-              :disabled="!connected"
-              @click="runQuick(cmd.cmd)"
-            >
-              <i class="mdi mdi-chevron-right me-1" style="color:#4a9eff"></i>{{ cmd.label }}
-            </button>
+          <div v-if="showQuickCmds" class="qc-panel">
+            <div v-for="(cmds, cat) in quickCmdsByCategory" :key="cat" class="qc-cat">
+              <button class="qc-cat__head" @click.stop="toggleCmdCategory(cat)">
+                <i class="mdi mdi-chevron-right qc-cat__arrow" :class="{ open: openCmdCategories[cat] }"></i>
+                <span class="qc-cat__name">{{ cat }}</span>
+                <span class="qc-cat__count">{{ cmds.length }}</span>
+              </button>
+              <div v-if="openCmdCategories[cat]" class="qc-cat__items">
+                <div v-for="cmd in cmds" :key="cmd.cmd" class="qc-item">
+                  <button class="qc-item__run" :disabled="!connected" @click="runQuick(cmd.cmd)">
+                    <i class="mdi mdi-chevron-right" style="color:#4a9eff;font-size:0.7rem;flex-shrink:0"></i>
+                    <span>{{ cmd.label }}</span>
+                  </button>
+                  <div class="qc-item__meta">
+                    <Tooltip :label="cmd.label" :description="cmd.desc || cmd.cmd" variant="rich" as-child>
+                      <button class="qc-item__meta-btn"><i class="mdi mdi-information-outline"></i></button>
+                    </Tooltip>
+                    <a :href="googleSearchUrl(cmd)" target="_blank" rel="noopener noreferrer" class="qc-item__meta-btn qc-item__search-btn" title="Search on Google" @click.stop>
+                      <i class="mdi mdi-magnify"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -453,12 +514,127 @@ export default {
         { type: 'out', text: 'Connecting to server…', style: '' }
       ],
       quickCmds: [
-        { label: 'uptime',                    cmd: 'uptime' },
-        { label: 'df -h',                     cmd: 'df -h' },
-        { label: 'free -h',                   cmd: 'free -h' },
-        { label: 'docker ps',                 cmd: 'docker ps' },
-        { label: 'ufw status',                cmd: 'ufw status' },
-        { label: 'systemctl status fail2ban', cmd: 'systemctl status fail2ban' }
+        // System Info
+        { label: 'Uptime',              cmd: 'uptime',                                              category: 'System Info',        desc: 'Shows how long the system has been running, plus 1/5/15-min load averages and logged-in user count.' },
+        { label: 'Hostname (FQDN)',     cmd: 'hostname -f',                                         category: 'System Info',        desc: 'Prints the fully-qualified domain name (FQDN) of the machine.' },
+        { label: 'OS release',          cmd: 'cat /etc/os-release',                                category: 'System Info',        desc: 'Shows Linux distribution name, version ID, codename, and official URLs.' },
+        { label: 'Kernel version',      cmd: 'uname -r',                                            category: 'System Info',        desc: 'Prints the running kernel release version string.' },
+        { label: 'Full system info',    cmd: 'uname -a',                                            category: 'System Info',        desc: 'All uname info: kernel, hostname, machine type, and OS in one line.' },
+        { label: 'Date & time',         cmd: 'date && timedatectl',                                 category: 'System Info',        desc: 'Shows current date/time and NTP synchronization/timezone status.' },
+        { label: 'Boot time',           cmd: 'who -b',                                              category: 'System Info',        desc: 'Prints the exact date and time of the last system boot.' },
+        { label: 'CPU info',            cmd: 'lscpu | head -25',                                    category: 'System Info',        desc: 'CPU architecture, cores, threads, speed, cache sizes, and virtualization flags.' },
+        { label: 'Environment vars',    cmd: 'printenv | sort',                                     category: 'System Info',        desc: 'Lists all environment variables for the current shell session, sorted alphabetically.' },
+        { label: 'System locale',       cmd: 'locale',                                              category: 'System Info',        desc: 'Current locale settings: language, character encoding, and collation order.' },
+        // Process Monitoring
+        { label: 'Top by CPU',          cmd: 'ps aux --sort=-%cpu | head -20',                     category: 'Process Monitoring', desc: 'Top 20 processes sorted by CPU usage (highest first).' },
+        { label: 'Top by RAM',          cmd: 'ps aux --sort=-%mem | head -20',                     category: 'Process Monitoring', desc: 'Top 20 processes sorted by memory (RSS) usage.' },
+        { label: 'Process tree',        cmd: 'pstree -p',                                           category: 'Process Monitoring', desc: 'Entire process hierarchy as an ASCII tree with PIDs.' },
+        { label: 'Process count',       cmd: 'ps aux | wc -l',                                      category: 'Process Monitoring', desc: 'Total number of running processes on the system.' },
+        { label: 'Zombie processes',    cmd: "ps aux | awk '$8 ~ /Z/ {print $0}'",                 category: 'Process Monitoring', desc: 'Zombie processes: finished but not reaped by their parent (potential resource leak).' },
+        { label: 'Load averages',       cmd: 'cat /proc/loadavg',                                   category: 'Process Monitoring', desc: '1m/5m/15m load averages, running/total thread count, and last created PID.' },
+        { label: 'CPU stats (vmstat)',  cmd: 'vmstat 1 5',                                          category: 'Process Monitoring', desc: 'Virtual memory stats sampled 5 times: CPU, I/O, context switches, interrupts.' },
+        { label: 'I/O wait (iostat)',   cmd: 'iostat -c 1 5 2>/dev/null || echo "sysstat not installed"', category: 'Process Monitoring', desc: 'CPU idle/wait % sampled 5 times — high iowait indicates a disk bottleneck.' },
+        { label: 'Per-process I/O',     cmd: 'iotop -bo -n1 2>/dev/null || echo "iotop not installed"', category: 'Process Monitoring', desc: 'One-shot view of I/O per process. Requires iotop (apt install iotop).' },
+        { label: 'Open file handles',   cmd: 'lsof 2>/dev/null | wc -l',                           category: 'Process Monitoring', desc: 'Total number of open file descriptors across all processes (system-wide).' },
+        // Memory & Swap
+        { label: 'Memory overview',     cmd: 'free -h',                                             category: 'Memory & Swap',      desc: 'Human-readable total/used/free RAM and swap, including buffer/cache breakdown.' },
+        { label: 'Memory detail',       cmd: 'cat /proc/meminfo | head -30',                       category: 'Memory & Swap',      desc: 'Kernel-level memory breakdown: MemFree, Buffers, Cached, SReclaimable, Slab, dirty pages.' },
+        { label: 'Swap usage',          cmd: 'swapon --show',                                       category: 'Memory & Swap',      desc: 'Active swap partitions/files with size, used space, and priority.' },
+        { label: 'VM statistics',       cmd: 'vmstat -s | head -25',                               category: 'Memory & Swap',      desc: 'Cumulative virtual memory stats: pages swapped in/out, faults, interrupts since boot.' },
+        { label: 'Huge pages',          cmd: 'grep -i hugepage /proc/meminfo',                     category: 'Memory & Swap',      desc: 'Huge pages configuration: HugePages_Total, Free, Rsvd, Surp, and page size.' },
+        { label: 'Top mem consumers',   cmd: "ps aux --sort=-%mem | awk 'NR==1 || $4>0.5 {print}' | head -15", category: 'Memory & Swap', desc: 'Processes using more than 0.5% of RAM, sorted by memory consumption.' },
+        // Disk & Storage
+        { label: 'Disk usage',          cmd: 'df -h',                                               category: 'Disk & Storage',     desc: 'Disk space used/available on all mounted filesystems in human-readable format.' },
+        { label: 'Inode usage',         cmd: 'df -i',                                               category: 'Disk & Storage',     desc: 'Inode usage per filesystem. Running out of inodes prevents new file creation even when bytes are free.' },
+        { label: 'Block devices',       cmd: 'lsblk',                                               category: 'Disk & Storage',     desc: 'Block devices (disks, partitions, LVM, RAID) in a tree format with sizes.' },
+        { label: 'Mount points',        cmd: 'mount | column -t',                                   category: 'Disk & Storage',     desc: 'All currently mounted filesystems with device, mount point, and options.' },
+        { label: 'Dir sizes /',         cmd: 'du -sh /* 2>/dev/null | sort -rh | head -15',        category: 'Disk & Storage',     desc: 'Top-level directory sizes sorted largest first. Good for finding space hogs.' },
+        { label: 'Large files >100MB',  cmd: 'find / -xdev -type f -size +100M 2>/dev/null | head -20', category: 'Disk & Storage', desc: 'Files larger than 100 MB. -xdev avoids crossing filesystem boundaries.' },
+        { label: 'Disk I/O stats',      cmd: 'iostat -x 1 3 2>/dev/null || cat /proc/diskstats | head -20', category: 'Disk & Storage', desc: 'Per-device extended I/O stats: utilization, await, r/w throughput over 3 seconds.' },
+        // Network
+        { label: 'Interfaces',          cmd: 'ip addr show',                                        category: 'Network',            desc: 'All network interfaces with IP addresses, MAC addresses, MTU, and UP/DOWN state.' },
+        { label: 'Routing table',       cmd: 'ip route show',                                       category: 'Network',            desc: 'Kernel routing table including default gateway, interface routes, and metrics.' },
+        { label: 'Listening ports',     cmd: 'ss -tulpn',                                           category: 'Network',            desc: 'All TCP/UDP listening sockets with the process name and PID that owns each port.' },
+        { label: 'Established conns',   cmd: 'ss -tn state established',                            category: 'Network',            desc: 'All currently established TCP connections with local and remote endpoints.' },
+        { label: 'Connection summary',  cmd: 'ss -s',                                               category: 'Network',            desc: 'Summary of socket statistics: total, TCP states, UDP, raw, fragment counts.' },
+        { label: 'DNS config',          cmd: 'cat /etc/resolv.conf',                               category: 'Network',            desc: 'Configured DNS nameserver IPs, search domains, and resolver options.' },
+        { label: 'Ping gateway',        cmd: "ping -c4 $(ip route | awk '/default/{print $3}')",   category: 'Network',            desc: 'Pings the default gateway 4 times to verify local network connectivity and latency.' },
+        { label: 'ARP table',           cmd: 'arp -n 2>/dev/null || ip neigh show',                category: 'Network',            desc: 'ARP cache: known IP-to-MAC mappings for devices on the local network segment.' },
+        { label: 'Interface stats',     cmd: 'cat /proc/net/dev',                                   category: 'Network',            desc: 'Raw kernel packet/byte counters per interface: received, transmitted, errors, drops.' },
+        { label: 'External IP',         cmd: 'curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 icanhazip.com', category: 'Network', desc: 'Fetches your public/external IP address from an external web service.' },
+        // Firewall
+        { label: 'UFW status',          cmd: 'ufw status',                                          category: 'Firewall',           desc: 'UFW firewall status (active/inactive) and summarized rule list.' },
+        { label: 'UFW numbered',        cmd: 'ufw status numbered',                                 category: 'Firewall',           desc: 'UFW rules with numbers so you can delete specific rules by number.' },
+        { label: 'UFW verbose',         cmd: 'ufw status verbose',                                  category: 'Firewall',           desc: 'Detailed UFW status including default policies, logging level, and all rules.' },
+        { label: 'iptables rules',      cmd: 'iptables -L -n -v --line-numbers 2>/dev/null | head -60', category: 'Firewall',      desc: 'All iptables rules in all chains with byte/packet counters and line numbers.' },
+        { label: 'nftables',            cmd: 'nft list ruleset 2>/dev/null || echo "nftables not active"', category: 'Firewall',   desc: 'Full nftables ruleset if nftables is in use as the netfilter backend.' },
+        // Security
+        { label: 'fail2ban status',     cmd: 'fail2ban-client status 2>/dev/null',                  category: 'Security',          desc: 'fail2ban service status and list of all configured jails (sshd, nginx, etc.).' },
+        { label: 'fail2ban sshd',       cmd: 'fail2ban-client status sshd 2>/dev/null',             category: 'Security',          desc: 'fail2ban sshd jail: currently banned IPs, failure count, and ban time.' },
+        { label: 'CrowdSec alerts',     cmd: 'cscli alerts list 2>/dev/null || echo "CrowdSec not installed"', category: 'Security', desc: 'Recent CrowdSec IDS alerts including attack type, source IP, and scenario name.' },
+        { label: 'CrowdSec decisions',  cmd: 'cscli decisions list 2>/dev/null || echo "CrowdSec not installed"', category: 'Security', desc: 'Active CrowdSec enforcement decisions (bans, captchas) with expiry times.' },
+        { label: 'Last 20 logins',      cmd: 'last -n 20',                                          category: 'Security',          desc: 'Last 20 successful logins: username, terminal, source IP, login/logout times, duration.' },
+        { label: 'Failed SSH logins',   cmd: 'grep "Failed password" /var/log/auth.log 2>/dev/null | tail -25', category: 'Security', desc: 'Recent failed SSH password attempts from auth.log with source IPs.' },
+        { label: 'Auth log tail',       cmd: 'tail -50 /var/log/auth.log 2>/dev/null',              category: 'Security',          desc: 'Last 50 lines of the authentication log including PAM, sudo, and SSH events.' },
+        { label: 'SUID binaries',       cmd: 'find / -perm -4000 -type f 2>/dev/null | sort',      category: 'Security',          desc: 'Files with SUID bit set — they run with owner privileges. Unexpected entries = risk.' },
+        { label: 'World-writable dirs', cmd: 'find / -xdev -type d -perm -0002 2>/dev/null | grep -v proc | head -20', category: 'Security', desc: 'Directories writable by any user. Can be exploited for privilege escalation.' },
+        { label: 'Open on all ifaces',  cmd: 'ss -tlnp | grep "0.0.0.0\\|:::"',                   category: 'Security',          desc: 'Services listening on 0.0.0.0/::: are exposed to all network interfaces including public ones.' },
+        // Services
+        { label: 'Failed services',     cmd: 'systemctl --failed',                                  category: 'Services',          desc: 'All systemd units in a failed state — first thing to check when diagnosing issues.' },
+        { label: 'Running services',    cmd: 'systemctl list-units --type=service --state=running', category: 'Services',          desc: 'All currently active and running systemd service units.' },
+        { label: 'All loaded services', cmd: 'systemctl list-units --type=service',                 category: 'Services',          desc: 'All loaded systemd services regardless of state (active, inactive, failed).' },
+        { label: 'Recent errors',       cmd: 'journalctl -b -p err --no-pager -n 30',               category: 'Services',          desc: 'Last 30 error/critical messages from all services since last boot.' },
+        { label: 'Status: nginx',       cmd: 'systemctl status nginx',                               category: 'Services',          desc: 'nginx: active state, PID, memory, recent log lines, and enabled status.' },
+        { label: 'Status: fail2ban',    cmd: 'systemctl status fail2ban',                            category: 'Services',          desc: 'fail2ban IDS daemon status and recent log output.' },
+        { label: 'Status: ssh',         cmd: 'systemctl status ssh 2>/dev/null || systemctl status sshd', category: 'Services',   desc: 'SSH server status, PID, and recent authentication events.' },
+        { label: 'Status: docker',      cmd: 'systemctl status docker',                              category: 'Services',          desc: 'Docker daemon status, version, and recent startup/error messages.' },
+        { label: 'Status: cron',        cmd: 'systemctl status cron 2>/dev/null || systemctl status crond', category: 'Services', desc: 'Cron daemon status (Debian: cron, RHEL: crond).' },
+        // Docker
+        { label: 'Running containers',  cmd: 'docker ps',                                            category: 'Docker',            desc: 'Running containers: ID, image, command, uptime, ports, and name.' },
+        { label: 'All containers',      cmd: 'docker ps -a',                                         category: 'Docker',            desc: 'All containers including stopped, created, and exited ones.' },
+        { label: 'Images',              cmd: 'docker images',                                         category: 'Docker',            desc: 'Local Docker images with repository, tag, image ID, creation date, and disk size.' },
+        { label: 'Docker disk usage',   cmd: 'docker system df',                                     category: 'Docker',            desc: 'How much disk Docker is using: images, containers, volumes, and build cache.' },
+        { label: 'Container stats',     cmd: 'docker stats --no-stream',                             category: 'Docker',            desc: 'Snapshot of CPU%, memory, network I/O, and block I/O for all running containers.' },
+        { label: 'Volumes',             cmd: 'docker volume ls',                                     category: 'Docker',            desc: 'All Docker named volumes with their driver (local, nfs, etc.).' },
+        { label: 'Networks',            cmd: 'docker network ls',                                    category: 'Docker',            desc: 'Docker networks: ID, name, driver (bridge, host, overlay, none), and scope.' },
+        { label: 'Compose status',      cmd: 'docker compose ps 2>/dev/null || docker-compose ps 2>/dev/null || echo "not in a compose project"', category: 'Docker', desc: 'Service status for all Docker Compose services defined in docker-compose.yml.' },
+        { label: 'Dangling images',     cmd: 'docker images -f "dangling=true"',                    category: 'Docker',            desc: 'Untagged images not referenced by any container — safe to remove to reclaim disk.' },
+        { label: 'Container inspect',   cmd: 'docker ps -q | head -1 | xargs docker inspect 2>/dev/null | head -40', category: 'Docker', desc: 'Full JSON config/state of the most recently started container.' },
+        // Logs
+        { label: 'Syslog tail',         cmd: 'tail -50 /var/log/syslog 2>/dev/null || journalctl -n 50 --no-pager', category: 'Logs', desc: 'Last 50 lines of the system log (syslog or systemd journal fallback).' },
+        { label: 'Auth log',            cmd: 'tail -30 /var/log/auth.log 2>/dev/null',              category: 'Logs',              desc: 'Last 30 lines of the authentication log (SSH, sudo, PAM events).' },
+        { label: 'Journal errors',      cmd: 'journalctl -p err -n 40 --no-pager',                  category: 'Logs',              desc: 'Last 40 error-level and above entries from the systemd journal across all services.' },
+        { label: 'Journal since boot',  cmd: 'journalctl -b --no-pager | tail -60',                 category: 'Logs',              desc: 'Last 60 journal lines from the current boot session.' },
+        { label: 'Kernel messages',     cmd: 'dmesg | tail -30',                                     category: 'Logs',              desc: 'Last 30 kernel ring buffer messages: hardware events, driver errors, OOM kills.' },
+        { label: 'OOM kills',           cmd: 'dmesg | grep -i "oom\\|killed process"',              category: 'Logs',              desc: 'Out-of-Memory killer events where the kernel terminated processes to free RAM.' },
+        { label: 'Nginx access log',    cmd: 'tail -30 /var/log/nginx/access.log 2>/dev/null || echo "not found"', category: 'Logs', desc: 'Last 30 nginx access log entries with IP, method, path, status code, and user agent.' },
+        { label: 'Nginx error log',     cmd: 'tail -30 /var/log/nginx/error.log 2>/dev/null || echo "not found"',  category: 'Logs', desc: 'Last 30 nginx error log entries (config errors, upstream failures, permission issues).' },
+        // Updates
+        { label: 'Upgradable packages', cmd: 'apt list --upgradable 2>/dev/null',                   category: 'Updates',           desc: 'All packages with newer versions available in the configured repositories.' },
+        { label: 'Update package list', cmd: 'apt update',                                           category: 'Updates',           desc: 'Refreshes the package index from all configured apt repository sources.' },
+        { label: 'Security updates',    cmd: 'apt list --upgradable 2>/dev/null | grep -i security', category: 'Updates',          desc: 'Filters upgradable packages to show only those from security repositories.' },
+        { label: 'Recently installed',  cmd: 'grep "install " /var/log/dpkg.log 2>/dev/null | tail -20', category: 'Updates',     desc: 'Last 20 package install events from the dpkg log with timestamps.' },
+        { label: 'Installed packages',  cmd: 'dpkg -l | tail -40',                                   category: 'Updates',           desc: 'Last 40 installed Debian packages with version and architecture.' },
+        // Users & Sessions
+        { label: 'Who logged in',       cmd: 'who',                                                   category: 'Users & Sessions',  desc: 'Users currently logged in: username, terminal, login time, and source IP.' },
+        { label: 'Who (detailed)',       cmd: 'w',                                                     category: 'Users & Sessions',  desc: 'Logged-in users plus what they are running, CPU time, and idle time.' },
+        { label: 'Login shell users',   cmd: "cat /etc/passwd | awk -F: '$7 !~ /nologin|false/ {print $1, $6, $7}'", category: 'Users & Sessions', desc: 'User accounts with valid login shells (not service accounts).' },
+        { label: 'Sudo group members',  cmd: 'getent group sudo wheel 2>/dev/null',                  category: 'Users & Sessions',  desc: 'Users in the sudo/wheel group who can run commands as root.' },
+        { label: 'Last login times',    cmd: 'lastlog 2>/dev/null | grep -v "Never logged" | head -20', category: 'Users & Sessions', desc: 'Most recent login date/time and source for each user account.' },
+        { label: 'Resource limits',     cmd: 'ulimit -a',                                             category: 'Users & Sessions',  desc: 'Resource limits for the current shell: open files, stack size, max processes, memory.' },
+        { label: 'Login history',       cmd: 'last -n 30',                                            category: 'Users & Sessions',  desc: 'Last 30 login/logout events for all users including duration and source IP.' },
+        // File System
+        { label: 'Files changed <24h',  cmd: 'find /var /tmp /home /etc -mtime -1 -type f 2>/dev/null | head -25', category: 'File System', desc: 'Files modified in the last 24 hours in key directories. Useful for detecting recent changes.' },
+        { label: 'Temp directories',    cmd: 'ls -lah /tmp && ls -lah /var/tmp',                    category: 'File System',       desc: 'Contents of /tmp and /var/tmp — often exploited by attackers and malware.' },
+        { label: '/etc changes (7d)',   cmd: 'find /etc -mtime -7 -type f 2>/dev/null | head -20',  category: 'File System',       desc: 'Config files in /etc modified in the last 7 days.' },
+        { label: 'Crontab files',       cmd: 'ls /etc/cron* 2>/dev/null && crontab -l 2>/dev/null', category: 'File System',       desc: 'Cron config files and the current user\'s crontab entries.' },
+        { label: '/home permissions',   cmd: 'ls -la /home/',                                        category: 'File System',       desc: 'Permissions and ownership of home directories — check for world-readable entries.' },
+        // Hardware
+        { label: 'PCI devices',         cmd: 'lspci 2>/dev/null || echo "lspci not installed"',     category: 'Hardware',          desc: 'All PCI devices: network adapters, GPUs, storage controllers, USB hubs.' },
+        { label: 'USB devices',         cmd: 'lsusb 2>/dev/null || echo "lsusb not installed"',     category: 'Hardware',          desc: 'Connected USB devices with vendor/product ID and description.' },
+        { label: 'CPU temperature',     cmd: "sensors 2>/dev/null || cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | awk '{print $1/1000 \"°C\"}'", category: 'Hardware', desc: 'CPU and system component temperatures. High temps cause throttling and instability.' },
+        { label: 'Hardware summary',    cmd: 'lshw -short 2>/dev/null | head -35 || echo "lshw not installed"', category: 'Hardware', desc: 'Brief hardware inventory listing CPU, RAM, disk, and network adapters with capacity.' },
+        { label: 'Kernel modules',      cmd: 'lsmod | head -30',                                     category: 'Hardware',          desc: 'Currently loaded kernel modules (drivers). Unexpected modules could indicate rootkits.' },
       ],
       wsConn: null,
 
@@ -490,7 +666,7 @@ export default {
         { name: 'Grafana',     remotePort: 3000, localPort: 3000, icon: 'mdi-chart-areaspline',   color: '#f46800' },
         { name: 'Prometheus',  remotePort: 9090, localPort: 9090, icon: 'mdi-database-search',    color: '#e6522c' },
         { name: 'Netdata',     remotePort: 19999, localPort: 19999, icon: 'mdi-chart-timeline',   color: '#00ab44' },
-        { name: 'Uptime Kuma', remotePort: 3001, localPort: 3001, icon: 'mdi-monitor-heart',      color: '#5cdd8b' },
+        { name: 'Uptime Kuma', remotePort: 3001, localPort: 3001, icon: 'mdi-monitor-eye',       color: '#5cdd8b' },
       ],
 
       // Context menu
@@ -498,6 +674,13 @@ export default {
         visible: false,
         left: 0,
         top: 0
+      },
+      // Quick commands palette
+      quickCmdPalette: {
+        visible: false,
+        left: 0,
+        top: 0,
+        search: ''
       },
       touchStartTime: null,
       touchX: 0,
@@ -511,21 +694,93 @@ export default {
       showSelectionModal: false,
       selectionTextareaText: '',
       // Selection captured at context-menu open time (clicking menu item clears window.getSelection)
-      _capturedSelection: ''
+      _capturedSelection: '',
+
+      // Popout state
+      isPopout: false,
+      popoutWindow: null,
+      popoutOpen: false,
+      _popoutPoll: null,
+      _bcChannel: null,
+
+      // Sidebar collapse state
+      showSessionInfo: false,
+      showQuickCmds: false,
+      openCmdCategories: {},
     }
   },
 
   mounted() {
+    this.isPopout = !!(this.$route?.meta?.popout)
+
+    // BroadcastChannel — lets main page know when popout closes / pops back
+    try {
+      const bc = new BroadcastChannel('sc-terminal')
+      this._bcChannel = bc
+      bc.onmessage = (evt) => {
+        if (evt.data?.type === 'pop-back') {
+          clearInterval(this._popoutPoll)
+          this._popoutPoll = null
+          this.popoutWindow = null
+          this.popoutOpen = false
+          // Merge command history from the popout session
+          this._restoreHistory()
+        }
+      }
+    } catch (_) {}
+
+    // Restore terminal history snapshot when opening as popout
+    if (this.isPopout) this._restoreFromStorage()
+
     this.connectWS()
     document.addEventListener('click', this.hideContextMenuOnOutsideClick)
     document.addEventListener('keydown', this.handleGlobalCopy, true)
   },
 
   beforeUnmount() {
+    // If this is a popout, persist state and signal the opener before teardown
+    if (this.isPopout) {
+      this._persistToStorage()
+      try {
+        const bc = new BroadcastChannel('sc-terminal')
+        bc.postMessage({ type: 'pop-back' })
+        bc.close()
+      } catch (_) {}
+    }
+    if (this._bcChannel) { this._bcChannel.close(); this._bcChannel = null }
+    clearInterval(this._popoutPoll)
     if (this.wsConn) { this.wsConn.onclose = null; this.wsConn.close(); this.wsConn = null }
     clearInterval(this.elevationTimer)
     document.removeEventListener('click', this.hideContextMenuOnOutsideClick)
     document.removeEventListener('keydown', this.handleGlobalCopy, true)
+  },
+
+  computed: {
+    filteredQuickCmds() {
+      const q = this.quickCmdPalette.search.trim().toLowerCase()
+      if (!q) return this.quickCmds
+      return this.quickCmds.filter(c =>
+        c.label.toLowerCase().includes(q) ||
+        c.cmd.toLowerCase().includes(q) ||
+        c.category.toLowerCase().includes(q)
+      )
+    },
+    groupedQuickCmds() {
+      const groups = {}
+      for (const cmd of this.filteredQuickCmds) {
+        if (!groups[cmd.category]) groups[cmd.category] = []
+        groups[cmd.category].push(cmd)
+      }
+      return groups
+    },
+    quickCmdsByCategory() {
+      const groups = {}
+      for (const cmd of this.quickCmds) {
+        if (!groups[cmd.category]) groups[cmd.category] = []
+        groups[cmd.category].push(cmd)
+      }
+      return groups
+    }
   },
 
   methods: {
@@ -887,6 +1142,12 @@ export default {
           this.contextMenu.visible = false
         }
       }
+      if (this.quickCmdPalette.visible) {
+        const palette = this.$refs.quickCmdPalette
+        if (palette && !palette.contains(e.target)) {
+          this.quickCmdPalette.visible = false
+        }
+      }
     },
 
     handleTouchStart(e) {
@@ -949,15 +1210,59 @@ export default {
     },
 
     async pasteText() {
+      this.contextMenu.visible = false
       try {
         if (!navigator.clipboard?.readText) throw new Error('Clipboard API not available')
-        const text = await navigator.clipboard.readText()
-        this.currentInput += text
-        this.$refs.termInput?.focus()
-        this.contextMenu.visible = false
+        const raw = await navigator.clipboard.readText()
+        this.insertNormalizedPaste(raw)
       } catch (err) {
         console.error('Paste failed:', err)
       }
+    },
+
+    normalizePasteText(raw) {
+      return raw
+        // Normalize line endings
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        // Strip non-printable chars (keep \n and \t)
+        // eslint-disable-next-line no-control-regex
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+        // Expand tabs to spaces
+        .replace(/\t/g, '  ')
+        .trim()
+    },
+
+    insertNormalizedPaste(raw) {
+      const normalized = this.normalizePasteText(raw)
+      const lines = normalized.split('\n').map(l => l.trim()).filter(Boolean)
+      if (lines.length > 1) {
+        // Multi-line: join with '; ' so they run sequentially
+        this.currentInput += lines.join('; ')
+      } else {
+        this.currentInput += normalized
+      }
+      this.$refs.termInput?.focus()
+    },
+
+    handlePaste(e) {
+      e.preventDefault()
+      const raw = e.clipboardData?.getData('text') || ''
+      this.insertNormalizedPaste(raw)
+    },
+
+    openQuickCmdPalette() {
+      this.contextMenu.visible = false
+      // Position near where the context menu was
+      const paletteW = 340
+      const paletteH = 420
+      const left = Math.min(this.contextMenu.left, window.innerWidth - paletteW - 12)
+      const top = Math.min(this.contextMenu.top, window.innerHeight - paletteH - 12)
+      this.quickCmdPalette.left = Math.max(8, left)
+      this.quickCmdPalette.top = Math.max(8, top)
+      this.quickCmdPalette.search = ''
+      this.quickCmdPalette.visible = true
+      this.$nextTick(() => this.$refs.quickCmdSearch?.focus())
     },
 
     closeCopyFallbackModal() {
@@ -971,6 +1276,105 @@ export default {
       this.contextMenu.visible = false
     },
 
+    // ── Popout ────────────────────────────────────────────────────────────────
+    _persistToStorage() {
+      try {
+        localStorage.setItem('sc_terminal_state', JSON.stringify({
+          ts: Date.now(),
+          termLines: this.termLines.slice(-600),
+          commandHistory: this.commandHistory.slice(-200),
+          sessionUser: this.sessionUser,
+          hostname: this.hostname,
+        }))
+      } catch (_) {}
+    },
+
+    _restoreFromStorage() {
+      try {
+        const raw = localStorage.getItem('sc_terminal_state')
+        if (!raw) return
+        const s = JSON.parse(raw)
+        // Don't restore stale data (older than 2 hours)
+        if (s.ts && Date.now() - s.ts > 2 * 60 * 60 * 1000) return
+        if (Array.isArray(s.termLines) && s.termLines.length) {
+          this.termLines = [
+            ...s.termLines,
+            { type: 'out', text: '─── Session continues in popout ───', style: 'info' }
+          ]
+        }
+        if (Array.isArray(s.commandHistory)) this.commandHistory = s.commandHistory
+        if (s.sessionUser) this.sessionUser = s.sessionUser
+        if (s.hostname) this.hostname = s.hostname
+      } catch (_) {}
+    },
+
+    _restoreHistory() {
+      // Merge command history only (called in main page after popout closes)
+      try {
+        const raw = localStorage.getItem('sc_terminal_state')
+        if (!raw) return
+        const s = JSON.parse(raw)
+        if (Array.isArray(s.commandHistory) && s.commandHistory.length > this.commandHistory.length) {
+          this.commandHistory = s.commandHistory
+        }
+      } catch (_) {}
+    },
+
+    openPopout() {
+      // If already open, just focus it
+      if (this.popoutWindow && !this.popoutWindow.closed) {
+        this.popoutWindow.focus()
+        return
+      }
+      this._persistToStorage()
+      const w = window.open(
+        '/terminal/popout',
+        'sc-terminal-popout',
+        `width=1060,height=740,left=${Math.round((screen.width - 1060) / 2)},top=${Math.round((screen.height - 740) / 2)},resizable=yes,scrollbars=no`
+      )
+      if (!w) {
+        // Popup blocked — inform user
+        this.termLines.push({ type: 'out', text: '[!] Popup blocked. Please allow popups for this site.', style: 'error' })
+        this.$nextTick(this.scrollBottom)
+        return
+      }
+      this.popoutWindow = w
+      this.popoutOpen = true
+      // Poll until the popout window is closed
+      clearInterval(this._popoutPoll)
+      this._popoutPoll = setInterval(() => {
+        if (!this.popoutWindow || this.popoutWindow.closed) {
+          clearInterval(this._popoutPoll)
+          this._popoutPoll = null
+          this.popoutWindow = null
+          this.popoutOpen = false
+          this._restoreHistory()
+        }
+      }, 600)
+    },
+
+    popBackIn() {
+      this._persistToStorage()
+      try {
+        const bc = new BroadcastChannel('sc-terminal')
+        bc.postMessage({ type: 'pop-back' })
+        bc.close()
+      } catch (_) {}
+      // Focus the opener if available, then close this window
+      if (window.opener && !window.opener.closed) {
+        window.opener.focus()
+      }
+      setTimeout(() => window.close(), 80)
+    },
+
+    googleSearchUrl(item) {
+      return 'https://www.google.com/search?q=' + encodeURIComponent((item.label || item.cmd) + ' linux command')
+    },
+
+    toggleCmdCategory(cat) {
+      this.openCmdCategories = { ...this.openCmdCategories, [cat]: !this.openCmdCategories[cat] }
+    },
+
     clearTerminal() {
       this.termLines = []
       this.contextMenu.visible = false
@@ -980,6 +1384,185 @@ export default {
 </script>
 
 <style scoped>
+/* Risk legend strip inside terminal card */
+.term-risk-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 14px;
+  background: rgba(4, 8, 16, 0.6);
+  border-bottom: 1px solid #1e2d4a;
+}
+
+.term-risk-badge {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.term-risk-badge--ok   { background: rgba(34,214,124,0.12); color: #22d67c; }
+.term-risk-badge--warn { background: rgba(245,166,35,0.12);  color: #f5a623; }
+.term-risk-badge--err  { background: rgba(240,64,64,0.12);   color: #f04040; }
+.term-risk-label { font-size: 0.6rem; color: #5a7499; }
+.term-risk-sep   { width: 1px; height: 10px; background: #1e2d4a; }
+
+/* Quick Commands accordion sidebar */
+.qc-panel { border-top: 1px solid #1e2d4a; }
+
+.qc-cat { border-bottom: 1px solid rgba(30, 45, 74, 0.45); }
+
+.qc-cat__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: #8aa4c8;
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.qc-cat__head:hover { background: rgba(74, 158, 255, 0.06); }
+
+.qc-cat__arrow {
+  font-size: 0.78rem;
+  color: #3a5070;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.qc-cat__arrow.open { transform: rotate(90deg); color: #4a9eff; }
+
+.qc-cat__name { flex: 1; }
+
+.qc-cat__count {
+  font-size: 0.6rem;
+  background: rgba(74, 158, 255, 0.1);
+  color: #4a9eff;
+  padding: 1px 5px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.qc-cat__items { background: rgba(4, 8, 16, 0.45); }
+
+.qc-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px 1px 18px;
+  border-bottom: 1px solid rgba(30, 45, 74, 0.3);
+}
+
+.qc-item:last-child { border-bottom: none; }
+
+.qc-item__run {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  color: #8aa4c8;
+  font-size: 0.69rem;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.qc-item__run span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-item__run:hover:not(:disabled) { color: #c9d8f0; }
+.qc-item__run:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.qc-item__meta {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.qc-item__meta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: #3a5070;
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.1s, background 0.1s;
+}
+
+.qc-item__meta-btn:hover { color: #4a9eff; background: rgba(74, 158, 255, 0.1); }
+.qc-item__search-btn:hover { color: #22d67c; background: rgba(34, 214, 124, 0.1); }
+
+/* Popout root — applied when rendered outside MainLayout */
+.terminal-popout-root {
+  min-height: 100vh;
+  background: #040810;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+/* Title-bar window action button (popout / pop-back-in) */
+.terminal-window-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #3a5070;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  margin-left: 4px;
+}
+
+.terminal-window-btn:hover {
+  color: #4a9eff;
+  border-color: rgba(74, 158, 255, 0.3);
+  background: rgba(74, 158, 255, 0.08);
+}
+
+.terminal-window-btn.active {
+  color: #22d67c;
+  border-color: rgba(34, 214, 124, 0.3);
+  background: rgba(34, 214, 124, 0.07);
+}
+
+.terminal-popback-btn {
+  color: #f5a623;
+}
+
+.terminal-popback-btn:hover {
+  color: #f5a623;
+  border-color: rgba(245, 166, 35, 0.35);
+  background: rgba(245, 166, 35, 0.1);
+}
+
 .log-warn { color: #f5a623 }
 
 .modal-backdrop-custom {
@@ -1025,11 +1608,132 @@ export default {
   user-select: text;
 }
 
-/* Context Menu Styles - macOS inspired */
+/* Quick Commands Palette */
+.quick-cmd-palette {
+  position: fixed;
+  width: 340px;
+  max-height: min(480px, 70vh);
+  background: #0d1321;
+  border: 1px solid #1e2d4a;
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: contextMenuFadeIn 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.quick-cmd-palette__header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #1e2d4a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #c9d8f0;
+  flex-shrink: 0;
+}
+
+.quick-cmd-palette__close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #5a7499;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+}
+
+.quick-cmd-palette__close:hover { color: #c9d8f0; }
+
+.quick-cmd-palette__search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #1e2d4a;
+  flex-shrink: 0;
+  color: #5a7499;
+}
+
+.quick-cmd-palette__search {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #c9d8f0;
+  font-size: 0.78rem;
+  font-family: monospace;
+}
+
+.quick-cmd-palette__search::placeholder { color: #3a5070; }
+
+.quick-cmd-palette__list {
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: #1e2d4a transparent;
+}
+
+.quick-cmd-palette__category {
+  padding: 5px 12px 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #4a9eff;
+  opacity: 0.7;
+  position: sticky;
+  top: 0;
+  background: #0d1321;
+}
+
+.quick-cmd-palette__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  border-radius: 0;
+}
+
+.quick-cmd-palette__item:hover {
+  background: rgba(74, 158, 255, 0.1);
+}
+
+.quick-cmd-palette__label {
+  font-size: 0.75rem;
+  color: #c9d8f0;
+  font-weight: 500;
+}
+
+.quick-cmd-palette__cmd {
+  font-size: 0.65rem;
+  color: #5a7499;
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-cmd-palette__empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #3a5070;
+}
+
+
 .terminal-context-menu {
   position: fixed;
-  width: 86px;
-  min-width: 86px;
+  width: max-content;
+  min-width: 160px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(0, 0, 0, 0.1);
@@ -1059,15 +1763,16 @@ export default {
 .context-menu-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 6px;
+  gap: 6px;
+  padding: 5px 10px;
   color: #333;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   cursor: pointer;
   transition: all 0.15s ease;
   border-radius: 4px;
   margin: 1px;
+  white-space: nowrap;
 }
 
 .context-menu-item:hover {

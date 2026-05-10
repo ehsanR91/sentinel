@@ -13,6 +13,9 @@
       <button class="topbar-btn d-lg-none" aria-label="Toggle sidebar" @click="$emit('toggle-sidebar')">
         <i class="mdi mdi-menu" aria-hidden="true"></i>
       </button>
+      <router-link class="topbar-mobile-brand d-flex d-md-none" to="/dashboard" aria-label="Dashboard">
+        SentinelCore
+      </router-link>
 
       <nav aria-label="Breadcrumb" class="topbar-breadcrumb d-none d-md-flex">
         <span class="topbar-breadcrumb__prefix">SentinelCore</span>
@@ -1663,6 +1666,21 @@ export default {
 .topbar-breadcrumb__current {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.topbar-mobile-brand {
+  align-items: center;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+  margin-left: 4px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.topbar-mobile-brand:hover {
+  color: var(--accent, #4a9eff);
 }
 
 .topbar-system-cluster {

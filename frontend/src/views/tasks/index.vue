@@ -188,7 +188,7 @@ export default {
       // Task templates
       taskTemplates: [
         { id: 'clamav-scan', name: 'ClamAV Scan', icon: 'mdi mdi-virus', description: 'Full system virus scan', command: 'clamscan -r /home', schedule_kind: 'interval', schedule_expr: '86400' },
-        { id: 'docker-prune', name: 'Docker Prune', icon: 'mdi mdi-box-remove', description: 'Remove unused Docker data', command: 'docker system prune -f', schedule_kind: 'interval', schedule_expr: '86400' },
+        { id: 'docker-prune', name: 'Docker Prune', icon: 'mdi mdi-broom', description: 'Remove unused Docker data', command: 'docker system prune -f', schedule_kind: 'interval', schedule_expr: '86400' },
         { id: 'apt-upgrade', name: 'APT Upgrade', icon: 'mdi mdi-arrow-up-bold', description: 'Update and upgrade packages', command: 'apt-get update && apt-get upgrade -y', schedule_kind: 'interval', schedule_expr: '86400' },
         { id: 'log-rotate', name: 'Log Rotation', icon: 'mdi mdi-file-document-edit', description: 'Rotate system logs', command: 'logrotate -f /etc/logrotate.conf', schedule_kind: 'interval', schedule_expr: '86400' },
         { id: 'disk-cleanup', name: 'Disk Cleanup', icon: 'mdi mdi-trash-can', description: 'Clean apt cache and temp files', command: 'apt-get clean && rm -rf /tmp/*', schedule_kind: 'manual', schedule_expr: '' },

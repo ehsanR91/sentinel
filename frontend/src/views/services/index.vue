@@ -12,7 +12,7 @@
   <!-- Live Service Installation Log Window -->
   <div v-if="showInstallLogWindow" class="card mb-4 service-install-log-card">
     <div class="card-header d-flex align-items-center justify-content-between">
-      <h6><i class="mdi mdi-terminal me-2" style="color:var(--sc-cyan)"></i>Live Installation Log - {{ installingService }}</h6>
+      <h6><i class="mdi mdi-console me-2" style="color:var(--sc-cyan)"></i>Live Installation Log - {{ installingService }}</h6>
       <div class="d-flex gap-2">
         <span class="status-dot" :class="installing ? 'online' : 'offline'"></span>
         <button class="btn btn-sm" style="background:rgba(90,116,153,.1);color:#5a7499" @click="showInstallLogWindow=false">
@@ -149,7 +149,7 @@
                       :disabled="busy[s.name]"
                       @click.stop="openServiceLogs(s)"
                     >
-                      <i class="mdi mdi-file-document-box-outline me-1"></i>Logs
+                      <i class="mdi mdi-file-document-outline me-1"></i>Logs
                     </button>
                     <button
                       type="button"
@@ -161,7 +161,7 @@
                     </button>
                     <div v-if="actionMenuOpen === s.name" class="service-action-menu shadow-sm">
                       <button class="dropdown-item" @click.stop="openServiceLogs(s)">
-                        <i class="mdi mdi-file-document-box-outline me-1"></i>View logs
+                        <i class="mdi mdi-file-document-outline me-1"></i>View logs
                       </button>
                       <button class="dropdown-item" @click.stop="openConfigEditor(s)" :disabled="!s.config">
                         <i class="mdi mdi-file-document-edit me-1"></i>Edit config
@@ -240,7 +240,7 @@
   <div class="sc-modal-card logs-modal-card">
     <div class="d-flex align-items-center justify-content-between mb-3">
       <h6 class="mb-0">
-        <i class="mdi mdi-file-document-box-outline me-2" style="color:var(--sc-cyan)"></i>
+        <i class="mdi mdi-file-document-outline me-2" style="color:var(--sc-cyan)"></i>
         Logs: {{ logService?.label || 'Service' }}
       </h6>
       <button class="btn btn-sm btn-sc-danger" @click="closeLogsModal">

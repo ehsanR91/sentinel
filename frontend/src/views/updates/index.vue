@@ -70,7 +70,7 @@
     <!-- Live Update Log Window -->
     <div v-if="showLogWindow" class="card mb-4 update-log-card">
       <div class="card-header d-flex align-items-center justify-content-between">
-        <h6><i class="mdi mdi-terminal me-2" style="color:var(--sc-cyan)"></i>Live Update Log</h6>
+        <h6><i class="mdi mdi-console me-2" style="color:var(--sc-cyan)"></i>Live Update Log</h6>
         <div class="d-flex gap-2">
           <span class="status-dot" :class="installing ? 'online' : 'offline'"></span>
           <button class="btn btn-sm btn-sc-danger" @click="stopUpdate">

@@ -9,6 +9,8 @@ function resolveTheme(theme) {
 export const useLayoutStore = defineStore('layout', {
   state: () => ({
     sidebarOpen: false,
+    swipeOpenDrag: null,        // null | number 0-1 (open gesture progress)
+    swipeCloseDrag: null,       // null | number px (close gesture live offset)
     sidebarCollapsed: JSON.parse(localStorage.getItem('sc_sidebar_collapsed') || 'false'),
     sidebarHidden: JSON.parse(localStorage.getItem('sc_sidebar_hidden') || 'false'),
     sidebarDensity: localStorage.getItem('sc_sidebar_density') || 'comfortable',
@@ -25,6 +27,12 @@ export const useLayoutStore = defineStore('layout', {
     },
     closeSidebar() {
       this.sidebarOpen = false
+    },
+    setSwipeOpenDrag(v) {
+      this.swipeOpenDrag = v
+    },
+    setSwipeCloseDrag(v) {
+      this.swipeCloseDrag = v
     },
     toggleCollapsed() {
       this.setCollapsed(!this.sidebarCollapsed)
