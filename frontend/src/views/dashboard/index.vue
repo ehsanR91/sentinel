@@ -153,7 +153,7 @@
           >
             <i class="mdi mdi-eye-off-outline"></i>
           </button>
-          <KPICard v-bind="kpiCardById(element.id)" @click="openKpiDrawer(element.id)" />
+          <KPICard v-bind="kpiCards[element.id]" @click="openKpiDrawer(element.id)" />
         </div>
       </template>
     </draggable>
@@ -186,7 +186,26 @@
             </button>
           </div>
 
-          <template v-if="element.id === 'telemetry'">
+          <button
+            v-if="!shouldRenderSection(element.id)"
+            type="button"
+            class="dashboard-section-placeholder"
+            :data-section-defer="element.id"
+            @mouseenter="activateSection(element.id)"
+            @focus="activateSection(element.id)"
+            @click="activateSection(element.id)"
+          >
+            <span class="dashboard-section-placeholder__icon">
+              <i :class="sectionPlaceholderIcon(element.id)"></i>
+            </span>
+            <span class="dashboard-section-placeholder__copy">
+              <strong>{{ sectionCatalog(element.id)?.label || 'Loading section' }}</strong>
+              <small>{{ sectionCatalog(element.id)?.description || 'Preparing dashboard section…' }}</small>
+            </span>
+            <span class="dashboard-section-placeholder__hint">Load now</span>
+          </button>
+
+          <template v-else-if="element.id === 'telemetry'">
             <div class="dashboard-telemetry-grid">
               <TelemetryChart
                 title="CPU + Load"
@@ -379,7 +398,7 @@
       :model-value="showKpiDrawer"
       :title="selectedKpiDetail?.label || 'KPI detail'"
       subtitle="Current metric context"
-      @update:model-value="showKpiDrawer = $event"
+      @update:model-value="onKpiDrawerChange"
     >
       <div v-if="selectedKpiId === 'network' && selectedKpiDetail" class="dashboard-kpi-drawer">
           <div class="dashboard-kpi-drawer__hero">
@@ -607,6 +626,7 @@ import ServiceHealthPanel from '@/components/dashboard/service-health-panel.vue'
 import draggable from 'vuedraggable'
 import { mapGetters } from 'vuex'
 import { getHealthStatusWord, getHealthTone } from '@/utils/health'
+import api from '@/services/api'
 
 const DASHBOARD_STATE_KEY = 'sc_dashboard_v2_layout'
 
@@ -735,6 +755,20 @@ function appendHistory(source = [], value, limit = 60) {
   return [...source, numeric].slice(-limit)
 }
 
+function compactSeries(values = [], limit = 72) {
+  if (!Array.isArray(values) || values.length <= limit) return Array.isArray(values) ? values : []
+  const step = Math.ceil(values.length / limit)
+  const sampled = []
+  for (let index = 0; index < values.length; index += step) {
+    sampled.push(values[index])
+  }
+  const lastValue = values[values.length - 1]
+  if (sampled[sampled.length - 1] !== lastValue) {
+    sampled.push(lastValue)
+  }
+  return sampled
+}
+
 function lastFinite(values = []) {
   for (let index = values.length - 1; index >= 0; index -= 1) {
     const value = Number(values[index])
@@ -825,6 +859,12 @@ function healthCategoryScores(healthData) {
   }))
 }
 
+function sortActivityItems(items = []) {
+  return [...items]
+    .sort((left, right) => Number(right.ts || 0) - Number(left.ts || 0))
+    .slice(0, 18)
+}
+
 export default {
   name: 'DashboardPage',
   components: {
@@ -881,6 +921,14 @@ export default {
       healthLoading: false,
       lastLoadedAt: 0,
       refreshTimer: null,
+      sectionObserver: null,
+      idleSectionHandle: null,
+      idleSectionFallbackTimer: null,
+      deferredSections: {
+        telemetry: false,
+        services: false,
+        activity: false
+      },
       networkProcessTimer: null,
       persistLayoutTimer: null,
       derivedHistory: {
@@ -1146,8 +1194,13 @@ export default {
           route: '/updates'
         })
       }
-      const all = [...alerts, ...logins, ...audit, ...system].sort((left, right) => right.ts - left.ts)
-      return { all, alerts, logins, audit, system }
+      return {
+        all: sortActivityItems([...alerts, ...logins, ...audit, ...system]),
+        alerts: sortActivityItems(alerts),
+        logins: sortActivityItems(logins),
+        audit: sortActivityItems(audit),
+        system: sortActivityItems(system)
+      }
     },
     healthCategories() {
       return healthCategoryScores(this.healthData)
@@ -1161,13 +1214,172 @@ export default {
       return word === 'Healthy' ? 'Healthy with issues' : (word === 'Optimal' ? 'Operationally healthy' : `${word} posture`)
     },
     selectedKpiDetail() {
-      return this.selectedKpiId ? this.kpiCardById(this.selectedKpiId) : null
+      return this.selectedKpiId ? this.kpiCards[this.selectedKpiId] : null
     },
     hiddenKpiEntries() {
       return this.hiddenKpis.map(id => this.kpiCatalog(id)).filter(Boolean)
     },
     hiddenSectionEntries() {
       return this.hiddenSections.map(id => this.sectionCatalog(id)).filter(Boolean)
+    },
+    kpiCards() {
+      const counts = this.dockerInfo.containers_total ? `${this.dockerInfo.containers_running}/${this.dockerInfo.containers_total}` : '0/0'
+      const cpuDelta = deriveDelta(this.cpuHistory)
+      const memoryDelta = deriveDelta(this.ramHistory, { inverted: false })
+      const diskDelta = deriveDelta(this.diskHistory)
+      const networkCombined = this.netRxHistory.map((value, index) => Number(value || 0) + Number(this.netTxHistory[index] || 0))
+      const networkDelta = deriveDelta(networkCombined)
+      const bansDelta = deriveDelta(this.derivedHistory.activeBans, { inverted: true })
+      const loginDelta = deriveDelta(this.derivedHistory.failedLogins, { inverted: true })
+      const containerDelta = deriveDelta(this.derivedHistory.containersRunning)
+
+      return {
+        cpu: {
+          label: 'CPU Usage',
+          icon: 'mdi mdi-chip',
+          value: fmtPercent(this.snap.cpu_pct),
+          deltaLabel: cpuDelta.label,
+          deltaDirection: cpuDelta.direction,
+          deltaTone: cpuDelta.tone,
+          sparkline: compactSeries(this.cpuHistory),
+          contextLines: [
+            `Load ${Number(this.snap.load1 || 0).toFixed(2)} · ${Number(this.snap.load5 || 0).toFixed(2)} · ${Number(this.snap.load15 || 0).toFixed(2)}`,
+            `Updated ${this.formatRelativeFromNow(this.lastMetricTs * 1000)}`
+          ],
+          threshold: { value: Number(this.snap.cpu_pct || 0), warn: 70, crit: 90, max: 100 },
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: thresholdTone(Number(this.snap.cpu_pct || 0), 70, 90),
+          statusLabel: this.isMetricStale ? 'Stale' : ''
+        },
+        memory: {
+          label: 'Memory',
+          icon: 'mdi mdi-memory',
+          value: fmtPercent(this.snap.ram_pct),
+          deltaLabel: memoryDelta.label,
+          deltaDirection: memoryDelta.direction,
+          deltaTone: memoryDelta.tone,
+          sparkline: compactSeries(this.ramHistory),
+          sparklineSecondary: compactSeries(this.swapHistory),
+          contextLines: [
+            `${fmtBytes(this.snap.ram_used)} / ${fmtBytes(this.snap.ram_total)} · swap ${fmtPercent(this.snap.swap_pct)}`,
+            `${fmtBytes(this.snap.swap_used)} / ${fmtBytes(this.snap.swap_total)}`
+          ],
+          threshold: { value: Number(this.snap.ram_pct || 0), warn: 80, crit: 95, max: 100 },
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: thresholdTone(Number(this.snap.ram_pct || 0), 80, 95)
+        },
+        disk: {
+          label: 'Disk (Root)',
+          icon: 'mdi mdi-harddisk',
+          value: fmtPercent(this.snap.disk_pct),
+          deltaLabel: diskDelta.label,
+          deltaDirection: diskDelta.direction,
+          deltaTone: diskDelta.tone,
+          sparkline: compactSeries(this.diskHistory),
+          contextLines: [
+            `${fmtBytes(this.snap.disk_used)} / ${fmtBytes(this.snap.disk_total)}`,
+            `${fmtBytes(this.snap.disk_free)} free on /`
+          ],
+          threshold: { value: Number(this.snap.disk_pct || 0), warn: 80, crit: 95, max: 100 },
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: thresholdTone(Number(this.snap.disk_pct || 0), 80, 95)
+        },
+        network: {
+          label: 'Network I/O',
+          icon: 'mdi mdi-swap-vertical',
+          value: fmtRate(Number(this.snap.net_rx_rate || 0) + Number(this.snap.net_tx_rate || 0)),
+          deltaLabel: networkDelta.label,
+          deltaDirection: networkDelta.direction,
+          deltaTone: networkDelta.tone,
+          sparkline: compactSeries(this.netRxHistory),
+          sparklineSecondary: compactSeries(this.netTxHistory),
+          contextLines: [
+            `in ${this.formatRateValue(this.snap.net_rx_rate)} · out ${fmtRate(this.snap.net_tx_rate)}`,
+            `${fmtBytes(this.snap.net_rx_total)} rx · ${fmtBytes(this.snap.net_tx_total)} tx`
+          ],
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: '1m live',
+          tone: 'default',
+          sparkColor: 'var(--dashboard-spark-line-alt)'
+        },
+        bans: {
+          label: 'Active Bans',
+          icon: 'mdi mdi-shield-lock-outline',
+          value: this.secStats.activeBans,
+          deltaLabel: bansDelta.label,
+          deltaDirection: bansDelta.direction,
+          deltaTone: bansDelta.tone,
+          sparkline: compactSeries(this.derivedHistory.activeBans),
+          contextLines: [
+            'fail2ban + CrowdSec pressure',
+            `${this.secStats.ufwActive ? 'Firewall active' : 'Firewall inactive'}`
+          ],
+          threshold: { value: Number(this.secStats.activeBans || 0), warn: 5, crit: 10, max: 15 },
+          live: true,
+          stale: this.isAuxStale,
+          rangeLabel: '24h window',
+          tone: thresholdTone(Number(this.secStats.activeBans || 0), 5, 10)
+        },
+        logins24h: {
+          label: 'Failed Logins',
+          icon: 'mdi mdi-lock-alert-outline',
+          value: this.secStats.failedLogins,
+          deltaLabel: loginDelta.label,
+          deltaDirection: loginDelta.direction,
+          deltaTone: loginDelta.tone,
+          sparkline: compactSeries(this.derivedHistory.failedLogins),
+          contextLines: [
+            `Last attempt ${this.loginAttempts[0]?.ts ? this.formatRelativeFromNow(this.loginAttempts[0].ts * 1000) : 'unknown'}`,
+            '24h aggregate across all auth sources'
+          ],
+          threshold: { value: Number(this.secStats.failedLogins || 0), warn: 10, crit: 50, max: 60 },
+          live: true,
+          stale: this.isAuxStale,
+          rangeLabel: '24h window',
+          tone: thresholdTone(Number(this.secStats.failedLogins || 0), 10, 50)
+        },
+        containers: {
+          label: 'Containers',
+          icon: 'mdi mdi-docker',
+          value: counts,
+          deltaLabel: containerDelta.label,
+          deltaDirection: containerDelta.direction,
+          deltaTone: containerDelta.tone,
+          sparkline: compactSeries(this.derivedHistory.containersRunning),
+          contextLines: [
+            `${this.dockerInfo.containers_running || 0} running · ${this.dockerInfo.containers_total || 0} total`,
+            `Updates ${this.updates.count || 0} pending`
+          ],
+          live: true,
+          stale: this.isAuxStale,
+          rangeLabel: 'service poll',
+          tone: this.dockerInfo.containers_running < this.dockerInfo.containers_total ? 'warn' : 'ok'
+        },
+        uptime: {
+          label: 'Uptime',
+          icon: 'mdi mdi-timer-outline',
+          value: fmtUptime(this.snap.uptime),
+          deltaLabel: '— stable',
+          deltaDirection: 'neutral',
+          deltaTone: 'neutral',
+          sparkline: [],
+          contextLines: [
+            `Host ${this.snap.hostname || 'node'} · kernel ${this.snap.kernel || 'unknown'}`,
+            `Last sync ${this.formatRelativeFromNow(this.lastLoadedAt)}`
+          ],
+          live: this.wsConnected,
+          stale: this.isMetricStale,
+          rangeLabel: 'host lifetime',
+          tone: 'ok'
+        }
+      }
     }
   },
   watch: {
@@ -1179,8 +1391,8 @@ export default {
   async mounted() {
     document.addEventListener('fullscreenchange', this.onFullscreenChange)
     this.$store.dispatch('metrics/startLive')
-    await this.refreshNetworkProcesses()
     await this.loadDashboardState()
+    this.syncDeferredSections({ reset: true })
     this.scheduleRefreshTimer()
     await this.loadAll()
     this.registerPullToRefresh()
@@ -1201,6 +1413,8 @@ export default {
       clearInterval(this.networkProcessTimer)
       this.networkProcessTimer = null
     }
+    this.teardownSectionObserver()
+    this.clearIdleSectionHydration()
   },
   methods: {
     formatRelativeFromNow(timestamp) {
@@ -1238,12 +1452,124 @@ export default {
     formatBytes(bytes) {
       return fmtBytes(bytes)
     },
+    shouldRenderSection(id) {
+      return this.deferredSections[id] !== false
+    },
+    sectionPlaceholderIcon(id) {
+      return {
+        telemetry: 'mdi mdi-chart-box-outline',
+        services: 'mdi mdi-cog-outline',
+        activity: 'mdi mdi-timeline-clock-outline'
+      }[id] || 'mdi mdi-view-grid-outline'
+    },
+    activateSection(id) {
+      if (!Object.prototype.hasOwnProperty.call(this.deferredSections, id) || this.deferredSections[id]) {
+        return
+      }
+      this.deferredSections = {
+        ...this.deferredSections,
+        [id]: true
+      }
+      this.$nextTick(() => this.setupSectionObserver())
+    },
+    syncDeferredSections({ reset = false } = {}) {
+      const next = {
+        telemetry: false,
+        services: false,
+        activity: false
+      }
+      const visibleIds = this.sectionWidgets.map(widget => widget.id).filter(id => Object.prototype.hasOwnProperty.call(next, id))
+      visibleIds.forEach(id => {
+        next[id] = reset ? false : this.deferredSections[id] === true
+      })
+      if (visibleIds.length && !visibleIds.some(id => next[id])) {
+        next[visibleIds[0]] = true
+      }
+      this.deferredSections = next
+      this.$nextTick(() => this.setupSectionObserver())
+      this.scheduleIdleSectionHydration()
+    },
+    hydrateNextDeferredSection() {
+      const nextId = this.sectionWidgets.find(widget => this.deferredSections[widget.id] === false)?.id
+      if (!nextId) return false
+      this.activateSection(nextId)
+      return true
+    },
+    clearIdleSectionHydration() {
+      if (this.idleSectionHandle && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(this.idleSectionHandle)
+      }
+      this.idleSectionHandle = null
+      if (this.idleSectionFallbackTimer) {
+        clearTimeout(this.idleSectionFallbackTimer)
+        this.idleSectionFallbackTimer = null
+      }
+    },
+    scheduleIdleSectionHydration() {
+      this.clearIdleSectionHydration()
+      const hydrate = () => {
+        this.idleSectionHandle = null
+        this.idleSectionFallbackTimer = null
+        if (this.hydrateNextDeferredSection()) {
+          this.scheduleIdleSectionHydration()
+        }
+      }
+      if (typeof window.requestIdleCallback === 'function') {
+        this.idleSectionHandle = window.requestIdleCallback(hydrate, { timeout: 1200 })
+        return
+      }
+      this.idleSectionFallbackTimer = window.setTimeout(hydrate, 500)
+    },
+    teardownSectionObserver() {
+      if (this.sectionObserver) {
+        this.sectionObserver.disconnect()
+        this.sectionObserver = null
+      }
+    },
+    setupSectionObserver() {
+      this.teardownSectionObserver()
+      const pending = this.$el?.querySelectorAll?.('[data-section-defer]')
+      if (!pending?.length) return
+      if (typeof window.IntersectionObserver !== 'function') {
+        pending.forEach(node => this.activateSection(node.dataset.sectionDefer))
+        return
+      }
+      this.sectionObserver = new window.IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            this.activateSection(entry.target.dataset.sectionDefer)
+          }
+        })
+      }, {
+        root: null,
+        rootMargin: '240px 0px',
+        threshold: 0.01
+      })
+      pending.forEach(node => this.sectionObserver.observe(node))
+    },
     async refreshNetworkProcesses() {
       await this.$store.dispatch('metrics/fetchNetworkProcesses')
-      if (!this.networkProcessTimer) {
-        this.networkProcessTimer = setInterval(() => {
-          this.$store.dispatch('metrics/fetchNetworkProcesses')
-        }, 10000)
+    },
+    async ensureKpiDetailData(id) {
+      if (id === 'network') {
+        await this.refreshNetworkProcesses()
+        if (!this.networkProcessTimer) {
+          this.networkProcessTimer = setInterval(() => {
+            if (this.showKpiDrawer && this.selectedKpiId === 'network') {
+              this.$store.dispatch('metrics/fetchNetworkProcesses')
+            }
+          }, 10000)
+        }
+        return
+      }
+
+      if (this.networkProcessTimer) {
+        clearInterval(this.networkProcessTimer)
+        this.networkProcessTimer = null
+      }
+
+      if (['cpu', 'memory', 'ram', 'swap', 'disk'].includes(id)) {
+        await this.$store.dispatch('metrics/fetchProcesses')
       }
     },
     withMetricTimestamps(history = []) {
@@ -1272,7 +1598,6 @@ export default {
         return
       }
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getDashboardLayout()
         const normalized = normalizeDashboardState(data, fallback)
         Object.assign(this, normalized)
@@ -1292,7 +1617,6 @@ export default {
     async saveDashboardState(payload) {
       if (!this.$store.getters['auth/loggedIn']) return
       try {
-        const api = (await import('@/services/api')).default
         await api.saveDashboardLayout(payload)
       } catch {
         // Keep local fallback even when roaming persistence fails.
@@ -1318,7 +1642,6 @@ export default {
       if (!this.$store.getters['auth/loggedIn']) return
       this.healthLoading = !this.lastLoadedAt
       try {
-        const api = (await import('@/services/api')).default
         const [health, docker, secStatus, logins, cleanup, alerts, audit, updates, tasks, me] = await Promise.allSettled([
           api.getHealth(),
           api.getDockerInfo(),
@@ -1382,7 +1705,6 @@ export default {
       if (this.isRefreshing) return
       this.isRefreshing = true
       try {
-        const api = (await import('@/services/api')).default
         const metrics = await api.getMetrics()
         this.$store.commit('metrics/SET_SNAP', metrics.data)
         await this.loadAll()
@@ -1424,6 +1746,7 @@ export default {
     hideSection(id) {
       this.sectionWidgets = this.sectionWidgets.filter(widget => widget.id !== id)
       this.hiddenSections = [...new Set([...this.hiddenSections, id])]
+      this.syncDeferredSections()
       this.persistDashboardState()
     },
     restoreSection(id) {
@@ -1431,171 +1754,23 @@ export default {
         this.sectionWidgets = [...this.sectionWidgets, { id }]
       }
       this.hiddenSections = this.hiddenSections.filter(entry => entry !== id)
+      this.syncDeferredSections()
       this.persistDashboardState()
     },
     kpiCardById(id) {
-      const counts = this.dockerInfo.containers_total ? `${this.dockerInfo.containers_running}/${this.dockerInfo.containers_total}` : '0/0'
-      const cpuDelta = deriveDelta(this.cpuHistory)
-      const memoryDelta = deriveDelta(this.ramHistory, { inverted: false })
-      const diskDelta = deriveDelta(this.diskHistory)
-      const networkCombined = this.netRxHistory.map((value, index) => Number(value || 0) + Number(this.netTxHistory[index] || 0))
-      const networkDelta = deriveDelta(networkCombined)
-      const bansDelta = deriveDelta(this.derivedHistory.activeBans, { inverted: true })
-      const loginDelta = deriveDelta(this.derivedHistory.failedLogins, { inverted: true })
-      const containerDelta = deriveDelta(this.derivedHistory.containersRunning)
-
-      const cards = {
-        cpu: {
-          label: 'CPU Usage',
-          icon: 'mdi mdi-chip',
-          value: fmtPercent(this.snap.cpu_pct),
-          deltaLabel: cpuDelta.label,
-          deltaDirection: cpuDelta.direction,
-          deltaTone: cpuDelta.tone,
-          sparkline: this.cpuHistory,
-          contextLines: [
-            `Load ${Number(this.snap.load1 || 0).toFixed(2)} · ${Number(this.snap.load5 || 0).toFixed(2)} · ${Number(this.snap.load15 || 0).toFixed(2)}`,
-            `Updated ${this.formatRelativeFromNow(this.lastMetricTs * 1000)}`
-          ],
-          threshold: { value: Number(this.snap.cpu_pct || 0), warn: 70, crit: 90, max: 100 },
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: thresholdTone(Number(this.snap.cpu_pct || 0), 70, 90),
-          statusLabel: this.isMetricStale ? 'Stale' : ''
-        },
-        memory: {
-          label: 'Memory',
-          icon: 'mdi mdi-memory',
-          value: fmtPercent(this.snap.ram_pct),
-          deltaLabel: memoryDelta.label,
-          deltaDirection: memoryDelta.direction,
-          deltaTone: memoryDelta.tone,
-          sparkline: this.ramHistory,
-          sparklineSecondary: this.swapHistory,
-          contextLines: [
-            `${fmtBytes(this.snap.ram_used)} / ${fmtBytes(this.snap.ram_total)} · swap ${fmtPercent(this.snap.swap_pct)}`,
-            `${fmtBytes(this.snap.swap_used)} / ${fmtBytes(this.snap.swap_total)}`
-          ],
-          threshold: { value: Number(this.snap.ram_pct || 0), warn: 80, crit: 95, max: 100 },
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: thresholdTone(Number(this.snap.ram_pct || 0), 80, 95)
-        },
-        disk: {
-          label: 'Disk (Root)',
-          icon: 'mdi mdi-harddisk',
-          value: fmtPercent(this.snap.disk_pct),
-          deltaLabel: diskDelta.label,
-          deltaDirection: diskDelta.direction,
-          deltaTone: diskDelta.tone,
-          sparkline: this.diskHistory,
-          contextLines: [
-            `${fmtBytes(this.snap.disk_used)} / ${fmtBytes(this.snap.disk_total)}`,
-            `${fmtBytes(this.snap.disk_free)} free on /`
-          ],
-          threshold: { value: Number(this.snap.disk_pct || 0), warn: 80, crit: 95, max: 100 },
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: thresholdTone(Number(this.snap.disk_pct || 0), 80, 95)
-        },
-        network: {
-          label: 'Network I/O',
-          icon: 'mdi mdi-swap-vertical',
-          value: fmtRate(Number(this.snap.net_rx_rate || 0) + Number(this.snap.net_tx_rate || 0)),
-          deltaLabel: networkDelta.label,
-          deltaDirection: networkDelta.direction,
-          deltaTone: networkDelta.tone,
-          sparkline: this.netRxHistory,
-          sparklineSecondary: this.netTxHistory,
-          contextLines: [
-            `in ${this.formatRateValue(this.snap.net_rx_rate)} · out ${fmtRate(this.snap.net_tx_rate)}`,
-            `${fmtBytes(this.snap.net_rx_total)} rx · ${fmtBytes(this.snap.net_tx_total)} tx`
-          ],
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: 'default',
-          sparkColor: 'var(--dashboard-spark-line-alt)'
-        },
-        bans: {
-          label: 'Active Bans',
-          icon: 'mdi mdi-shield-lock-outline',
-          value: this.secStats.activeBans,
-          deltaLabel: bansDelta.label,
-          deltaDirection: bansDelta.direction,
-          deltaTone: bansDelta.tone,
-          sparkline: this.derivedHistory.activeBans,
-          contextLines: [
-            'fail2ban + CrowdSec pressure',
-            `${this.secStats.ufwActive ? 'Firewall active' : 'Firewall inactive'}`
-          ],
-          threshold: { value: Number(this.secStats.activeBans || 0), warn: 5, crit: 10, max: 15 },
-          live: true,
-          stale: this.isAuxStale,
-          rangeLabel: '24h window',
-          tone: thresholdTone(Number(this.secStats.activeBans || 0), 5, 10)
-        },
-        logins24h: {
-          label: 'Failed Logins',
-          icon: 'mdi mdi-lock-alert-outline',
-          value: this.secStats.failedLogins,
-          deltaLabel: loginDelta.label,
-          deltaDirection: loginDelta.direction,
-          deltaTone: loginDelta.tone,
-          sparkline: this.derivedHistory.failedLogins,
-          contextLines: [
-            `Last attempt ${this.loginAttempts[0]?.ts ? this.formatRelativeFromNow(this.loginAttempts[0].ts * 1000) : 'unknown'}`,
-            '24h aggregate across all auth sources'
-          ],
-          threshold: { value: Number(this.secStats.failedLogins || 0), warn: 10, crit: 50, max: 60 },
-          live: true,
-          stale: this.isAuxStale,
-          rangeLabel: '24h window',
-          tone: thresholdTone(Number(this.secStats.failedLogins || 0), 10, 50)
-        },
-        containers: {
-          label: 'Containers',
-          icon: 'mdi mdi-docker',
-          value: counts,
-          deltaLabel: containerDelta.label,
-          deltaDirection: containerDelta.direction,
-          deltaTone: containerDelta.tone,
-          sparkline: this.derivedHistory.containersRunning,
-          contextLines: [
-            `${this.dockerInfo.containers_running || 0} running · ${this.dockerInfo.containers_total || 0} total`,
-            `Updates ${this.updates.count || 0} pending`
-          ],
-          live: true,
-          stale: this.isAuxStale,
-          rangeLabel: 'service poll',
-          tone: this.dockerInfo.containers_running < this.dockerInfo.containers_total ? 'warn' : 'ok'
-        },
-        uptime: {
-          label: 'Uptime',
-          icon: 'mdi mdi-timer-outline',
-          value: fmtUptime(this.snap.uptime),
-          deltaLabel: '— stable',
-          deltaDirection: 'neutral',
-          deltaTone: 'neutral',
-          sparkline: [],
-          contextLines: [
-            `Host ${this.snap.hostname || 'node'} · kernel ${this.snap.kernel || 'unknown'}`,
-            `Last sync ${this.formatRelativeFromNow(this.lastLoadedAt)}`
-          ],
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: 'host lifetime',
-          tone: 'ok'
-        }
-      }
-      return cards[id] || null
+      return this.kpiCards[id] || null
     },
-    openKpiDrawer(id) {
+    async openKpiDrawer(id) {
       this.selectedKpiId = id
       this.showKpiDrawer = true
+      await this.ensureKpiDetailData(id)
+    },
+    onKpiDrawerChange(value) {
+      this.showKpiDrawer = value
+      if (!value && this.networkProcessTimer) {
+        clearInterval(this.networkProcessTimer)
+        this.networkProcessTimer = null
+      }
     },
     async copyIdentityValue(row) {
       if (!row?.copyValue || !navigator.clipboard) return
@@ -1633,7 +1808,6 @@ export default {
       this.healthFixingName = check.name
       this.healthFixResponse = null
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.fixHealthIssue({ check_name: check.name, action: mode })
         this.healthFixResponse = data
         await this.loadAll()
@@ -1700,7 +1874,6 @@ export default {
       if (this.cleanerRunning) return
       this.cleanerRunning = true
       this.cleanerProgress = 0
-      const api = (await import('@/services/api')).default
       await api.runCleanup().catch(() => {})
       if (this.cleanerTimer) clearInterval(this.cleanerTimer)
       this.cleanerTimer = setInterval(async () => {
@@ -2039,6 +2212,8 @@ export default {
 .dashboard-kpi-grid__item,
 .dashboard-section-shell {
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: 320px;
 }
 
 .dashboard-edit-handle,
@@ -2072,6 +2247,59 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.dashboard-section-placeholder {
+  width: 100%;
+  border: 1px dashed color-mix(in srgb, var(--dashboard-panel-border) 78%, var(--accent) 22%);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(107, 168, 255, 0.05), transparent 55%),
+    var(--dashboard-panel-bg);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  text-align: left;
+  box-shadow: var(--shadow-md);
+}
+
+.dashboard-section-placeholder__icon {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 14px;
+  background: rgba(107, 168, 255, 0.12);
+  color: var(--accent);
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+
+.dashboard-section-placeholder__copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dashboard-section-placeholder__copy strong {
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.dashboard-section-placeholder__copy small,
+.dashboard-section-placeholder__hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.dashboard-section-placeholder__hint {
+  white-space: nowrap;
+  font-weight: 700;
 }
 
 .dashboard-section-tools {

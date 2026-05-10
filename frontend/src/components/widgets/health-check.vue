@@ -123,6 +123,8 @@
 </template>
 
 <script>
+import api from '@/services/api'
+
 export default {
   name: 'HealthCheck',
   data() {
@@ -183,7 +185,6 @@ export default {
       this.loading = true
       this.error = false
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getHealth()
         this.healthData = data || this.healthData
       } catch (err) {
@@ -222,7 +223,6 @@ export default {
       this.fixing = true
       this.fixResponse = null
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.fixHealthIssue({ check_name: this.selectedCheck.name, action })
         this.fixResponse = data
         if (action === 'auto') setTimeout(() => this.loadHealth(), 1500)

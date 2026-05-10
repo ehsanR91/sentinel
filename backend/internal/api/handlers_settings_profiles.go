@@ -197,6 +197,7 @@ func (h *Handlers) RotateMasterKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rotatedAt := db.GetSetting("last_master_key_rotation", "")
+	invalidateSettingsResponseCache()
 	_ = h.recordAuditEvent(r, "settings.master_key.rotate", h.cfg.SecretsKeyPath, fmt.Sprintf("rotated_at=%s", rotatedAt), true)
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status":                   "ok",

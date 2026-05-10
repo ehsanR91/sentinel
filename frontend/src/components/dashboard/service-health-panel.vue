@@ -100,6 +100,7 @@
 import AppButton from '@/components/ui/app-button.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
 import UptimeBar from '@/components/ui/uptime-bar.vue'
+import api from '@/services/api'
 
 const HISTORY_LIMIT = 24
 
@@ -190,7 +191,6 @@ export default {
       this.loading = true
       this.error = false
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getServices()
         const services = Array.isArray(data) ? data : []
         this.services = services.map(service => this.normalizeService(service))
@@ -203,7 +203,6 @@ export default {
     async performAction(service, action) {
       this.busy = { ...this.busy, [service.name]: true }
       try {
-        const api = (await import('@/services/api')).default
         await api.serviceAction(service.name, action)
         await this.refreshServices()
       } catch (_) {
@@ -220,7 +219,6 @@ export default {
       if (!window.confirm(`Start ${stopped.length} stopped services?`)) return
       this.busyAll = true
       try {
-        const api = (await import('@/services/api')).default
         for (const service of stopped) {
           await api.serviceAction(service.name, 'start')
         }

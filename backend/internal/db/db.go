@@ -14,10 +14,24 @@ import (
 var (
 	db   *sql.DB
 	once sync.Once
+
+	settingsCacheMu sync.RWMutex
+	settingsCache   = map[string]settingCacheEntry{}
 )
+
+type settingCacheEntry struct {
+	value  string
+	exists bool
+}
 
 // DB returns the shared database instance (panics if Init not called).
 func DB() *sql.DB { return db }
+
+func resetSettingsCache() {
+	settingsCacheMu.Lock()
+	settingsCache = map[string]settingCacheEntry{}
+	settingsCacheMu.Unlock()
+}
 
 // Init opens the SQLite database, creates parent dirs, and runs migrations.
 func Init(path, secretsKeyPath string) error {
@@ -33,6 +47,7 @@ func Init(path, secretsKeyPath string) error {
 	}
 	conn.SetMaxOpenConns(1)
 	db = conn
+	resetSettingsCache()
 	return migrate()
 }
 
@@ -213,6 +228,7 @@ func CloseAndReplace(srcPath, destPath string) error {
 	}
 	conn.SetMaxOpenConns(1)
 	db = conn
+	resetSettingsCache()
 	return migrate()
 }
 
@@ -246,11 +262,27 @@ func copyFile(src, dst string) error {
 }
 
 func GetSetting(key, defaultVal string) string {
+	settingsCacheMu.RLock()
+	if entry, ok := settingsCache[key]; ok {
+		settingsCacheMu.RUnlock()
+		if !entry.exists {
+			return defaultVal
+		}
+		return entry.value
+	}
+	settingsCacheMu.RUnlock()
+
 	var val string
 	err := db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&val)
 	if err != nil {
+		settingsCacheMu.Lock()
+		settingsCache[key] = settingCacheEntry{exists: false}
+		settingsCacheMu.Unlock()
 		return defaultVal
 	}
+	settingsCacheMu.Lock()
+	settingsCache[key] = settingCacheEntry{value: val, exists: true}
+	settingsCacheMu.Unlock()
 	return val
 }
 
@@ -261,6 +293,11 @@ func SetSetting(key, value string) error {
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 		key, value,
 	)
+	if err == nil {
+		settingsCacheMu.Lock()
+		settingsCache[key] = settingCacheEntry{value: value, exists: true}
+		settingsCacheMu.Unlock()
+	}
 	return err
 }
 
@@ -377,6 +414,7 @@ func RotateSecretsKey(keyPath string) error {
 	if err := tx.Commit(); err != nil {
 		return rollback(fmt.Errorf("commit secrets rotation: %w", err))
 	}
+	resetSettingsCache()
 
 	if err := SetSetting("last_master_key_rotation", fmt.Sprintf("%d", unixNow())); err != nil {
 		return fmt.Errorf("record last master key rotation: %w", err)

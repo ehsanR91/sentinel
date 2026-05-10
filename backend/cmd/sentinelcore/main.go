@@ -80,7 +80,10 @@ func main() {
 
 	// ── Background metrics collector ───────────────────────────────────────────
 	collector := monitoring.NewCollector()
-	collector.Start(time.Duration(cfg.MetricsInterval) * time.Second)
+	collector.Start(
+		time.Duration(cfg.MetricsInterval)*time.Second,
+		time.Duration(cfg.MetricsSlowPathInterval)*time.Second,
+	)
 
 	// ── WebSocket hub ──────────────────────────────────────────────────────────
 	hub := appws.NewHub()
@@ -90,6 +93,9 @@ func main() {
 		ticker := time.NewTicker(time.Duration(cfg.MetricsInterval) * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
+			if hub.ClientCount() == 0 {
+				continue
+			}
 			snapshot := *collector.Latest()
 			if unread, err := db.UnreadAlertCount(); err == nil {
 				snapshot.UnreadAlerts = unread
@@ -133,6 +139,7 @@ func main() {
 	// ── HTTP handlers ──────────────────────────────────────────────────────────
 	h := api.NewHandlers(cfg, collector, hub, mailer)
 	h.InitGrantStore()
+	h.StartManagedServicesRefresher()
 	h.StartTaskScheduler()
 
 	// ── Start periodic alert ingestion ────────────────────────────────────────
@@ -148,7 +155,9 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	if cfg.RequestLogging {
+		r.Use(middleware.Logger)
+	}
 	r.Use(middleware.Recoverer)
 	r.Use(api.SecurityHeaders)
 	r.Use(api.IPAllowlist())
@@ -295,6 +304,10 @@ func main() {
 		r.Get("/api/v1/db/export", h.ExportDB)
 		r.Post("/api/v1/db/import", h.ImportDB)
 		r.Post("/api/v1/db/prune", h.PruneDB)
+
+		if cfg.EnablePprof {
+			api.RegisterPprofRoutes(r)
+		}
 	})
 
 	// ── WebSocket (metrics) ────────────────────────────────────────────────────

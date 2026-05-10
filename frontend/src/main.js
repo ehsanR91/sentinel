@@ -2,7 +2,6 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import store from './state/store'
-import VueApexCharts from 'vue3-apexcharts'
 import VueSweetalert2 from 'vue-sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import vClickOutside from 'v-click-outside'
@@ -42,7 +41,6 @@ app.config.globalProperties.$promptInstall = promptInstall
 app.component('ScSelect', ScSelect)
 app.use(router)
 app.use(store)
-app.use(VueApexCharts)
 app.use(VueSweetalert2, {
   target: 'body',
   backdrop: true,

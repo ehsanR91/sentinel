@@ -45,6 +45,7 @@
 <script>
 import Tooltip from '@/components/ui/tooltip.vue'
 import config from '@/app.config.json'
+import api from '@/services/api'
 
 const ICONS = {
   'ufw':           'mdi mdi-wall',
@@ -130,7 +131,6 @@ export default {
       // Show shimmer only on the very first load (no data yet)
       if (this.services.length === 0) this.loading = true
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getServices()
         this.services = Array.isArray(data) ? data.map(mapService) : []
         this.error = false

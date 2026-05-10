@@ -221,6 +221,7 @@
 <script>
 import PageHeader from '@/components/page-header.vue'
 import StatCard   from '@/components/widgets/stat-card.vue'
+import api from '@/services/api'
 
 export default {
   name: 'UpdatesPage',
@@ -268,7 +269,6 @@ export default {
     async fetchUpdates() {
       this.loading = true
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getUpdates()
         this.aptAvailable = data.apt_available !== false
         this.kernelVersion = data.kernel || ''
@@ -293,7 +293,6 @@ export default {
       this.updateLogs = []
       this.addLogLine('Starting update process...', 'info')
       try {
-        const api = (await import('@/services/api')).default
         await api.installUpdates(pkgNames)
         this.addLogLine('Update request sent to server', 'success')
         this.$swal({ toast: true, position: 'top-end', icon: 'success', title: 'Update started in the background', showConfirmButton: false, timer: 3000 })
@@ -315,7 +314,6 @@ export default {
 
     async fetchUpdateLogs() {
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getUpdateLogs()
         if (data.logs && data.logs.length > 0) {
           const newLogs = data.logs.filter(log => !this.updateLogs.find(el => el.text === log.text))

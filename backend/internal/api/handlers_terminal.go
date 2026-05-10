@@ -50,10 +50,15 @@ type termSession struct {
 	activeCancel  context.CancelFunc
 }
 
+const terminalWriteTimeout = 5 * time.Second
+
 func sendTermMsg(conn *websocket.Conn, sess *termSession, msg termMsg) {
 	sess.writeMu.Lock()
 	defer sess.writeMu.Unlock()
-	_ = conn.WriteJSON(msg)
+	_ = conn.SetWriteDeadline(time.Now().Add(terminalWriteTimeout))
+	if err := conn.WriteJSON(msg); err != nil {
+		_ = conn.Close()
+	}
 }
 
 func (s *termSession) startActiveCommand(stdin io.WriteCloser, cancel context.CancelFunc) bool {

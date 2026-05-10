@@ -427,6 +427,7 @@
 <script>
 import PageHeader from '@/components/page-header.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
+import api from '@/services/api'
 
 export default {
   name: 'TerminalPage',
@@ -657,7 +658,6 @@ export default {
       this.unlocking = false
       this.checking2FA = true
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getMe()
         if (!data?.totp_enabled) {
           this.show2FARequiredModal = true

@@ -76,6 +76,16 @@ type Collector struct {
 	latest      *SystemSnapshot
 	prevNet     []psnet.IOCountersStat
 	prevNetTime time.Time
+	hostInfo    host.InfoStat
+	hostInfoAt  time.Time
+	hostReady   bool
+	partitions  []DiskPartition
+	partsAt     time.Time
+	slowEvery   time.Duration
+	procMu      sync.RWMutex
+	topProcs    []ProcessInfo
+	netProcs    []NetworkProcessInfo
+	suspicious  []SuspiciousProcess
 }
 
 func NewCollector() *Collector {
@@ -83,23 +93,56 @@ func NewCollector() *Collector {
 }
 
 // Start launches the background collection loop.
-func (c *Collector) Start(interval time.Duration) {
+
+func (c *Collector) Start(interval, slowEvery time.Duration) {
+	if interval <= 0 {
+		interval = 2 * time.Second
+	}
+	if slowEvery < interval {
+		slowEvery = interval
+	}
+	c.slowEvery = slowEvery
+	if info, err := host.Info(); err == nil {
+		c.hostInfo = *info
+		c.hostInfoAt = time.Now()
+		c.hostReady = true
+	}
+
 	// Warm up: first cpu.Percent call always returns 0
-	cpu.Percent(0, false) //nolint
+	cpu.Percent(0, true) //nolint
+	c.refreshProcessSnapshots()
 
 	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
 		// Collect net baseline
 		if nets, err := psnet.IOCounters(false); err == nil {
 			c.prevNet = nets
 			c.prevNetTime = time.Now()
 		}
 
-		for {
+		for range ticker.C {
 			snap := c.collect()
 			c.mu.Lock()
 			c.latest = snap
 			c.mu.Unlock()
-			time.Sleep(interval)
+		}
+	}()
+
+	go func() {
+		refreshEvery := 15 * time.Second
+		if slowEvery > 0 && slowEvery < refreshEvery {
+			refreshEvery = slowEvery
+		}
+		if refreshEvery < 10*time.Second {
+			refreshEvery = 10 * time.Second
+		}
+
+		ticker := time.NewTicker(refreshEvery)
+		defer ticker.Stop()
+		for range ticker.C {
+			c.refreshProcessSnapshots()
 		}
 	}()
 }
@@ -114,17 +157,55 @@ func (c *Collector) Latest() *SystemSnapshot {
 	return c.latest
 }
 
+func (c *Collector) TopProcesses(limit int) []ProcessInfo {
+	items := c.snapshotTopProcesses()
+	if len(items) == 0 {
+		fresh := collectProcesses()
+		c.setTopProcesses(fresh)
+		items = fresh
+	}
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
+func (c *Collector) TopNetworkProcesses(limit int) []NetworkProcessInfo {
+	items := c.snapshotNetworkProcesses()
+	if len(items) == 0 {
+		fresh := collectNetworkProcesses()
+		c.setNetworkProcesses(fresh)
+		items = fresh
+	}
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
+func (c *Collector) SuspiciousProcesses() []SuspiciousProcess {
+	items := c.snapshotSuspiciousProcesses()
+	if len(items) == 0 {
+		fresh := collectSuspiciousProcesses()
+		c.setSuspiciousProcesses(fresh)
+		items = fresh
+	}
+	return items
+}
+
 func (c *Collector) collect() *SystemSnapshot {
 	snap := &SystemSnapshot{Timestamp: time.Now().Unix()}
 
 	// ── CPU ──────────────────────────────────────────────────────────────────
-	if pcts, err := cpu.Percent(0, false); err == nil && len(pcts) > 0 {
-		snap.CPUPct = round2(pcts[0])
-	}
 	if perCore, err := cpu.Percent(0, true); err == nil {
+		var total float64
 		for i, p := range perCore {
 			_ = i
 			snap.CPUCores = append(snap.CPUCores, round2(p))
+			total += p
+		}
+		if len(perCore) > 0 {
+			snap.CPUPct = round2(total / float64(len(perCore)))
 		}
 	}
 
@@ -148,22 +229,12 @@ func (c *Collector) collect() *SystemSnapshot {
 		snap.DiskFree = du.Free
 	}
 
-	// All partitions
-	if parts, err := disk.Partitions(false); err == nil {
-		for _, p := range parts {
-			if du, err := disk.Usage(p.Mountpoint); err == nil {
-				snap.Partitions = append(snap.Partitions, DiskPartition{
-					Mountpoint: p.Mountpoint,
-					Device:     p.Device,
-					Fstype:     p.Fstype,
-					Total:      du.Total,
-					Used:       du.Used,
-					Free:       du.Free,
-					UsedPct:    round2(du.UsedPercent),
-				})
-			}
-		}
+	c.refreshPartitions(time.Now())
+	c.mu.RLock()
+	if len(c.partitions) > 0 {
+		snap.Partitions = append([]DiskPartition(nil), c.partitions...)
 	}
+	c.mu.RUnlock()
 
 	// ── Network ───────────────────────────────────────────────────────────────
 	if nets, err := psnet.IOCounters(false); err == nil && len(nets) > 0 {
@@ -189,7 +260,18 @@ func (c *Collector) collect() *SystemSnapshot {
 	}
 
 	// ── Host ─────────────────────────────────────────────────────────────────
-	if info, err := host.Info(); err == nil {
+	if c.hostReady {
+		snap.Uptime = c.hostInfo.Uptime + uint64(time.Since(c.hostInfoAt).Seconds())
+		snap.Hostname = c.hostInfo.Hostname
+		snap.OS = c.hostInfo.OS
+		snap.Kernel = c.hostInfo.KernelVersion
+		snap.Platform = c.hostInfo.Platform + " " + c.hostInfo.PlatformVersion
+	} else if info, err := host.Info(); err == nil {
+		c.mu.Lock()
+		c.hostInfo = *info
+		c.hostInfoAt = time.Now()
+		c.hostReady = true
+		c.mu.Unlock()
 		snap.Uptime = info.Uptime
 		snap.Hostname = info.Hostname
 		snap.OS = info.OS
@@ -198,6 +280,83 @@ func (c *Collector) collect() *SystemSnapshot {
 	}
 
 	return snap
+}
+
+func (c *Collector) refreshPartitions(now time.Time) {
+	c.mu.RLock()
+	needsRefresh := len(c.partitions) == 0 || now.Sub(c.partsAt) >= c.slowEvery
+	c.mu.RUnlock()
+	if !needsRefresh {
+		return
+	}
+
+	parts, err := disk.Partitions(false)
+	if err != nil {
+		return
+	}
+	updated := make([]DiskPartition, 0, len(parts))
+	for _, p := range parts {
+		du, err := disk.Usage(p.Mountpoint)
+		if err != nil {
+			continue
+		}
+		updated = append(updated, DiskPartition{
+			Mountpoint: p.Mountpoint,
+			Device:     p.Device,
+			Fstype:     p.Fstype,
+			Total:      du.Total,
+			Used:       du.Used,
+			Free:       du.Free,
+			UsedPct:    round2(du.UsedPercent),
+		})
+	}
+
+	c.mu.Lock()
+	c.partitions = updated
+	c.partsAt = now
+	c.mu.Unlock()
+}
+
+func (c *Collector) refreshProcessSnapshots() {
+	c.setTopProcesses(collectProcesses())
+	c.setNetworkProcesses(collectNetworkProcesses())
+	c.setSuspiciousProcesses(collectSuspiciousProcesses())
+}
+
+func (c *Collector) setTopProcesses(items []ProcessInfo) {
+	c.procMu.Lock()
+	c.topProcs = append([]ProcessInfo(nil), items...)
+	c.procMu.Unlock()
+}
+
+func (c *Collector) setNetworkProcesses(items []NetworkProcessInfo) {
+	c.procMu.Lock()
+	c.netProcs = append([]NetworkProcessInfo(nil), items...)
+	c.procMu.Unlock()
+}
+
+func (c *Collector) setSuspiciousProcesses(items []SuspiciousProcess) {
+	c.procMu.Lock()
+	c.suspicious = append([]SuspiciousProcess(nil), items...)
+	c.procMu.Unlock()
+}
+
+func (c *Collector) snapshotTopProcesses() []ProcessInfo {
+	c.procMu.RLock()
+	defer c.procMu.RUnlock()
+	return append([]ProcessInfo(nil), c.topProcs...)
+}
+
+func (c *Collector) snapshotNetworkProcesses() []NetworkProcessInfo {
+	c.procMu.RLock()
+	defer c.procMu.RUnlock()
+	return append([]NetworkProcessInfo(nil), c.netProcs...)
+}
+
+func (c *Collector) snapshotSuspiciousProcesses() []SuspiciousProcess {
+	c.procMu.RLock()
+	defer c.procMu.RUnlock()
+	return append([]SuspiciousProcess(nil), c.suspicious...)
 }
 
 func round2(f float64) float64 {

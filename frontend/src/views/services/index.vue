@@ -802,8 +802,7 @@ export default {
 
     async fetchServiceInstallLogs() {
       try {
-        const apiSvc = (await import('@/services/api')).default
-        const { data } = await apiSvc.getServiceInstallLogs()
+        const { data } = await api.getServiceInstallLogs()
         if (data.logs && data.logs.length > this.installLogSeenCount) {
           const newLines = data.logs.slice(this.installLogSeenCount)
           this.installLogSeenCount = data.logs.length

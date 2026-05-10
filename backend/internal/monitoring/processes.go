@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -44,8 +45,46 @@ type NetworkProcessInfo struct {
 	RateSource  string  `json:"rate_source"`
 }
 
+const (
+	processCacheTTL        = 5 * time.Second
+	networkProcessCacheTTL = 8 * time.Second
+	suspiciousCacheTTL     = 15 * time.Second
+)
+
+type processSnapshotCache[T any] struct {
+	mu        sync.Mutex
+	expiresAt time.Time
+	data      []T
+}
+
+var (
+	topProcessCache     processSnapshotCache[ProcessInfo]
+	networkProcCache    processSnapshotCache[NetworkProcessInfo]
+	suspiciousProcCache processSnapshotCache[SuspiciousProcess]
+)
+
+func (c *processSnapshotCache[T]) get(ttl time.Duration, loader func() []T) []T {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if time.Now().Before(c.expiresAt) {
+		return append([]T(nil), c.data...)
+	}
+	fresh := loader()
+	c.data = append([]T(nil), fresh...)
+	c.expiresAt = time.Now().Add(ttl)
+	return append([]T(nil), c.data...)
+}
+
 // TopProcesses returns the top N processes sorted by CPU% descending.
 func TopProcesses(n int) []ProcessInfo {
+	result := topProcessCache.get(processCacheTTL, collectProcesses)
+	if len(result) > n {
+		return result[:n]
+	}
+	return result
+}
+
+func collectProcesses() []ProcessInfo {
 	procs, err := goproc.Processes()
 	if err != nil {
 		return nil
@@ -91,14 +130,19 @@ func TopProcesses(n int) []ProcessInfo {
 		return result[i].CPUPct > result[j].CPUPct
 	})
 
+	return result
+}
+
+// TopNetworkProcesses returns processes with active network sockets.
+func TopNetworkProcesses(n int) []NetworkProcessInfo {
+	result := networkProcCache.get(networkProcessCacheTTL, collectNetworkProcesses)
 	if len(result) > n {
 		return result[:n]
 	}
 	return result
 }
 
-// TopNetworkProcesses returns processes with active network sockets.
-func TopNetworkProcesses(n int) []NetworkProcessInfo {
+func collectNetworkProcesses() []NetworkProcessInfo {
 	procs, err := goproc.Processes()
 	if err != nil {
 		return []NetworkProcessInfo{}
@@ -173,9 +217,6 @@ func TopNetworkProcesses(n int) []NetworkProcessInfo {
 		return result[i].Connections > result[j].Connections
 	})
 
-	if len(result) > n {
-		return result[:n]
-	}
 	return result
 }
 
@@ -223,6 +264,10 @@ var suspiciousPatterns = []struct{ kw, reason, risk string }{
 // DetectSuspiciousProcesses scans running processes for known-bad patterns
 // and excessive network connections, returning flagged entries.
 func DetectSuspiciousProcesses() []SuspiciousProcess {
+	return suspiciousProcCache.get(suspiciousCacheTTL, collectSuspiciousProcesses)
+}
+
+func collectSuspiciousProcesses() []SuspiciousProcess {
 	procs, err := goproc.Processes()
 	if err != nil {
 		return []SuspiciousProcess{}

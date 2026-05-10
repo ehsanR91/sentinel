@@ -87,6 +87,7 @@
 
 <script>
 import PageHeader from '@/components/page-header.vue'
+import api from '@/services/api'
 
 const TOOL_ICONS = {
   rkhunter:    'mdi mdi-bug-check-outline',
@@ -124,12 +125,10 @@ export default {
       }
     },
     async loadTools() {
-      const api = (await import('@/services/api')).default
       const { data } = await api.getSecurityTools()
       this.tools = Array.isArray(data) ? data : []
     },
     async runTool(tool, installAttempted = false) {
-      const api = (await import('@/services/api')).default
       try {
         await api.runSecurityTool(tool.name)
       } catch (err) {
@@ -185,7 +184,6 @@ export default {
     async pollLogsOnce() {
       if (!this.activeTool) return
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getSecurityToolLogs(this.activeTool.name)
         this.activeLogs = data || { logs: [], running: false }
         await this.loadTools()

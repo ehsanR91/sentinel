@@ -325,6 +325,7 @@ func (h *Handlers) InstallSecurityTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	invalidateManagedServicesCache()
 	writeJSON(w, http.StatusOK, map[string]any{"status": "installed", "output": strings.TrimSpace(output)})
 }
 

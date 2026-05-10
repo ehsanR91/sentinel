@@ -1,6 +1,9 @@
 package db
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Task struct {
 	ID           int64  `json:"id"`
@@ -150,6 +153,48 @@ func LastRunByTask(taskID int64) (*TaskRun, error) {
 		return nil, err
 	}
 	return &tr, nil
+}
+
+func LatestRunsByTaskIDs(taskIDs []int64) (map[int64]*TaskRun, error) {
+	result := make(map[int64]*TaskRun, len(taskIDs))
+	if len(taskIDs) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(taskIDs))
+	args := make([]any, len(taskIDs))
+	for index, taskID := range taskIDs {
+		placeholders[index] = "?"
+		args[index] = taskID
+	}
+
+	query := fmt.Sprintf(`
+		SELECT tr.id,tr.task_id,tr.started_at,tr.ended_at,tr.status,tr.triggered_by,tr.output,tr.exit_code
+		FROM task_runs tr
+		JOIN (
+			SELECT task_id, MAX(started_at) AS max_started_at
+			FROM task_runs
+			WHERE task_id IN (%s)
+			GROUP BY task_id
+		) latest ON latest.task_id = tr.task_id AND latest.max_started_at = tr.started_at
+	`, strings.Join(placeholders, ","))
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var tr TaskRun
+		if err := rows.Scan(&tr.ID, &tr.TaskID, &tr.StartedAt, &tr.EndedAt, &tr.Status, &tr.TriggeredBy, &tr.Output, &tr.ExitCode); err != nil {
+			return nil, err
+		}
+		copyRun := tr
+		result[tr.TaskID] = &copyRun
+	}
+
+	return result, rows.Err()
 }
 
 func boolToInt(v bool) int {

@@ -105,6 +105,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'static',
-    indexHtml: 'public/index.html'
+    indexHtml: 'public/index.html',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('sweetalert2')) {
+            return 'sweetalert'
+          }
+        }
+      }
+    }
   }
 })

@@ -71,6 +71,7 @@
 
 <script>
 import CommandPalette from '@/components/command-palette.vue'
+import api from '@/services/api'
 import TooltipProvider from '@/components/ui/tooltip-provider.vue'
 
 export default {
@@ -167,7 +168,6 @@ export default {
     async loadLockSettings() {
       if (!this.$store.getters['auth/loggedIn']) return
       try {
-        const api = (await import('@/services/api')).default
         const { data } = await api.getLockSettings()
         this.lockEnabled = data.enabled || false
         this.lockPinSet = data.pinSet || false
@@ -275,7 +275,6 @@ export default {
       const pin = this.pinDigits.join('')
       if (pin.length !== 6) return
       try {
-        const api = (await import('@/services/api')).default
         await api.verifyLockPin(pin)
         this.locked = false
         this.pinDigits = ['', '', '', '', '', '']

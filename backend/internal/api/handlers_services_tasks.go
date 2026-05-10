@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -42,7 +41,22 @@ var (
 	svcInstallErr     string
 	svcInstallRunning bool
 	svcInstallMu      sync.Mutex
+
+	managedServicesCacheMu     sync.Mutex
+	managedServicesCache       = map[string]managedServiceCacheEntry{}
+	managedServicesRefreshWake = make(chan struct{}, 1)
+	managedServicesRefreshOnce sync.Once
 )
+
+const (
+	managedServicesCacheTTL      = 10 * time.Second
+	managedServicesRefreshPeriod = 20 * time.Second
+)
+
+type managedServiceCacheEntry struct {
+	expiresAt time.Time
+	services  []managedService
+}
 
 type serviceCatalogItem struct {
 	Label   string
@@ -146,7 +160,62 @@ func (h *Handlers) GetManagedServices(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, buildManagedServices(keys))
 }
 
+func (h *Handlers) StartManagedServicesRefresher() {
+	managedServicesRefreshOnce.Do(func() {
+		go h.runManagedServicesRefresher()
+	})
+	wakeManagedServicesRefresher()
+}
+
+func invalidateManagedServicesCache() {
+	managedServicesCacheMu.Lock()
+	managedServicesCache = map[string]managedServiceCacheEntry{}
+	managedServicesCacheMu.Unlock()
+	wakeManagedServicesRefresher()
+}
+
+func cloneManagedServices(items []managedService) []managedService {
+	return append([]managedService(nil), items...)
+}
+
+func wakeManagedServicesRefresher() {
+	select {
+	case managedServicesRefreshWake <- struct{}{}:
+	default:
+	}
+}
+
+func managedServicesCacheIdentity(keys []string) ([]string, string) {
+	cacheKeys := append([]string(nil), keys...)
+	sort.Strings(cacheKeys)
+	return cacheKeys, strings.Join(cacheKeys, "|")
+}
+
+func storeManagedServicesCache(cacheKey string, services []managedService, ttl time.Duration) {
+	managedServicesCacheMu.Lock()
+	managedServicesCache[cacheKey] = managedServiceCacheEntry{
+		expiresAt: time.Now().Add(ttl),
+		services:  cloneManagedServices(services),
+	}
+	managedServicesCacheMu.Unlock()
+}
+
 func buildManagedServices(keys []string) []managedService {
+	_, cacheKey := managedServicesCacheIdentity(keys)
+
+	managedServicesCacheMu.Lock()
+	if entry, ok := managedServicesCache[cacheKey]; ok && time.Now().Before(entry.expiresAt) {
+		cached := cloneManagedServices(entry.services)
+		managedServicesCacheMu.Unlock()
+		return cached
+	}
+	managedServicesCacheMu.Unlock()
+	return buildManagedServicesFresh(keys)
+}
+
+func buildManagedServicesFresh(keys []string) []managedService {
+	_, cacheKey := managedServicesCacheIdentity(keys)
+
 	unitNames := make([]string, 0, len(keys)*3)
 	for _, name := range keys {
 		meta := serviceCatalog[name]
@@ -211,7 +280,41 @@ func buildManagedServices(keys []string) []managedService {
 			Status:      managedServiceStatus(installed, running, st),
 		})
 	}
+
+	storeManagedServicesCache(cacheKey, out, managedServicesCacheTTL)
 	return out
+}
+
+func (h *Handlers) runManagedServicesRefresher() {
+	h.refreshManagedServiceSnapshots()
+	ticker := time.NewTicker(managedServicesRefreshPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+		case <-managedServicesRefreshWake:
+		}
+		h.refreshManagedServiceSnapshots()
+	}
+}
+
+func (h *Handlers) refreshManagedServiceSnapshots() {
+	for _, keys := range h.managedServicesPrewarmSets() {
+		buildManagedServicesFresh(keys)
+	}
+}
+
+func (h *Handlers) managedServicesPrewarmSets() [][]string {
+	all := make([]string, 0, len(serviceCatalog))
+	for name := range serviceCatalog {
+		all = append(all, name)
+	}
+	security := []string{"ufw", "fail2ban", "crowdsec", "psad", "clamav-daemon", "auditd", "apparmor", "docker", "aide", "rkhunter"}
+	return [][]string{
+		append([]string(nil), h.cfg.WatchedServices...),
+		all,
+		security,
+	}
 }
 
 func managedServiceStatus(installed, running bool, st monitoring.ServiceStatus) string {
@@ -308,6 +411,7 @@ func (h *Handlers) ServiceInstall(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		defer func() {
+			invalidateManagedServicesCache()
 			svcInstallMu.Lock()
 			svcInstallRunning = false
 			svcInstallMu.Unlock()
@@ -466,6 +570,7 @@ func (h *Handlers) ServiceAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, "service reinstall succeeded but required binary is missing")
 			return
 		}
+		invalidateManagedServicesCache()
 		_ = db.InsertAlert("service", "info", "services", fmt.Sprintf("reinstalled %s", name), "", "system")
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "action": action, "service": name})
 		return
@@ -486,6 +591,7 @@ func (h *Handlers) ServiceAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadGateway, "service uninstall failed: "+err.Error())
 			return
 		}
+		invalidateManagedServicesCache()
 		_ = db.InsertAlert("service", "info", "services", fmt.Sprintf("uninstalled %s", name), "", "system")
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "action": action, "service": name})
 		return
@@ -519,6 +625,7 @@ func (h *Handlers) ServiceAction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "service action failed: "+err.Error())
 		return
 	}
+	invalidateManagedServicesCache()
 	_ = db.InsertAlert("service", "info", "services", fmt.Sprintf("%s %s", action, name), "", "system")
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "action": action, "service": name, "unit": resolved})
 }
@@ -606,26 +713,65 @@ func serviceInstalled(name string, meta serviceCatalogItem) bool {
 type schedulerState struct {
 	mu      sync.Mutex
 	running map[int64]bool
+	wake    chan struct{}
 }
 
-var taskScheduler = schedulerState{running: map[int64]bool{}}
+var taskScheduler = schedulerState{
+	running: map[int64]bool{},
+	wake:    make(chan struct{}, 1),
+}
+
+func notifyTaskScheduler() {
+	select {
+	case taskScheduler.wake <- struct{}{}:
+	default:
+	}
+}
 
 func (h *Handlers) StartTaskScheduler() {
 	go func() {
-		ticker := time.NewTicker(20 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			h.runDueTasks()
+		for {
+			delay := h.runDueTasks()
+			if delay < time.Second {
+				delay = time.Second
+			}
+
+			timer := time.NewTimer(delay)
+			select {
+			case <-timer.C:
+			case <-taskScheduler.wake:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+			}
 		}
 	}()
 }
 
-func (h *Handlers) runDueTasks() {
+func (h *Handlers) runDueTasks() time.Duration {
 	tasks, err := db.ListTasks()
 	if err != nil {
-		return
+		return time.Minute
 	}
-	now := time.Now().Unix()
+	if len(tasks) == 0 {
+		return 5 * time.Minute
+	}
+
+	taskIDs := make([]int64, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.ID)
+	}
+	latestRuns, err := db.LatestRunsByTaskIDs(taskIDs)
+	if err != nil {
+		return time.Minute
+	}
+
+	now := time.Now()
+	nextDelay := 5 * time.Minute
+	hasScheduledTask := false
 	for _, t := range tasks {
 		if !t.Enabled || t.ScheduleKind != "interval" {
 			continue
@@ -634,18 +780,41 @@ func (h *Handlers) runDueTasks() {
 		if err != nil || intervalSec < 30 {
 			continue
 		}
-		last, err := db.LastRunByTask(t.ID)
-		if err != nil && err != sql.ErrNoRows {
-			continue
-		}
+		hasScheduledTask = true
+		interval := time.Duration(intervalSec) * time.Second
+		last := latestRuns[t.ID]
 		if last != nil && last.Status == "running" {
+			if 10*time.Second < nextDelay {
+				nextDelay = 10 * time.Second
+			}
 			continue
 		}
-		if last != nil && (now-last.StartedAt) < int64(intervalSec) {
+
+		dueAt := now
+		if last != nil {
+			dueAt = time.Unix(last.StartedAt, 0).Add(interval)
+		}
+		if !dueAt.After(now) {
+			if h.runTaskAsync(t, "scheduler") {
+				if interval < nextDelay {
+					nextDelay = interval
+				}
+			} else if 10*time.Second < nextDelay {
+				nextDelay = 10 * time.Second
+			}
 			continue
 		}
-		h.runTaskAsync(t, "scheduler")
+
+		delay := time.Until(dueAt)
+		if delay < nextDelay {
+			nextDelay = delay
+		}
 	}
+
+	if !hasScheduledTask {
+		return 5 * time.Minute
+	}
+	return nextDelay
 }
 
 func (h *Handlers) GetTasksV2(w http.ResponseWriter, r *http.Request) {
@@ -656,10 +825,15 @@ func (h *Handlers) GetTasksV2(w http.ResponseWriter, r *http.Request) {
 	}
 	stats, _ := db.TaskStats()
 	runs, _ := db.ListTaskRuns(200)
+	taskIDs := make([]int64, 0, len(tasks))
+	for _, task := range tasks {
+		taskIDs = append(taskIDs, task.ID)
+	}
+	latestRuns, _ := db.LatestRunsByTaskIDs(taskIDs)
 
 	tasksOut := make([]map[string]any, 0, len(tasks))
 	for _, t := range tasks {
-		last, _ := db.LastRunByTask(t.ID)
+		last := latestRuns[t.ID]
 		entry := map[string]any{
 			"id":            t.ID,
 			"name":          t.Name,
@@ -704,6 +878,7 @@ func (h *Handlers) CreateTaskV2(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not create task")
 		return
 	}
+	notifyTaskScheduler()
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "status": "created"})
 }
 
@@ -727,6 +902,7 @@ func (h *Handlers) UpdateTaskV2(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update task")
 		return
 	}
+	notifyTaskScheduler()
 	writeJSON(w, http.StatusOK, map[string]any{"status": "updated"})
 }
 
@@ -740,6 +916,7 @@ func (h *Handlers) DeleteTaskV2(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not delete task")
 		return
 	}
+	notifyTaskScheduler()
 	writeJSON(w, http.StatusOK, map[string]any{"status": "deleted"})
 }
 
@@ -760,6 +937,7 @@ func (h *Handlers) RunTaskNow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "task already running")
 		return
 	}
+	notifyTaskScheduler()
 	writeJSON(w, http.StatusOK, map[string]any{"status": "started"})
 }
 
@@ -777,6 +955,7 @@ func (h *Handlers) runTaskAsync(t db.Task, triggeredBy string) bool {
 			taskScheduler.mu.Lock()
 			delete(taskScheduler.running, t.ID)
 			taskScheduler.mu.Unlock()
+			notifyTaskScheduler()
 		}()
 
 		runID, err := db.CreateTaskRun(t.ID, triggeredBy)

@@ -34,6 +34,8 @@
 </template>
 
 <script>
+import api from '@/services/api'
+
 export default {
   name: 'AlertFeed',
   props: {
@@ -53,7 +55,6 @@ export default {
   methods: {
     async loadAlerts() {
       if (!this.$store.getters['auth/loggedIn']) return
-      const api = (await import('@/services/api')).default
       this.loading = true
       try {
         const { data } = await api.getAlerts()

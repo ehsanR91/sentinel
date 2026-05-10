@@ -7,28 +7,28 @@
       <div class="col-xl-3 col-md-6">
         <div class="card sc-panel-card text-center py-3">
           <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sc-text-muted);margin-bottom:.5rem">CPU</div>
-          <apexchart type="radialBar" height="160" :options="gauge('#4a9eff')" :series="[cpu]" />
+          <MiniRadialGauge :value="cpu" color="#4a9eff" :size="160" />
           <div style="font-size:0.75rem;color:var(--sc-text-secondary);margin-top:-.5rem">{{ cores }} cores • Load {{ loadAvg }}</div>
         </div>
       </div>
       <div class="col-xl-3 col-md-6">
         <div class="card sc-panel-card text-center py-3">
           <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sc-text-muted);margin-bottom:.5rem">Memory</div>
-          <apexchart type="radialBar" height="160" :options="gauge('#a78bfa')" :series="[ram]" />
+          <MiniRadialGauge :value="ram" color="#a78bfa" :size="160" />
           <div style="font-size:0.75rem;color:var(--sc-text-secondary);margin-top:-.5rem">{{ ramUsed }} / {{ ramTotal }}</div>
         </div>
       </div>
       <div class="col-xl-3 col-md-6">
         <div class="card sc-panel-card text-center py-3">
           <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sc-text-muted);margin-bottom:.5rem">Disk /</div>
-          <apexchart type="radialBar" height="160" :options="gauge(disk>85?'#f04040':disk>65?'#f5a623':'#22d67c')" :series="[disk]" />
+          <MiniRadialGauge :value="disk" :color="disk>85 ? '#f04040' : disk>65 ? '#f5a623' : '#22d67c'" :size="160" />
           <div style="font-size:0.75rem;color:var(--sc-text-secondary);margin-top:-.5rem">{{ diskUsed }} / {{ diskTotal }}</div>
         </div>
       </div>
       <div class="col-xl-3 col-md-6">
         <div class="card sc-panel-card text-center py-3">
           <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sc-text-muted);margin-bottom:.5rem">Swap</div>
-          <apexchart type="radialBar" height="160" :options="gauge('#22d3ee')" :series="[swap]" />
+          <MiniRadialGauge :value="swap" color="#22d3ee" :size="160" />
           <div style="font-size:0.75rem;color:var(--sc-text-secondary);margin-top:-.5rem">{{ swapUsed }} / {{ swapTotal }}</div>
         </div>
       </div>
@@ -42,7 +42,7 @@
             <h6><i class="mdi mdi-chip me-2" style="color:#4a9eff"></i>CPU & Memory — Last 5 minutes</h6>
           </div>
           <div class="card-body py-2">
-            <apexchart type="line" height="220" :options="timelineOpts" :series="timelineSeries" />
+            <MiniTimeseriesChart :height="220" :series="timelineSeries" :percent-scale="true" />
           </div>
         </div>
       </div>
@@ -276,23 +276,10 @@
 <script>
 import PageHeader from '@/components/page-header.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
+import MiniRadialGauge from '@/components/ui/mini-radial-gauge.vue'
+import MiniTimeseriesChart from '@/components/ui/mini-timeseries-chart.vue'
+import api from '@/services/api'
 import { mapGetters } from 'vuex'
-
-function sanitizeSeries(data = []) {
-  return data.map(value => {
-    const num = Number(value)
-    return Number.isFinite(num) ? num : null
-  })
-}
-
-function assertFiniteSeries(series, name) {
-  if (!import.meta.env.DEV) return
-  series.forEach((value, index) => {
-    if (value !== null && !Number.isFinite(value)) {
-      console.error('Non-finite chart value in series', { name, index, value })
-    }
-  })
-}
 
 function fmtBytes (b) {
   if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB'
@@ -303,7 +290,7 @@ function fmtBytes (b) {
 
 export default {
   name: 'MonitoringPage',
-  components: { PageHeader, Tooltip },
+  components: { PageHeader, Tooltip, MiniRadialGauge, MiniTimeseriesChart },
 
   data() {
     return {
@@ -399,28 +386,10 @@ export default {
     },
 
     timelineSeries() {
-      const cpuSeries = sanitizeSeries(this.cpuHistory)
-      const ramSeries = sanitizeSeries(this.ramHistory)
-      assertFiniteSeries(cpuSeries, 'cpuHistory')
-      assertFiniteSeries(ramSeries, 'ramHistory')
       return [
-        { name: 'CPU %', data: cpuSeries },
-        { name: 'RAM %', data: ramSeries }
+        { name: 'CPU %', data: this.cpuHistory, color: '#4a9eff' },
+        { name: 'RAM %', data: this.ramHistory, color: '#a78bfa' }
       ]
-    },
-
-    timelineOpts() {
-      return {
-        chart: { type: 'line', toolbar: { show: false }, animations: { speed: 400, animateGradually: { enabled: false } }, background: 'transparent' },
-        theme: { mode: 'dark' },
-        colors: ['#4a9eff', '#a78bfa'],
-        stroke: { curve: 'smooth', width: 2 },
-        grid: { borderColor: '#1e2d4a', strokeDashArray: 3 },
-        xaxis: { labels: { show: false }, axisBorder: { show: false }, axisTicks: { show: false } },
-        yaxis: { min: 0, max: 100, labels: { style: { colors: '#5a7499', fontSize: '11px' }, formatter: v => `${v}%` } },
-        legend: { position: 'top', labels: { colors: '#8aa4c8' } },
-        tooltip: { theme: 'dark', shared: true }
-      }
     }
   },
 
@@ -487,7 +456,6 @@ export default {
       return catalog[name] || { description: '', links: [] }
     },
     async loadSuspicious() {
-      const api = (await import('@/services/api')).default
       this.loadingSuspicious = true
       try {
         const { data } = await api.getSuspiciousProcesses()
@@ -508,32 +476,12 @@ export default {
       return (map[risk] || map.low) + ';font-size:0.6rem;padding:2px 6px'
     },
 
-    gauge(color) {
-      return {
-        chart: { type: 'radialBar', sparkline: { enabled: true }, background: 'transparent' },
-        theme: { mode: 'dark' },
-        plotOptions: {
-          radialBar: {
-            hollow: { size: '55%' },
-            track: { background: '#1e2d4a' },
-            dataLabels: {
-              value: { fontSize: '18px', fontWeight: 700, color: '#e2ecff', offsetY: -4 },
-              name:  { show: false }
-            }
-          }
-        },
-        colors: [color],
-        stroke: { lineCap: 'round' }
-      }
-    },
-
     usageShare(size) {
       if (!this.diskUsageTotal || !size) return '0%'
       return `${((size / this.diskUsageTotal) * 100).toFixed(1)}%`
     },
 
     async openDiskUsage(part) {
-      const api = (await import('@/services/api')).default
       this.showDiskModal = true
       this.diskUsagePath = part.mount
       this.diskUsageItems = []

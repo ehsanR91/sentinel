@@ -1,6 +1,8 @@
 import ws from '@/services/ws'
+import api from '@/services/api'
 
-const HISTORY_LEN = 3600
+const HISTORY_LEN = 1800
+const MAX_CHART_POINTS = 240
 const NUMERIC_SNAP_KEYS = [
   'cpu_pct', 'ram_pct', 'swap_pct', 'disk_pct',
   'ram_used', 'ram_total', 'swap_used', 'swap_total',
@@ -77,7 +79,28 @@ function sliceHistory (values, timestamps, range) {
   const from = start === -1 ? 0 : start
   const ts = timestamps.slice(from)
   const vals = values.slice(from)
-  return ts.map((t, i) => ({ x: t, y: vals[i] }))
+  const points = ts.map((t, i) => ({ x: t, y: vals[i] }))
+  if (points.length <= MAX_CHART_POINTS) {
+    return points
+  }
+
+  const step = Math.ceil(points.length / MAX_CHART_POINTS)
+  const sampled = []
+  for (let index = 0; index < points.length; index += step) {
+    sampled.push(points[index])
+  }
+  const lastPoint = points[points.length - 1]
+  if (sampled[sampled.length - 1] !== lastPoint) {
+    sampled.push(lastPoint)
+  }
+  return sampled
+}
+
+function pushHistoryPoint (history, value) {
+  history.push(value)
+  if (history.length > HISTORY_LEN) {
+    history.shift()
+  }
 }
 
 export default {
@@ -116,13 +139,13 @@ export default {
       const rxPoint = sanitizeNumber(snap.net_rx_rate)
       const txPoint = sanitizeNumber(snap.net_tx_rate)
 
-      state.cpuHistory = [...state.cpuHistory.slice(1), cpuPoint]
-      state.ramHistory = [...state.ramHistory.slice(1), ramPoint]
-      state.swapHistory = [...state.swapHistory.slice(1), swapPoint]
-      state.diskHistory = [...state.diskHistory.slice(1), diskPoint]
-      state.netRxHistory = [...state.netRxHistory.slice(1), rxPoint]
-      state.netTxHistory = [...state.netTxHistory.slice(1), txPoint]
-      state.metricTimestamps = [...state.metricTimestamps.slice(1), metricTs]
+      pushHistoryPoint(state.cpuHistory, cpuPoint)
+      pushHistoryPoint(state.ramHistory, ramPoint)
+      pushHistoryPoint(state.swapHistory, swapPoint)
+      pushHistoryPoint(state.diskHistory, diskPoint)
+      pushHistoryPoint(state.netRxHistory, rxPoint)
+      pushHistoryPoint(state.netTxHistory, txPoint)
+      pushHistoryPoint(state.metricTimestamps, metricTs)
       state.lastMetricTs = Math.floor(metricTs / 1000)
       state.liveSummary = {
         unreadAlerts: sanitizedSnap.unread_alerts || 0,
@@ -175,7 +198,6 @@ export default {
 
     async fetchProcesses ({ commit }) {
       try {
-        const { default: api } = await import('@/services/api')
         const { data } = await api.getProcesses(50)
         commit('SET_PROCESSES', data)
       } catch (_) {}
@@ -183,7 +205,6 @@ export default {
 
     async fetchNetworkProcesses ({ commit }) {
       try {
-        const { default: api } = await import('@/services/api')
         const { data } = await api.getNetworkProcesses(50)
         commit('SET_NETWORK_PROCESSES', data)
       } catch (_) {
@@ -193,7 +214,6 @@ export default {
 
     async fetchServices ({ commit }) {
       try {
-        const { default: api } = await import('@/services/api')
         const { data } = await api.getServices()
         commit('SET_SERVICES', data)
       } catch (_) {}

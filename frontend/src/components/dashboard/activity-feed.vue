@@ -71,7 +71,7 @@ export default {
     },
     activeItems() {
       const items = this.itemsByTab[this.activeTab] || []
-      return [...items].sort((left, right) => (right.ts || 0) - (left.ts || 0)).slice(0, 18)
+      return Array.isArray(items) ? items.slice(0, 18) : []
     }
   },
   methods: {

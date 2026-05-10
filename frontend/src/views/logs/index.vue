@@ -135,6 +135,7 @@
 <script>
 import PageHeader from '@/components/page-header.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
+import api from '@/services/api'
 
 const PAGE_SIZE = 100
 
@@ -208,7 +209,6 @@ export default {
   methods: {
     async loadLogs(opts = {}) {
       const quiet = Boolean(opts.quiet)
-      const api = (await import('@/services/api')).default
       if (!quiet) this.loading = true
       try {
         const { data } = await api.getLogs(this.source, this.lines)

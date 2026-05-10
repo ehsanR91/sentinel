@@ -37,18 +37,19 @@
     </div>
 
     <div class="telemetry-card__body" v-show="!isCollapsed">
-      <apexchart
-        ref="chart"
-        type="area"
+      <MiniTimeseriesChart
         :height="height"
-        :options="staticChartOptions"
-        :series="[]"
+        :series="visibleSeries"
+        :formatter="formatter"
+        :thresholds="thresholds"
+        :percent-scale="lockScale || percentScale"
       />
     </div>
   </article>
 </template>
 
 <script>
+import MiniTimeseriesChart from '@/components/ui/mini-timeseries-chart.vue'
 
 function rangeDurationMs(range) {
   return {
@@ -70,8 +71,23 @@ function lastEnabledRange(ranges = []) {
   return ranges.find(option => option.enabled)?.key || (ranges[0]?.key ?? '1m')
 }
 
+function samplePoints(points = [], limit = 240) {
+  if (!Array.isArray(points) || points.length <= limit) return Array.isArray(points) ? points : []
+  const step = Math.ceil(points.length / limit)
+  const sampled = []
+  for (let index = 0; index < points.length; index += step) {
+    sampled.push(points[index])
+  }
+  const lastPoint = points[points.length - 1]
+  if (sampled[sampled.length - 1] !== lastPoint) {
+    sampled.push(lastPoint)
+  }
+  return sampled
+}
+
 export default {
   name: 'DashboardTelemetryChart',
+  components: { MiniTimeseriesChart },
   props: {
     title: { type: String, required: true },
     description: { type: String, default: '' },
@@ -97,10 +113,7 @@ export default {
     return {
       isCollapsed: false,
       selectedRange: lastEnabledRange(this.rangeOptions),
-      lockScale: false,
-      currentTheme: 'dark',
-      rafId: null,
-      pendingUpdate: false
+      lockScale: false
     }
   },
   computed: {
@@ -108,164 +121,37 @@ export default {
       return this.rangeOptions.map(option => ({ enabled: option.enabled !== false, ...option }))
     },
     visibleSeries() {
+      const duration = rangeDurationMs(this.selectedRange)
+      const latestTs = Math.max(
+        Date.now(),
+        ...this.series.flatMap(item => (item.data || []).map(point => Number(point?.x || 0)).filter(Number.isFinite))
+      )
+      const cutoff = latestTs - duration
       return this.series.map(item => ({
         ...item,
-        data: (item.data || []).filter(point =>
-          typeof point === 'object' && point !== null && point.x != null
-        )
+        data: samplePoints((item.data || []).filter(point => {
+          if (typeof point !== 'object' || point === null || point.x == null) return false
+          const x = Number(point.x)
+          return Number.isFinite(x) && x >= cutoff
+        }))
       }))
-    },
-    staticChartOptions() {
-      const labelColor = 'var(--text-tertiary)'
-      const self = this
-      return {
-        chart: {
-          id: `dashboard-${this._.uid}`,
-          group: 'dashboard-telemetry',
-          type: 'area',
-          stacked: this.stacked,
-          toolbar: { show: false },
-          zoom: { enabled: false },
-          animations: { enabled: false },
-          background: 'transparent',
-          foreColor: labelColor,
-          parentHeightOffset: 0,
-          events: {}
-        },
-        stroke: { curve: 'smooth', width: this.series.map(() => 2.4) },
-        fill: {
-          type: 'gradient',
-          gradient: { shadeIntensity: 0.2, opacityFrom: 0.28, opacityTo: 0.04, stops: [0, 100] }
-        },
-        grid: {
-          borderColor: 'var(--dashboard-panel-border)',
-          strokeDashArray: 5,
-          padding: { left: 4, right: 8, top: 4, bottom: 0 }
-        },
-        legend: { position: 'top', horizontalAlign: 'left', labels: { colors: 'var(--text-secondary)' } },
-        dataLabels: { enabled: false },
-        markers: { size: 0 },
-        xaxis: {
-          type: 'datetime',
-          axisBorder: { show: false },
-          axisTicks: { show: false },
-          labels: {
-            show: true,
-            datetimeUTC: false,
-            style: { colors: labelColor, fontSize: '11px' },
-            formatter: value => relativeLabel(value)
-          },
-          crosshairs: { show: true, stroke: { color: 'var(--accent)', dashArray: 4 } },
-          tooltip: { enabled: false }
-        },
-        yaxis: {
-          tickAmount: 5,
-          labels: {
-            style: { colors: labelColor, fontSize: '11px' },
-            formatter: value => self.formatValue(value)
-          }
-        },
-        tooltip: {
-          theme: this.currentTheme,
-          shared: true,
-          intersect: false,
-          fixed: { enabled: true, position: 'topLeft', offsetX: 10, offsetY: 10 },
-          x: { formatter: value => relativeLabel(value) },
-          y: { formatter: value => self.formatValue(value) }
-        },
-        annotations: {
-          yaxis: this.thresholds.map(threshold => ({
-            y: threshold.value,
-            borderColor: threshold.color,
-            strokeDashArray: 4,
-            label: {
-              text: threshold.label,
-              borderColor: threshold.color,
-              style: { color: '#08111f', background: threshold.color, fontSize: '10px' }
-            }
-          }))
-        },
-        theme: { mode: this.currentTheme }
-      }
     }
   },
   watch: {
-    visibleSeries: {
+    normalizedRanges: {
       deep: true,
-      handler() {
-        this._scheduleUpdate()
+      handler(value) {
+        if (!value.some(option => option.key === this.selectedRange && option.enabled)) {
+          this.selectedRange = lastEnabledRange(value)
+        }
       }
-    },
-    selectedRange() {
-      this._scheduleUpdate()
-    },
-    lockScale() {
-      this._scheduleUpdate()
-    },
-    currentTheme(val) {
-      this.$refs.chart?.updateOptions({ theme: { mode: val }, tooltip: { theme: val } }, false, false)
     }
-  },
-  mounted() {
-    this.currentTheme = document.documentElement.getAttribute('data-theme') || 'dark'
-    this._onStorageChange = (e) => {
-      if (e.key === 'sc_theme') this.currentTheme = e.newValue === 'light' ? 'light' : 'dark'
-    }
-    this._onThemeChange = (e) => {
-      this.currentTheme = e.detail || document.documentElement.getAttribute('data-theme') || 'dark'
-    }
-    window.addEventListener('storage', this._onStorageChange)
-    window.addEventListener('sc:theme-change', this._onThemeChange)
-    this._scheduleUpdate()
-  },
-  beforeUnmount() {
-    window.removeEventListener('storage', this._onStorageChange)
-    window.removeEventListener('sc:theme-change', this._onThemeChange)
-    if (this.rafId) cancelAnimationFrame(this.rafId)
   },
   methods: {
     formatValue(value) {
       if (this.formatter) return this.formatter(value)
       if (Math.abs(value) >= 100) return Math.round(value)
       return Number(value).toFixed(1)
-    },
-    _scheduleUpdate() {
-      if (this.pendingUpdate) return
-      this.pendingUpdate = true
-      this.rafId = requestAnimationFrame(() => {
-        this.pendingUpdate = false
-        this._applyUpdate()
-      })
-    },
-    _applyUpdate() {
-      const chart = this.$refs.chart
-      if (!chart) return
-      const series = this.visibleSeries
-      const allPts = series.flatMap(s => s.data)
-      const dur = rangeDurationMs(this.selectedRange)
-      const now = Date.now()
-      const xMin = now - dur
-      const xMax = now
-      let yMin = 0
-      let yMax = 10
-      if (!this.lockScale && !this.percentScale && allPts.length) {
-        const ys = allPts.map(p => Number(p.y)).filter(Number.isFinite)
-        if (ys.length) {
-          const rawMin = Math.min(...ys)
-          const rawMax = Math.max(...ys)
-          const span = rawMax - rawMin || 1
-          yMin = Math.max(0, rawMin - span * 0.12)
-          yMax = rawMax + span * 0.12
-        }
-      } else if (this.lockScale || this.percentScale) {
-        yMin = 0
-        yMax = 100
-      }
-      chart.updateOptions({
-        xaxis: { min: xMin, max: xMax },
-        yaxis: { min: Number(yMin.toFixed(1)), max: Number(yMax.toFixed(1)), tickAmount: 5 }
-      }, false, false, false)
-      chart.updateSeries(series, false)
     }
   }
 }

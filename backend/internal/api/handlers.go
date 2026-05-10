@@ -416,13 +416,42 @@ var settingKeys = []string{
 	"ip_lookup_provider", "ipify_api_key",
 }
 
-func (h *Handlers) GetSettings(w http.ResponseWriter, r *http.Request) {
+const settingsResponseCacheTTL = 15 * time.Second
+
+var settingsResponseCache = struct {
+	mu        sync.Mutex
+	expiresAt time.Time
+	payload   map[string]string
+}{}
+
+func invalidateSettingsResponseCache() {
+	settingsResponseCache.mu.Lock()
+	settingsResponseCache.expiresAt = time.Time{}
+	settingsResponseCache.payload = nil
+	settingsResponseCache.mu.Unlock()
+}
+
+func cloneStringMap(source map[string]string) map[string]string {
+	cloned := make(map[string]string, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func buildSettingsResponse(h *Handlers) map[string]string {
+	settingsResponseCache.mu.Lock()
+	defer settingsResponseCache.mu.Unlock()
+
+	if settingsResponseCache.payload != nil && time.Now().Before(settingsResponseCache.expiresAt) {
+		return cloneStringMap(settingsResponseCache.payload)
+	}
+
 	out := map[string]string{}
 	for _, k := range settingKeys {
 		switch k {
 		case "smtp_pass", "recaptcha_secret_key", "ipify_api_key":
 			out[k] = ""
-			continue
 		default:
 			out[k] = db.GetSetting(k, "")
 		}
@@ -448,7 +477,6 @@ func (h *Handlers) GetSettings(w http.ResponseWriter, r *http.Request) {
 	if out["ip_lookup_provider"] == "" {
 		out["ip_lookup_provider"] = "none"
 	}
-	// Fill env-based defaults for display
 	if out["secret_path"] == "" {
 		out["secret_path"] = h.cfg.SecretPath
 	}
@@ -457,7 +485,14 @@ func (h *Handlers) GetSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	out["secrets_key_path"] = h.cfg.SecretsKeyPath
 	out["last_master_key_rotation"] = db.GetSetting("last_master_key_rotation", "")
-	writeJSON(w, http.StatusOK, out)
+
+	settingsResponseCache.payload = cloneStringMap(out)
+	settingsResponseCache.expiresAt = time.Now().Add(settingsResponseCacheTTL)
+	return cloneStringMap(out)
+}
+
+func (h *Handlers) GetSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, buildSettingsResponse(h))
 }
 
 func (h *Handlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -541,6 +576,7 @@ func (h *Handlers) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			h.mailer.User = v
 		}
 	}
+	invalidateSettingsResponseCache()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -557,7 +593,7 @@ func (h *Handlers) GetProcesses(w http.ResponseWriter, r *http.Request) {
 			n = v
 		}
 	}
-	writeJSON(w, http.StatusOK, monitoring.TopProcesses(n))
+	writeJSON(w, http.StatusOK, h.collector.TopProcesses(n))
 }
 
 func (h *Handlers) GetNetworkProcesses(w http.ResponseWriter, r *http.Request) {
@@ -567,11 +603,11 @@ func (h *Handlers) GetNetworkProcesses(w http.ResponseWriter, r *http.Request) {
 			n = v
 		}
 	}
-	writeJSON(w, http.StatusOK, monitoring.TopNetworkProcesses(n))
+	writeJSON(w, http.StatusOK, h.collector.TopNetworkProcesses(n))
 }
 
 func (h *Handlers) GetSuspiciousProcesses(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, monitoring.DetectSuspiciousProcesses())
+	writeJSON(w, http.StatusOK, h.collector.SuspiciousProcesses())
 }
 
 func (h *Handlers) GetServices(w http.ResponseWriter, r *http.Request) {
@@ -813,11 +849,32 @@ func (hub *containerLogHub) removeClient(conn *websocket.Conn) {
 
 func (hub *containerLogHub) broadcast(msg containerLogMessage) {
 	hub.mu.Lock()
+	clients := make([]*websocket.Conn, 0, len(hub.clients))
 	for conn := range hub.clients {
+		clients = append(clients, conn)
+	}
+	hub.mu.Unlock()
+
+	dead := make([]*websocket.Conn, 0)
+	for _, conn := range clients {
 		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		if err := conn.WriteJSON(msg); err != nil {
 			_ = conn.Close()
-			delete(hub.clients, conn)
+			dead = append(dead, conn)
+		}
+	}
+	if len(dead) == 0 {
+		return
+	}
+	hub.mu.Lock()
+	for _, conn := range dead {
+		delete(hub.clients, conn)
+	}
+	if len(hub.clients) == 0 {
+		select {
+		case <-hub.stop:
+		default:
+			close(hub.stop)
 		}
 	}
 	hub.mu.Unlock()
@@ -974,7 +1031,7 @@ func (h *Handlers) runContainerLogsHub(hub *containerLogHub) {
 }
 
 func (h *Handlers) streamContainerLogs(ctx context.Context, hub *containerLogHub, reader io.ReadCloser) error {
-	in := make(chan dockerclient.DockerLogLine, 128)
+	in := make(chan dockerclient.DockerLogLine, 512)
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- dockerclient.StreamDockerLogLines(ctx, reader, in)

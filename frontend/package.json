@@ -12,7 +12,6 @@
     "generate:pwa-assets": "node scripts/generate-pwa-assets.js"
   },
   "dependencies": {
-    "apexcharts": "^5.10.6",
     "axios": "^1.16.0",
     "bootstrap": "^5.3.3",
     "core-js": "^3.49.0",
@@ -24,7 +23,6 @@
     "vue": "^3.5.13",
     "vue-router": "^4.5.1",
     "vue-sweetalert2": "^5.0.11",
-    "vue3-apexcharts": "^1.11.1",
     "vuedraggable": "^4.1.0",
     "vuex": "^4.1.0"
   },

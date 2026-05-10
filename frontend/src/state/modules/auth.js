@@ -1,3 +1,5 @@
+import api from '@/services/api'
+
 const state = () => ({
   user: (() => {
     try { return JSON.parse(sessionStorage.getItem('sc_user') || 'null') } catch { return null }
@@ -26,7 +28,6 @@ const mutations = {
 const actions = {
   async login({ commit }, { username, password }) {
     try {
-      const api = (await import('@/services/api')).default
       const { data } = await api.login(username, password)
 
       // Two-step login: backend returned 2FA challenge
@@ -45,7 +46,6 @@ const actions = {
 
   async verify2fa({ commit }, { pending_token, code }) {
     try {
-      const api = (await import('@/services/api')).default
       const { data } = await api.verify2fa(pending_token, code)
       const user = { username: data.username, role: data.role }
       commit('SET_USER', user)

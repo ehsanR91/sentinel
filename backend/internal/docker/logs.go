@@ -191,7 +191,7 @@ func extractTimestamp(line string) string {
 	return ""
 }
 
-func StreamDockerLogLines(ctx context.Context, reader io.ReadCloser, out chan<- DockerLogLine) error {
+func StreamDockerLogLines(ctx context.Context, reader io.ReadCloser, out chan DockerLogLine) error {
 	defer reader.Close()
 	buf := bufio.NewReader(reader)
 	for {
@@ -205,7 +205,7 @@ func StreamDockerLogLines(ctx context.Context, reader io.ReadCloser, out chan<- 
 			return err
 		}
 		if len(peek) >= 8 && (peek[0] == 0 || peek[0] == 1 || peek[0] == 2) && peek[1] == 0 && peek[2] == 0 && peek[3] == 0 {
-			if err := streamNextMultiplexedChunk(buf, out); err != nil {
+			if err := streamNextMultiplexedChunkWithContext(ctx, buf, out); err != nil {
 				return err
 			}
 			continue
@@ -213,7 +213,7 @@ func StreamDockerLogLines(ctx context.Context, reader io.ReadCloser, out chan<- 
 		line, err := buf.ReadString('\n')
 		if line != "" {
 			line = strings.TrimSuffix(line, "\n")
-			out <- DockerLogLine{Stream: "stdout", Timestamp: extractTimestamp(line), Text: line}
+			emitDockerLogLine(ctx, out, DockerLogLine{Stream: "stdout", Timestamp: extractTimestamp(line), Text: line})
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -224,7 +224,7 @@ func StreamDockerLogLines(ctx context.Context, reader io.ReadCloser, out chan<- 
 	}
 }
 
-func streamNextMultiplexedChunk(reader *bufio.Reader, out chan<- DockerLogLine) error {
+func streamNextMultiplexedChunkWithContext(ctx context.Context, reader *bufio.Reader, out chan DockerLogLine) error {
 	head := make([]byte, 8)
 	if _, err := io.ReadFull(reader, head); err != nil {
 		return err
@@ -247,7 +247,31 @@ func streamNextMultiplexedChunk(reader *bufio.Reader, out chan<- DockerLogLine) 
 		if line == "" {
 			continue
 		}
-		out <- DockerLogLine{Stream: stream, Timestamp: extractTimestamp(line), Text: line}
+		emitDockerLogLine(ctx, out, DockerLogLine{Stream: stream, Timestamp: extractTimestamp(line), Text: line})
 	}
 	return nil
+}
+
+func emitDockerLogLine(ctx context.Context, out chan DockerLogLine, line DockerLogLine) {
+	select {
+	case <-ctx.Done():
+		return
+	case out <- line:
+		return
+	default:
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-out:
+	default:
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	case out <- line:
+	default:
+	}
 }

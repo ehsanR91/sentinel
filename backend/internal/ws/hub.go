@@ -15,7 +15,7 @@ type Message struct {
 type Hub struct {
 	mu         sync.RWMutex
 	clients    map[*Client]bool
-	broadcast  chan Message
+	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
 }
@@ -23,7 +23,7 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
-		broadcast:  make(chan Message, 256),
+		broadcast:  make(chan []byte, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 	}
@@ -46,11 +46,7 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 
-		case msg := <-h.broadcast:
-			data, err := json.Marshal(msg)
-			if err != nil {
-				continue
-			}
+		case data := <-h.broadcast:
 			h.mu.RLock()
 			for c := range h.clients {
 				select {
@@ -71,7 +67,11 @@ func (h *Hub) Broadcast(msgType string, payload any) {
 	if err != nil {
 		return
 	}
-	h.broadcast <- Message{Type: msgType, Payload: raw}
+	data, err := json.Marshal(Message{Type: msgType, Payload: raw})
+	if err != nil {
+		return
+	}
+	h.broadcast <- data
 }
 
 // ClientCount returns the number of connected WebSocket clients.
