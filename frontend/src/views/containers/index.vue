@@ -30,10 +30,10 @@
     <!-- Summary cards -->
     <div class="row g-3 mb-4">
       <div class="col-xl-3 col-md-6">
-        <StatCard label="Running" :value="containers.filter(c=>c.status==='running').length" sub="containers" icon="mdi mdi-play-circle" icon-color="#22d67c" icon-bg="rgba(34,214,124,0.12)" />
+        <StatCard label="Running" :value="runningCount" sub="containers" icon="mdi mdi-play-circle" icon-color="#22d67c" icon-bg="rgba(34,214,124,0.12)" />
       </div>
       <div class="col-xl-3 col-md-6">
-        <StatCard label="Stopped" :value="containers.filter(c=>c.status!=='running').length" sub="containers" icon="mdi mdi-stop-circle" icon-color="#f04040" icon-bg="rgba(240,64,64,0.12)" />
+        <StatCard label="Stopped" :value="stoppedCount" sub="containers" icon="mdi mdi-stop-circle" icon-color="#f04040" icon-bg="rgba(240,64,64,0.12)" />
       </div>
       <div class="col-xl-3 col-md-6">
         <StatCard label="Images" :value="images.length" sub="total pulled" icon="mdi mdi-layers-outline" icon-color="#4a9eff" icon-bg="rgba(74,158,255,0.12)" />
@@ -98,9 +98,9 @@
                         <i class="mdi mdi-text-box-outline"></i>
                       </button>
                     </Tooltip>
-                    <template v-if="c.status === 'running' && parsePorts(c.ports).length">
+                    <template v-if="c.status === 'running' && c._ports.length">
                       <Tooltip
-                        v-for="port in parsePorts(c.ports)"
+                        v-for="port in c._ports"
                         :key="`grant-${c.id}-${port}`"
                         :label="`Grant access :${port}`"
                         :description="`Create a temporary UFW exception for your current IP on port ${port}.`"
@@ -246,10 +246,17 @@ export default {
   },
 
   computed: {
+    runningCount() {
+      return this.containers.filter(c => c.status === 'running').length
+    },
+    stoppedCount() {
+      return this.containers.filter(c => c.status !== 'running').length
+    },
     filteredContainers() {
-      if (!this.containerFilter) return this.containers
+      const base = this.containers.map(c => c._ports ? c : { ...c, _ports: this.parsePorts(c.ports) })
+      if (!this.containerFilter) return base
       const f = this.containerFilter.toLowerCase()
-      return this.containers.filter(c => c.name.toLowerCase().includes(f) || c.image.toLowerCase().includes(f))
+      return base.filter(c => c.name.toLowerCase().includes(f) || c.image.toLowerCase().includes(f))
     },
     minimizedLogs() {
       return this.containerLogs.filter(modal => modal.minimized)

@@ -1,8 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
-import VueSweetalert2 from 'vue-sweetalert2'
-import 'sweetalert2/dist/sweetalert2.min.css'
 import vClickOutside from 'v-click-outside'
 import 'nprogress/nprogress.css'
 import idleTimer from '@/plugins/idle-timer'
@@ -41,15 +39,37 @@ app.config.globalProperties.$promptInstall = promptInstall
 app.component('ScSelect', ScSelect)
 app.use(pinia)
 app.use(router)
-app.use(VueSweetalert2, {
+
+// Sweetalert2 is lazy-loaded on first call to keep it out of the initial bundle.
+// Handles both call patterns used in this codebase:
+//   this.$swal({ ... })          — direct call
+//   this.$swal.fire({ ... })     — method call
+//   this.$swal?.fire({ ... })    — optional chaining
+const swalOptions = {
   target: 'body',
   backdrop: true,
   heightAuto: false,
   allowOutsideClick: true,
-  customClass: {
-    popup: 'sc-swal-popup'
-  }
-})
+  customClass: { popup: 'sc-swal-popup' }
+}
+let _swal = null
+async function _getSwal () {
+  if (_swal) return _swal
+  const [{ default: Swal }] = await Promise.all([
+    import('sweetalert2'),
+    import('sweetalert2/dist/sweetalert2.min.css')
+  ])
+  _swal = Swal.mixin(swalOptions)
+  return _swal
+}
+// Callable function so this.$swal({...}) works
+const swalProxy = (...args) => _getSwal().then(s => s.fire(...args))
+// Attach named methods so this.$swal.fire({...}) and optional chaining work
+for (const m of ['fire', 'update', 'close', 'showLoading', 'hideLoading', 'isLoading', 'isVisible', 'getContainer', 'getPopup', 'getActions', 'getConfirmButton', 'getDenyButton', 'getCancelButton', 'getInput']) {
+  swalProxy[m] = (...args) => _getSwal().then(s => s[m](...args))
+}
+app.config.globalProperties.$swal = swalProxy
+
 app.use(vClickOutside)
 app.use(idleTimer)
 

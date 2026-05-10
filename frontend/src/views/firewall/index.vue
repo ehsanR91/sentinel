@@ -124,15 +124,15 @@
               </div>
               <div class="d-flex justify-content-between mb-2" style="font-size:0.8rem">
                 <span style="color:#8aa4c8">Allow rules</span>
-                <span style="color:#22d67c;font-weight:600">{{ rules.filter(r=>r.action.toUpperCase()==='ALLOW').length }}</span>
+                <span style="color:#22d67c;font-weight:600">{{ allowCount }}</span>
               </div>
               <div class="d-flex justify-content-between mb-2" style="font-size:0.8rem">
                 <span style="color:#8aa4c8">Deny rules</span>
-                <span style="color:#f04040;font-weight:600">{{ rules.filter(r=>r.action.toUpperCase()==='DENY').length }}</span>
+                <span style="color:#f04040;font-weight:600">{{ denyCount }}</span>
               </div>
               <div class="d-flex justify-content-between" style="font-size:0.8rem">
                 <span style="color:#8aa4c8">IPv6 rules</span>
-                <span style="color:#4a9eff;font-weight:600">{{ rules.filter(r=>r.from&&r.from.includes(':')).length }}</span>
+                <span style="color:#4a9eff;font-weight:600">{{ ipv6Count }}</span>
               </div>
             </div>
           </div>
@@ -301,6 +301,15 @@ export default {
         )
       }
       return r
+    },
+    allowCount() {
+      return this.rules.filter(r => r.action.toUpperCase() === 'ALLOW').length
+    },
+    denyCount() {
+      return this.rules.filter(r => r.action.toUpperCase() === 'DENY').length
+    },
+    ipv6Count() {
+      return this.rules.filter(r => r.from && r.from.includes(':')).length
     }
   },
 

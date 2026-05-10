@@ -8,7 +8,9 @@
       <div class="content-page">
         <RouterView v-slot="{ Component }">
           <Transition name="page" mode="out-in">
-            <component :is="Component" />
+            <KeepAlive :include="['DashboardPage', 'MonitoringPage', 'SecurityPage', 'FirewallPage']" :max="4">
+              <component :is="Component" />
+            </KeepAlive>
           </Transition>
         </RouterView>
       </div>

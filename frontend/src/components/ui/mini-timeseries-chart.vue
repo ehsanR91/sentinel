@@ -91,11 +91,15 @@ function rgba(color, alpha) {
 
 function formatAxisTime(value, isTimeScale) {
   if (!isTimeScale) return ''
-  return new Intl.DateTimeFormat([], {
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(new Date(value))
+  return _timeFormatter.format(new Date(value))
 }
+
+// Module-level cached formatter — constructing Intl.DateTimeFormat is
+// expensive (locale negotiation). Reuse a single instance for all charts.
+const _timeFormatter = new Intl.DateTimeFormat([], {
+  hour: '2-digit',
+  minute: '2-digit'
+})
 
 export default {
   name: 'MiniTimeseriesChart',

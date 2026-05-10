@@ -127,12 +127,24 @@ export const useMetricsStore = defineStore('metrics', {
   }),
 
   getters: {
+    // Named cached getters for the most-used 1h slices (dashboard).
+    // Pinia caches these until their reactive dependencies change,
+    // so sliceHistory() only runs once per tick regardless of how many
+    // components consume them — unlike the function-factory pattern below.
+    cpuSlice1h:   (state) => sliceHistory(state.cpuHistory,    state.metricTimestamps, '1h'),
+    ramSlice1h:   (state) => sliceHistory(state.ramHistory,    state.metricTimestamps, '1h'),
+    swapSlice1h:  (state) => sliceHistory(state.swapHistory,   state.metricTimestamps, '1h'),
+    diskSlice1h:  (state) => sliceHistory(state.diskHistory,   state.metricTimestamps, '1h'),
+    netRxSlice1h: (state) => sliceHistory(state.netRxHistory,  state.metricTimestamps, '1h'),
+    netTxSlice1h: (state) => sliceHistory(state.netTxHistory,  state.metricTimestamps, '1h'),
+
+    // Generic parameterised accessor kept for backward compat with other views.
     historySlice: (state) => (key, range) => {
       const histMap = {
-        cpu: state.cpuHistory,
-        ram: state.ramHistory,
-        swap: state.swapHistory,
-        disk: state.diskHistory,
+        cpu:   state.cpuHistory,
+        ram:   state.ramHistory,
+        swap:  state.swapHistory,
+        disk:  state.diskHistory,
         netRx: state.netRxHistory,
         netTx: state.netTxHistory
       }
@@ -143,7 +155,15 @@ export const useMetricsStore = defineStore('metrics', {
   actions: {
     applySnapshot (snap) {
       const sanitizedSnap = sanitizeSnap(snap)
-      this.snap = sanitizedSnap
+
+      // Assign individual fields that actually changed — avoids replacing the
+      // whole snap object reference and invalidating every snap-reading computed.
+      const s = this.snap
+      for (const key of Object.keys(sanitizedSnap)) {
+        if (s[key] !== sanitizedSnap[key]) {
+          s[key] = sanitizedSnap[key]
+        }
+      }
 
       const metricTs = (sanitizeNumber(sanitizedSnap.ts) || Math.floor(Date.now() / 1000)) * 1000
       const cpuPoint = clampPercent(sanitizedSnap.cpu_pct)

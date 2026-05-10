@@ -1106,18 +1106,18 @@ export default {
       ]
     },
     cpuTelemetrySeries() {
-      return [{ name: 'CPU', data: this.historySlice('cpu', '1h'), color: '#6ba8ff' }]
+      return [{ name: 'CPU', data: this.metricsStore.cpuSlice1h, color: '#6ba8ff' }]
     },
     memoryTelemetrySeries() {
       return [
-        { name: 'RAM', data: this.historySlice('ram', '1h'), color: '#7c3aed' },
-        { name: 'Swap', data: this.historySlice('swap', '1h'), color: '#f3b54a' }
+        { name: 'RAM',  data: this.metricsStore.ramSlice1h,  color: '#7c3aed' },
+        { name: 'Swap', data: this.metricsStore.swapSlice1h, color: '#f3b54a' }
       ]
     },
     networkTelemetrySeries() {
       return [
-        { name: 'Ingress', data: this.historySlice('netRx', '1h'), color: '#6ba8ff' },
-        { name: 'Egress', data: this.historySlice('netTx', '1h'), color: '#3ad38a' }
+        { name: 'Ingress', data: this.metricsStore.netRxSlice1h, color: '#6ba8ff' },
+        { name: 'Egress',  data: this.metricsStore.netTxSlice1h, color: '#3ad38a' }
       ]
     },
     cpuTelemetryThresholds() {
@@ -1229,163 +1229,195 @@ export default {
     hiddenSectionEntries() {
       return this.hiddenSections.map(id => this.sectionCatalog(id)).filter(Boolean)
     },
-    kpiCards() {
-      const counts = this.dockerInfo.containers_total ? `${this.dockerInfo.containers_running}/${this.dockerInfo.containers_total}` : '0/0'
-      const cpuDelta = deriveDelta(this.cpuHistory)
-      const memoryDelta = deriveDelta(this.ramHistory, { inverted: false })
-      const diskDelta = deriveDelta(this.diskHistory)
-      const networkCombined = this.netRxHistory.map((value, index) => Number(value || 0) + Number(this.netTxHistory[index] || 0))
-      const networkDelta = deriveDelta(networkCombined)
-      const bansDelta = deriveDelta(this.derivedHistory.activeBans, { inverted: true })
-      const loginDelta = deriveDelta(this.derivedHistory.failedLogins, { inverted: true })
-      const containerDelta = deriveDelta(this.derivedHistory.containersRunning)
 
+    // ── KPI cards split into individual computeds ──────────────────────────
+    // Each card only recomputes when ITS own reactive deps change.
+    // The old single kpiCards() god-computed ran deriveDelta×7 + compactSeries×9
+    // + fmtBytes×10+ on every 2-second WS tick because it depended on everything.
+    kpiCpu() {
+      const delta = deriveDelta(this.cpuHistory)
       return {
-        cpu: {
-          label: 'CPU Usage',
-          icon: 'mdi mdi-chip',
-          value: fmtPercent(this.snap.cpu_pct),
-          deltaLabel: cpuDelta.label,
-          deltaDirection: cpuDelta.direction,
-          deltaTone: cpuDelta.tone,
-          sparkline: compactSeries(this.cpuHistory),
-          contextLines: [
-            `Load ${Number(this.snap.load1 || 0).toFixed(2)} · ${Number(this.snap.load5 || 0).toFixed(2)} · ${Number(this.snap.load15 || 0).toFixed(2)}`,
-            `Updated ${this.formatRelativeFromNow(this.lastMetricTs * 1000)}`
-          ],
-          threshold: { value: Number(this.snap.cpu_pct || 0), warn: 70, crit: 90, max: 100 },
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: thresholdTone(Number(this.snap.cpu_pct || 0), 70, 90),
-          statusLabel: this.isMetricStale ? 'Stale' : ''
-        },
-        memory: {
-          label: 'Memory',
-          icon: 'mdi mdi-memory',
-          value: fmtPercent(this.snap.ram_pct),
-          deltaLabel: memoryDelta.label,
-          deltaDirection: memoryDelta.direction,
-          deltaTone: memoryDelta.tone,
-          sparkline: compactSeries(this.ramHistory),
-          sparklineSecondary: compactSeries(this.swapHistory),
-          contextLines: [
-            `${fmtBytes(this.snap.ram_used)} / ${fmtBytes(this.snap.ram_total)} · swap ${fmtPercent(this.snap.swap_pct)}`,
-            `${fmtBytes(this.snap.swap_used)} / ${fmtBytes(this.snap.swap_total)}`
-          ],
-          threshold: { value: Number(this.snap.ram_pct || 0), warn: 80, crit: 95, max: 100 },
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: thresholdTone(Number(this.snap.ram_pct || 0), 80, 95)
-        },
-        disk: {
-          label: 'Disk (Root)',
-          icon: 'mdi mdi-harddisk',
-          value: fmtPercent(this.snap.disk_pct),
-          deltaLabel: diskDelta.label,
-          deltaDirection: diskDelta.direction,
-          deltaTone: diskDelta.tone,
-          sparkline: compactSeries(this.diskHistory),
-          contextLines: [
-            `${fmtBytes(this.snap.disk_used)} / ${fmtBytes(this.snap.disk_total)}`,
-            `${fmtBytes(this.snap.disk_free)} free on /`
-          ],
-          threshold: { value: Number(this.snap.disk_pct || 0), warn: 80, crit: 95, max: 100 },
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: thresholdTone(Number(this.snap.disk_pct || 0), 80, 95)
-        },
-        network: {
-          label: 'Network I/O',
-          icon: 'mdi mdi-swap-vertical',
-          value: fmtRate(Number(this.snap.net_rx_rate || 0) + Number(this.snap.net_tx_rate || 0)),
-          deltaLabel: networkDelta.label,
-          deltaDirection: networkDelta.direction,
-          deltaTone: networkDelta.tone,
-          sparkline: compactSeries(this.netRxHistory),
-          sparklineSecondary: compactSeries(this.netTxHistory),
-          contextLines: [
-            `in ${this.formatRateValue(this.snap.net_rx_rate)} · out ${fmtRate(this.snap.net_tx_rate)}`,
-            `${fmtBytes(this.snap.net_rx_total)} rx · ${fmtBytes(this.snap.net_tx_total)} tx`
-          ],
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: '1m live',
-          tone: 'default',
-          sparkColor: 'var(--dashboard-spark-line-alt)'
-        },
-        bans: {
-          label: 'Active Bans',
-          icon: 'mdi mdi-shield-lock-outline',
-          value: this.secStats.activeBans,
-          deltaLabel: bansDelta.label,
-          deltaDirection: bansDelta.direction,
-          deltaTone: bansDelta.tone,
-          sparkline: compactSeries(this.derivedHistory.activeBans),
-          contextLines: [
-            'fail2ban + CrowdSec pressure',
-            `${this.secStats.ufwActive ? 'Firewall active' : 'Firewall inactive'}`
-          ],
-          threshold: { value: Number(this.secStats.activeBans || 0), warn: 5, crit: 10, max: 15 },
-          live: true,
-          stale: this.isAuxStale,
-          rangeLabel: '24h window',
-          tone: thresholdTone(Number(this.secStats.activeBans || 0), 5, 10)
-        },
-        logins24h: {
-          label: 'Failed Logins',
-          icon: 'mdi mdi-lock-alert-outline',
-          value: this.secStats.failedLogins,
-          deltaLabel: loginDelta.label,
-          deltaDirection: loginDelta.direction,
-          deltaTone: loginDelta.tone,
-          sparkline: compactSeries(this.derivedHistory.failedLogins),
-          contextLines: [
-            `Last attempt ${this.loginAttempts[0]?.ts ? this.formatRelativeFromNow(this.loginAttempts[0].ts * 1000) : 'unknown'}`,
-            '24h aggregate across all auth sources'
-          ],
-          threshold: { value: Number(this.secStats.failedLogins || 0), warn: 10, crit: 50, max: 60 },
-          live: true,
-          stale: this.isAuxStale,
-          rangeLabel: '24h window',
-          tone: thresholdTone(Number(this.secStats.failedLogins || 0), 10, 50)
-        },
-        containers: {
-          label: 'Containers',
-          icon: 'mdi mdi-docker',
-          value: counts,
-          deltaLabel: containerDelta.label,
-          deltaDirection: containerDelta.direction,
-          deltaTone: containerDelta.tone,
-          sparkline: compactSeries(this.derivedHistory.containersRunning),
-          contextLines: [
-            `${this.dockerInfo.containers_running || 0} running · ${this.dockerInfo.containers_total || 0} total`,
-            `Updates ${this.updates.count || 0} pending`
-          ],
-          live: true,
-          stale: this.isAuxStale,
-          rangeLabel: 'service poll',
-          tone: this.dockerInfo.containers_running < this.dockerInfo.containers_total ? 'warn' : 'ok'
-        },
-        uptime: {
-          label: 'Uptime',
-          icon: 'mdi mdi-timer-outline',
-          value: fmtUptime(this.snap.uptime),
-          deltaLabel: '— stable',
-          deltaDirection: 'neutral',
-          deltaTone: 'neutral',
-          sparkline: [],
-          contextLines: [
-            `Host ${this.snap.hostname || 'node'} · kernel ${this.snap.kernel || 'unknown'}`,
-            `Last sync ${this.formatRelativeFromNow(this.lastLoadedAt)}`
-          ],
-          live: this.wsConnected,
-          stale: this.isMetricStale,
-          rangeLabel: 'host lifetime',
-          tone: 'ok'
-        }
+        label: 'CPU Usage',
+        icon: 'mdi mdi-chip',
+        value: fmtPercent(this.snap.cpu_pct),
+        deltaLabel: delta.label,
+        deltaDirection: delta.direction,
+        deltaTone: delta.tone,
+        sparkline: compactSeries(this.cpuHistory),
+        contextLines: [
+          `Load ${Number(this.snap.load1 || 0).toFixed(2)} · ${Number(this.snap.load5 || 0).toFixed(2)} · ${Number(this.snap.load15 || 0).toFixed(2)}`,
+          `Updated ${this.formatRelativeFromNow(this.lastMetricTs * 1000)}`
+        ],
+        threshold: { value: Number(this.snap.cpu_pct || 0), warn: 70, crit: 90, max: 100 },
+        live: this.wsConnected,
+        stale: this.isMetricStale,
+        rangeLabel: '1m live',
+        tone: thresholdTone(Number(this.snap.cpu_pct || 0), 70, 90),
+        statusLabel: this.isMetricStale ? 'Stale' : ''
+      }
+    },
+    kpiMemory() {
+      const delta = deriveDelta(this.ramHistory, { inverted: false })
+      return {
+        label: 'Memory',
+        icon: 'mdi mdi-memory',
+        value: fmtPercent(this.snap.ram_pct),
+        deltaLabel: delta.label,
+        deltaDirection: delta.direction,
+        deltaTone: delta.tone,
+        sparkline: compactSeries(this.ramHistory),
+        sparklineSecondary: compactSeries(this.swapHistory),
+        contextLines: [
+          `${fmtBytes(this.snap.ram_used)} / ${fmtBytes(this.snap.ram_total)} · swap ${fmtPercent(this.snap.swap_pct)}`,
+          `${fmtBytes(this.snap.swap_used)} / ${fmtBytes(this.snap.swap_total)}`
+        ],
+        threshold: { value: Number(this.snap.ram_pct || 0), warn: 80, crit: 95, max: 100 },
+        live: this.wsConnected,
+        stale: this.isMetricStale,
+        rangeLabel: '1m live',
+        tone: thresholdTone(Number(this.snap.ram_pct || 0), 80, 95)
+      }
+    },
+    kpiDisk() {
+      const delta = deriveDelta(this.diskHistory)
+      return {
+        label: 'Disk (Root)',
+        icon: 'mdi mdi-harddisk',
+        value: fmtPercent(this.snap.disk_pct),
+        deltaLabel: delta.label,
+        deltaDirection: delta.direction,
+        deltaTone: delta.tone,
+        sparkline: compactSeries(this.diskHistory),
+        contextLines: [
+          `${fmtBytes(this.snap.disk_used)} / ${fmtBytes(this.snap.disk_total)}`,
+          `${fmtBytes(this.snap.disk_free)} free on /`
+        ],
+        threshold: { value: Number(this.snap.disk_pct || 0), warn: 80, crit: 95, max: 100 },
+        live: this.wsConnected,
+        stale: this.isMetricStale,
+        rangeLabel: '1m live',
+        tone: thresholdTone(Number(this.snap.disk_pct || 0), 80, 95)
+      }
+    },
+    kpiNetwork() {
+      const combined = this.netRxHistory.map((v, i) => Number(v || 0) + Number(this.netTxHistory[i] || 0))
+      const delta = deriveDelta(combined)
+      return {
+        label: 'Network I/O',
+        icon: 'mdi mdi-swap-vertical',
+        value: fmtRate(Number(this.snap.net_rx_rate || 0) + Number(this.snap.net_tx_rate || 0)),
+        deltaLabel: delta.label,
+        deltaDirection: delta.direction,
+        deltaTone: delta.tone,
+        sparkline: compactSeries(this.netRxHistory),
+        sparklineSecondary: compactSeries(this.netTxHistory),
+        contextLines: [
+          `in ${this.formatRateValue(this.snap.net_rx_rate)} · out ${fmtRate(this.snap.net_tx_rate)}`,
+          `${fmtBytes(this.snap.net_rx_total)} rx · ${fmtBytes(this.snap.net_tx_total)} tx`
+        ],
+        live: this.wsConnected,
+        stale: this.isMetricStale,
+        rangeLabel: '1m live',
+        tone: 'default',
+        sparkColor: 'var(--dashboard-spark-line-alt)'
+      }
+    },
+    kpiBans() {
+      const delta = deriveDelta(this.derivedHistory.activeBans, { inverted: true })
+      return {
+        label: 'Active Bans',
+        icon: 'mdi mdi-shield-lock-outline',
+        value: this.secStats.activeBans,
+        deltaLabel: delta.label,
+        deltaDirection: delta.direction,
+        deltaTone: delta.tone,
+        sparkline: compactSeries(this.derivedHistory.activeBans),
+        contextLines: [
+          'fail2ban + CrowdSec pressure',
+          `${this.secStats.ufwActive ? 'Firewall active' : 'Firewall inactive'}`
+        ],
+        threshold: { value: Number(this.secStats.activeBans || 0), warn: 5, crit: 10, max: 15 },
+        live: true,
+        stale: this.isAuxStale,
+        rangeLabel: '24h window',
+        tone: thresholdTone(Number(this.secStats.activeBans || 0), 5, 10)
+      }
+    },
+    kpiLogins24h() {
+      const delta = deriveDelta(this.derivedHistory.failedLogins, { inverted: true })
+      return {
+        label: 'Failed Logins',
+        icon: 'mdi mdi-lock-alert-outline',
+        value: this.secStats.failedLogins,
+        deltaLabel: delta.label,
+        deltaDirection: delta.direction,
+        deltaTone: delta.tone,
+        sparkline: compactSeries(this.derivedHistory.failedLogins),
+        contextLines: [
+          `Last attempt ${this.loginAttempts[0]?.ts ? this.formatRelativeFromNow(this.loginAttempts[0].ts * 1000) : 'unknown'}`,
+          '24h aggregate across all auth sources'
+        ],
+        threshold: { value: Number(this.secStats.failedLogins || 0), warn: 10, crit: 50, max: 60 },
+        live: true,
+        stale: this.isAuxStale,
+        rangeLabel: '24h window',
+        tone: thresholdTone(Number(this.secStats.failedLogins || 0), 10, 50)
+      }
+    },
+    kpiContainers() {
+      const counts = this.dockerInfo.containers_total
+        ? `${this.dockerInfo.containers_running}/${this.dockerInfo.containers_total}`
+        : '0/0'
+      const delta = deriveDelta(this.derivedHistory.containersRunning)
+      return {
+        label: 'Containers',
+        icon: 'mdi mdi-docker',
+        value: counts,
+        deltaLabel: delta.label,
+        deltaDirection: delta.direction,
+        deltaTone: delta.tone,
+        sparkline: compactSeries(this.derivedHistory.containersRunning),
+        contextLines: [
+          `${this.dockerInfo.containers_running || 0} running · ${this.dockerInfo.containers_total || 0} total`,
+          `Updates ${this.updates.count || 0} pending`
+        ],
+        live: true,
+        stale: this.isAuxStale,
+        rangeLabel: 'service poll',
+        tone: this.dockerInfo.containers_running < this.dockerInfo.containers_total ? 'warn' : 'ok'
+      }
+    },
+    kpiUptime() {
+      return {
+        label: 'Uptime',
+        icon: 'mdi mdi-timer-outline',
+        value: fmtUptime(this.snap.uptime),
+        deltaLabel: '— stable',
+        deltaDirection: 'neutral',
+        deltaTone: 'neutral',
+        sparkline: [],
+        contextLines: [
+          `Host ${this.snap.hostname || 'node'} · kernel ${this.snap.kernel || 'unknown'}`,
+          `Last sync ${this.formatRelativeFromNow(this.lastLoadedAt)}`
+        ],
+        live: this.wsConnected,
+        stale: this.isMetricStale,
+        rangeLabel: 'host lifetime',
+        tone: 'ok'
+      }
+    },
+    // Assembles individual cached KPI computeds — only re-evaluates when any
+    // card's identity changes (not on every tick like the old monolithic version).
+    kpiCards() {
+      return {
+        cpu:       this.kpiCpu,
+        memory:    this.kpiMemory,
+        disk:      this.kpiDisk,
+        network:   this.kpiNetwork,
+        bans:      this.kpiBans,
+        logins24h: this.kpiLogins24h,
+        containers: this.kpiContainers,
+        uptime:    this.kpiUptime
       }
     }
   },
