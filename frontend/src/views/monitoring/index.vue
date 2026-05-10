@@ -1,193 +1,213 @@
 <template>
   <div class="sc-view sc-view-monitoring">
-    <PageHeader title="Monitoring" icon="mdi mdi-chart-line" :items="[{text:'Monitoring',active:true,icon:'mdi mdi-chart-line'}]" />
+    <PageHeader title="Monitoring" icon="mdi mdi-chart-line" :items="[{text:'Monitoring',active:true,icon:'mdi mdi-chart-line'}]">
+      <template #actions>
+        <button class="wgt-reset-btn sc-focus-ring" title="Reset to default layout" @click="resetLayout">
+          <i class="mdi mdi-view-grid-outline"></i>
+          Reset Layout
+        </button>
+      </template>
+    </PageHeader>
 
-    <!-- ── Resource strip ───────────────────────────────────────────────────── -->
-    <div class="mon-gauge-strip">
-      <div class="mon-gauge-card">
-        <MiniRadialGauge :value="cpu" color="#4a9eff" :size="76" class="mon-gauge" />
-        <div class="mon-gauge-info">
-          <span class="mon-gauge-label">CPU</span>
-          <span class="mon-gauge-value" style="color:#4a9eff">{{ cpu }}%</span>
-          <span class="mon-gauge-sub">{{ cores }} cores · Load {{ loadAvg }}</span>
-        </div>
-      </div>
-      <div class="mon-gauge-card">
-        <MiniRadialGauge :value="ram" color="#a78bfa" :size="76" class="mon-gauge" />
-        <div class="mon-gauge-info">
-          <span class="mon-gauge-label">Memory</span>
-          <span class="mon-gauge-value" style="color:#a78bfa">{{ ram }}%</span>
-          <span class="mon-gauge-sub">{{ ramUsed }} / {{ ramTotal }}</span>
-        </div>
-      </div>
-      <div class="mon-gauge-card">
-        <MiniRadialGauge :value="disk" :color="disk>85 ? '#f04040' : disk>65 ? '#f5a623' : '#22d67c'" :size="76" class="mon-gauge" />
-        <div class="mon-gauge-info">
-          <span class="mon-gauge-label">Disk /</span>
-          <span class="mon-gauge-value" :style="`color:${disk>85?'#f04040':disk>65?'#f5a623':'#22d67c'}`">{{ disk }}%</span>
-          <span class="mon-gauge-sub">{{ diskUsed }} / {{ diskTotal }}</span>
-        </div>
-      </div>
-      <div class="mon-gauge-card">
-        <MiniRadialGauge :value="swap" color="#22d3ee" :size="76" class="mon-gauge" />
-        <div class="mon-gauge-info">
-          <span class="mon-gauge-label">Swap</span>
-          <span class="mon-gauge-value" style="color:#22d3ee">{{ swap }}%</span>
-          <span class="mon-gauge-sub">{{ swapUsed }} / {{ swapTotal }}</span>
-        </div>
-      </div>
-      <div class="mon-gauge-card mon-gauge-card--net">
-        <div class="mon-net-row">
-          <i class="mdi mdi-arrow-down" style="color:#22d67c"></i>
-          <span class="mon-net-val" style="color:#22d67c">{{ netRx }}</span>
-          <span class="mon-net-lbl">RX/s</span>
-        </div>
-        <div class="mon-net-row">
-          <i class="mdi mdi-arrow-up" style="color:#4a9eff"></i>
-          <span class="mon-net-val" style="color:#4a9eff">{{ netTx }}</span>
-          <span class="mon-net-lbl">TX/s</span>
-        </div>
-        <span class="mon-gauge-sub" style="margin-top:4px">Network</span>
-      </div>
-    </div>
+    <draggable
+      v-model="widgets"
+      item-key="id"
+      handle=".wgt-drag"
+      class="mon-widget-grid"
+      :animation="200"
+      ghost-class="wgt-ghost"
+      @end="saveLayout"
+    >
+      <template #item="{ element: w }">
+        <div class="wgt-card" :class="[`wgt-span-${w.span}`, { 'wgt-collapsed': w.collapsed }]">
 
-    <!-- ── Chart + Disk/Network grid ────────────────────────────────────────── -->
-    <div class="mon-main-grid">
-      <!-- Chart column (left, wider) -->
-      <div class="mon-chart-col">
-        <div class="card sc-panel-card mon-card">
-          <div class="mon-card-header">
-            <i class="mdi mdi-chart-areaspline" style="color:#4a9eff"></i>
-            CPU & Memory — Last 5 minutes
+          <!-- header -->
+          <div class="wgt-header">
+            <span class="wgt-drag" title="Drag to reorder"><i class="mdi mdi-drag-vertical"></i></span>
+            <i :class="`mdi ${w.icon} wgt-icon`" :style="`color:${w.iconColor}`"></i>
+            <span class="wgt-title">{{ w.title }}</span>
+            <span v-if="w.id === 'suspicious' && suspiciousProcs.length" class="mon-badge-danger">{{ suspiciousProcs.length }}</span>
+            <div class="wgt-actions">
+              <Tooltip :label="w.span===2?'Switch to half width':'Switch to full width'" placement="top" :delay="600" as-child>
+                <button class="wgt-btn" @click="toggleSpan(w)">
+                  <i :class="`mdi ${w.span===2?'mdi-arrow-collapse-horizontal':'mdi-arrow-expand-horizontal'}`"></i>
+                </button>
+              </Tooltip>
+              <Tooltip :label="w.collapsed?'Expand widget':'Collapse widget'" placement="top" :delay="600" as-child>
+                <button class="wgt-btn" @click="toggleCollapse(w)">
+                  <i :class="`mdi ${w.collapsed?'mdi-chevron-down':'mdi-chevron-up'}`"></i>
+                </button>
+              </Tooltip>
+            </div>
           </div>
-          <div class="mon-card-body mon-card-body--chart">
-            <MiniTimeseriesChart :height="180" :series="timelineSeries" :percent-scale="true" />
-          </div>
-        </div>
 
-        <!-- Disk partitions below chart -->
-        <div class="card sc-panel-card mon-card">
-          <div class="mon-card-header">
-            <i class="mdi mdi-harddisk" style="color:#f5a623"></i>
-            Disk Partitions
-          </div>
-          <div class="mon-card-body mon-card-body--scroll">
-            <div v-for="part in partitions" :key="part.mount" class="mon-disk-row">
-              <div class="mon-disk-row__top">
-                <button class="mon-mount-btn" @click="openDiskUsage(part)">{{ part.mount }}</button>
-                <span class="mon-disk-row__size">{{ part.used }} / {{ part.total }} ({{ part.pct }}%)</span>
+          <!-- body (collapse via max-height transition) -->
+          <div class="wgt-body">
+
+            <!-- ── resources ── -->
+            <template v-if="w.id === 'resources'">
+              <div class="wgt-gauge-row">
+                <div class="wgt-gauge-cell">
+                  <MiniRadialGauge :value="cpu" color="#4a9eff" :size="72" class="mon-gauge" />
+                  <div class="mon-gauge-info">
+                    <span class="mon-gauge-label">CPU</span>
+                    <span class="mon-gauge-value" style="color:#4a9eff">{{ cpu }}%</span>
+                    <span class="mon-gauge-sub">{{ cores }} cores · Load {{ loadAvg }}</span>
+                  </div>
+                </div>
+                <div class="wgt-gauge-cell">
+                  <MiniRadialGauge :value="ram" color="#a78bfa" :size="72" class="mon-gauge" />
+                  <div class="mon-gauge-info">
+                    <span class="mon-gauge-label">Memory</span>
+                    <span class="mon-gauge-value" style="color:#a78bfa">{{ ram }}%</span>
+                    <span class="mon-gauge-sub">{{ ramUsed }} / {{ ramTotal }}</span>
+                  </div>
+                </div>
+                <div class="wgt-gauge-cell">
+                  <MiniRadialGauge :value="disk" :color="disk>85?'#f04040':disk>65?'#f5a623':'#22d67c'" :size="72" class="mon-gauge" />
+                  <div class="mon-gauge-info">
+                    <span class="mon-gauge-label">Disk /</span>
+                    <span class="mon-gauge-value" :style="`color:${disk>85?'#f04040':disk>65?'#f5a623':'#22d67c'}`">{{ disk }}%</span>
+                    <span class="mon-gauge-sub">{{ diskUsed }} / {{ diskTotal }}</span>
+                  </div>
+                </div>
+                <div class="wgt-gauge-cell">
+                  <MiniRadialGauge :value="swap" color="#22d3ee" :size="72" class="mon-gauge" />
+                  <div class="mon-gauge-info">
+                    <span class="mon-gauge-label">Swap</span>
+                    <span class="mon-gauge-value" style="color:#22d3ee">{{ swap }}%</span>
+                    <span class="mon-gauge-sub">{{ swapUsed }} / {{ swapTotal }}</span>
+                  </div>
+                </div>
+                <div class="wgt-gauge-cell wgt-gauge-cell--net">
+                  <div class="mon-net-row">
+                    <i class="mdi mdi-arrow-down" style="color:#22d67c"></i>
+                    <span class="mon-net-val" style="color:#22d67c">{{ netRx }}</span>
+                    <span class="mon-net-lbl">RX/s</span>
+                  </div>
+                  <div class="mon-net-row">
+                    <i class="mdi mdi-arrow-up" style="color:#4a9eff"></i>
+                    <span class="mon-net-val" style="color:#4a9eff">{{ netTx }}</span>
+                    <span class="mon-net-lbl">TX/s</span>
+                  </div>
+                  <span class="mon-gauge-sub" style="margin-top:4px">Network I/O</span>
+                </div>
               </div>
-              <div class="mon-progress">
-                <div class="mon-progress__bar" :class="part.pct>85?'is-danger':part.pct>65?'is-warn':'is-ok'" :style="`width:${part.pct}%`"></div>
+            </template>
+
+            <!-- ── chart ── -->
+            <template v-else-if="w.id === 'chart'">
+              <div class="wgt-chart-body">
+                <MiniTimeseriesChart :height="180" :series="timelineSeries" :percent-scale="true" />
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
+            </template>
 
-      <!-- Right column: network + processes + suspicious -->
-      <div class="mon-side-col">
-        <!-- Network interfaces -->
-        <div class="card sc-panel-card mon-card">
-          <div class="mon-card-header">
-            <i class="mdi mdi-swap-vertical" style="color:#22d67c"></i>
-            Network Interfaces
-          </div>
-          <div class="mon-card-body p-0">
-            <table class="mon-table">
-              <thead>
-                <tr><th>Interface</th><th>RX</th><th>TX</th><th>RX Total</th><th>TX Total</th><th></th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="iface in interfaces" :key="iface.name">
-                  <td class="mon-mono">{{ iface.name }}</td>
-                  <td style="color:#22d67c">{{ iface.rx }}</td>
-                  <td style="color:#4a9eff">{{ iface.tx }}</td>
-                  <td class="mon-muted">{{ iface.rxTotal }}</td>
-                  <td class="mon-muted">{{ iface.txTotal }}</td>
-                  <td><span class="mon-dot" :class="iface.up ? 'is-up' : 'is-down'"></span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+            <!-- ── disk ── -->
+            <template v-else-if="w.id === 'disk'">
+              <div class="mon-scroll-body">
+                <div v-for="part in partitions" :key="part.mount" class="mon-disk-row">
+                  <div class="mon-disk-row__top">
+                    <button class="mon-mount-btn" @click="openDiskUsage(part)">{{ part.mount }}</button>
+                    <span class="mon-disk-row__size">{{ part.used }} / {{ part.total }} ({{ part.pct }}%)</span>
+                  </div>
+                  <div class="mon-progress">
+                    <div class="mon-progress__bar" :class="part.pct>85?'is-danger':part.pct>65?'is-warn':'is-ok'" :style="`width:${part.pct}%`"></div>
+                  </div>
+                </div>
+              </div>
+            </template>
 
-        <!-- Top Processes -->
-        <div class="card sc-panel-card mon-card">
-          <div class="mon-card-header">
-            <i class="mdi mdi-format-list-bulleted" style="color:#a78bfa"></i>
-            Top Processes
-            <input v-model="procFilter" class="mon-filter-input sc-focus-ring" placeholder="Filter…" />
-          </div>
-          <div class="mon-card-body p-0 mon-card-body--scroll">
-            <table class="mon-table">
-              <thead>
-                <tr>
-                  <th class="mon-sortable" @click="sortProcess('pid')">PID <i class="mdi" :class="sortIcon('pid')"></i></th>
-                  <th class="mon-sortable" @click="sortProcess('name')">Name <i class="mdi" :class="sortIcon('name')"></i></th>
-                  <th class="mon-sortable" @click="sortProcess('user')">User <i class="mdi" :class="sortIcon('user')"></i></th>
-                  <th class="mon-sortable" @click="sortProcess('cpu')">CPU% <i class="mdi" :class="sortIcon('cpu')"></i></th>
-                  <th class="mon-sortable" @click="sortProcess('mem')">MEM% <i class="mdi" :class="sortIcon('mem')"></i></th>
-                  <th class="mon-sortable" @click="sortProcess('rss')">RSS <i class="mdi" :class="sortIcon('rss')"></i></th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="p in sortedFilteredProcs" :key="p.pid">
-                  <td class="mon-mono mon-muted">{{ p.pid }}</td>
-                  <td class="mon-proc-name" @click="showProcessModal(p)">{{ p.name }}</td>
-                  <td class="mon-muted">{{ p.user }}</td>
-                  <td :style="`color:${p.cpu>50?'#f04040':p.cpu>20?'#f5a623':'#22d67c'}`">{{ p.cpu.toFixed(1) }}</td>
-                  <td class="mon-muted">{{ p.mem.toFixed(1) }}</td>
-                  <td class="mon-mono mon-muted">{{ p.rss }}</td>
-                  <td><span class="mon-status-badge">{{ p.status }}</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+            <!-- ── network ── -->
+            <template v-else-if="w.id === 'network'">
+              <table class="mon-table">
+                <thead>
+                  <tr><th>Interface</th><th>RX</th><th>TX</th><th>RX Total</th><th>TX Total</th><th></th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="iface in interfaces" :key="iface.name">
+                    <td class="mon-mono">{{ iface.name }}</td>
+                    <td style="color:#22d67c">{{ iface.rx }}</td>
+                    <td style="color:#4a9eff">{{ iface.tx }}</td>
+                    <td class="mon-muted">{{ iface.rxTotal }}</td>
+                    <td class="mon-muted">{{ iface.txTotal }}</td>
+                    <td><span class="mon-dot" :class="iface.up?'is-up':'is-down'"></span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
 
-        <!-- Suspicious Process Detection -->
-        <div class="card sc-panel-card mon-card">
-          <div class="mon-card-header">
-            <i class="mdi mdi-shield-alert-outline" style="color:#f04040"></i>
-            Suspicious Process Detection
-            <span v-if="suspiciousProcs.length" class="mon-badge-danger">{{ suspiciousProcs.length }} flagged</span>
-            <button class="mon-scan-btn sc-focus-ring" :disabled="loadingSuspicious" @click="loadSuspicious">
-              <i :class="`mdi ${loadingSuspicious ? 'mdi-loading mdi-spin' : 'mdi-refresh'}`"></i>
-              Scan
-            </button>
-          </div>
-          <div class="mon-card-body p-0">
-            <div v-if="loadingSuspicious" class="mon-empty">
-              <i class="mdi mdi-loading mdi-spin"></i> Scanning…
-            </div>
-            <div v-else-if="!suspiciousProcs.length" class="mon-empty mon-empty--ok">
-              <i class="mdi mdi-shield-check"></i> No suspicious processes detected
-            </div>
-            <table v-else class="mon-table">
-              <thead>
-                <tr><th>Risk</th><th>PID</th><th>Name</th><th>User</th><th>Reason</th><th>Command</th></tr>
-              </thead>
-              <tbody>
-                <tr v-for="p in suspiciousProcs" :key="p.pid">
-                  <td><span class="mon-risk-badge" :class="`is-${p.risk}`">{{ p.risk }}</span></td>
-                  <td class="mon-mono mon-muted">{{ p.pid }}</td>
-                  <td class="mon-bold">{{ p.name }}</td>
-                  <td class="mon-muted">{{ p.user }}</td>
-                  <td style="color:#f5a623">{{ p.reason }}</td>
-                  <td class="mon-mono mon-muted mon-cmd">
-                    <Tooltip :label="p.name" :description="p.cmd" variant="rich" as-child>
-                      <span>{{ p.cmd }}</span>
-                    </Tooltip>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <!-- ── processes ── -->
+            <template v-else-if="w.id === 'processes'">
+              <div class="wgt-filter-bar">
+                <input v-model="procFilter" class="mon-filter-input sc-focus-ring" placeholder="Filter processes…" />
+              </div>
+              <div class="mon-scroll-body">
+                <table class="mon-table">
+                  <thead>
+                    <tr>
+                      <th class="mon-sortable" @click="sortProcess('pid')">PID <i class="mdi" :class="sortIcon('pid')"></i></th>
+                      <th class="mon-sortable" @click="sortProcess('name')">Name <i class="mdi" :class="sortIcon('name')"></i></th>
+                      <th class="mon-sortable" @click="sortProcess('user')">User <i class="mdi" :class="sortIcon('user')"></i></th>
+                      <th class="mon-sortable" @click="sortProcess('cpu')">CPU% <i class="mdi" :class="sortIcon('cpu')"></i></th>
+                      <th class="mon-sortable" @click="sortProcess('mem')">MEM% <i class="mdi" :class="sortIcon('mem')"></i></th>
+                      <th class="mon-sortable" @click="sortProcess('rss')">RSS <i class="mdi" :class="sortIcon('rss')"></i></th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="p in sortedFilteredProcs" :key="p.pid">
+                      <td class="mon-mono mon-muted">{{ p.pid }}</td>
+                      <td class="mon-proc-name" @click="showProcessModal(p)">{{ p.name }}</td>
+                      <td class="mon-muted">{{ p.user }}</td>
+                      <td :style="`color:${p.cpu>50?'#f04040':p.cpu>20?'#f5a623':'#22d67c'}`">{{ p.cpu.toFixed(1) }}</td>
+                      <td class="mon-muted">{{ p.mem.toFixed(1) }}</td>
+                      <td class="mon-mono mon-muted">{{ p.rss }}</td>
+                      <td><span class="mon-status-badge">{{ p.status }}</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+
+            <!-- ── suspicious ── -->
+            <template v-else-if="w.id === 'suspicious'">
+              <div class="wgt-filter-bar">
+                <button class="mon-scan-btn sc-focus-ring" :disabled="loadingSuspicious" @click="loadSuspicious">
+                  <i :class="`mdi ${loadingSuspicious?'mdi-loading mdi-spin':'mdi-refresh'}`"></i>
+                  Scan now
+                </button>
+              </div>
+              <div v-if="loadingSuspicious" class="mon-empty"><i class="mdi mdi-loading mdi-spin"></i> Scanning…</div>
+              <div v-else-if="!suspiciousProcs.length" class="mon-empty mon-empty--ok">
+                <i class="mdi mdi-shield-check"></i> No suspicious processes detected
+              </div>
+              <div v-else class="mon-scroll-body">
+                <table class="mon-table">
+                  <thead>
+                    <tr><th>Risk</th><th>PID</th><th>Name</th><th>User</th><th>Reason</th><th>Command</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="p in suspiciousProcs" :key="p.pid">
+                      <td><span class="mon-risk-badge" :class="`is-${p.risk}`">{{ p.risk }}</span></td>
+                      <td class="mon-mono mon-muted">{{ p.pid }}</td>
+                      <td class="mon-bold">{{ p.name }}</td>
+                      <td class="mon-muted">{{ p.user }}</td>
+                      <td style="color:#f5a623">{{ p.reason }}</td>
+                      <td class="mon-mono mon-muted mon-cmd">
+                        <Tooltip :label="p.name" :description="p.cmd" variant="rich" as-child>
+                          <span>{{ p.cmd }}</span>
+                        </Tooltip>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+
           </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </draggable>
 
     <!-- Disk usage drilldown modal -->
     <div v-if="showDiskModal" class="sc-modal-overlay" @click.self="showDiskModal=false">
@@ -270,6 +290,16 @@ import Tooltip from '@/components/ui/tooltip.vue'
 import MiniRadialGauge from '@/components/ui/mini-radial-gauge.vue'
 import MiniTimeseriesChart from '@/components/ui/mini-timeseries-chart.vue'
 import api from '@/services/api'
+import draggable from 'vuedraggable'
+
+const DEFAULT_WIDGETS = [
+  { id: 'resources',  title: 'System Resources',      icon: 'mdi-gauge',                iconColor: '#4a9eff', collapsed: false, span: 2 },
+  { id: 'chart',      title: 'CPU & Memory Trend',    icon: 'mdi-chart-areaspline',     iconColor: '#4a9eff', collapsed: false, span: 2 },
+  { id: 'disk',       title: 'Disk Partitions',       icon: 'mdi-harddisk',             iconColor: '#f5a623', collapsed: false, span: 1 },
+  { id: 'network',    title: 'Network Interfaces',    icon: 'mdi-swap-vertical',        iconColor: '#22d67c', collapsed: false, span: 1 },
+  { id: 'processes',  title: 'Top Processes',         icon: 'mdi-format-list-bulleted', iconColor: '#a78bfa', collapsed: false, span: 2 },
+  { id: 'suspicious', title: 'Suspicious Processes',  icon: 'mdi-shield-alert-outline', iconColor: '#f04040', collapsed: false, span: 2 }
+]
 
 function fmtBytes (b) {
   if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB'
@@ -280,7 +310,7 @@ function fmtBytes (b) {
 
 export default {
   name: 'MonitoringPage',
-  components: { PageHeader, Tooltip, MiniRadialGauge, MiniTimeseriesChart },
+  components: { PageHeader, Tooltip, MiniRadialGauge, MiniTimeseriesChart, draggable },
   setup() {
     return {
       documentVisibility: useDocumentVisibility(),
@@ -290,6 +320,7 @@ export default {
 
   data() {
     return {
+      widgets: DEFAULT_WIDGETS.map(w => ({ ...w })),
       procFilter: '',
       procSortKey: 'cpu',
       procSortDir: 'desc',
@@ -407,6 +438,7 @@ export default {
   },
 
   async mounted() {
+    this.loadLayout()
     this.metricsStore.startLive()
     await this.metricsStore.fetchProcesses()
     await this.metricsStore.fetchServices()
@@ -521,13 +553,232 @@ export default {
     sortIcon(key) {
       if (this.procSortKey !== key) return 'mdi-sort'
       return this.procSortDir === 'asc' ? 'mdi-sort-ascending' : 'mdi-sort-descending'
+    },
+
+    toggleSpan(w) {
+      w.span = w.span === 2 ? 1 : 2
+      this.saveLayout()
+    },
+
+    toggleCollapse(w) {
+      w.collapsed = !w.collapsed
+      this.saveLayout()
+    },
+
+    saveLayout() {
+      try {
+        localStorage.setItem('mon-widget-layout', JSON.stringify(
+          this.widgets.map(w => ({ id: w.id, collapsed: w.collapsed, span: w.span }))
+        ))
+      } catch (_) {}
+    },
+
+    loadLayout() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('mon-widget-layout') || '[]')
+        if (!saved.length) return
+        const stateMap = Object.fromEntries(saved.map((s, i) => [s.id, { ...s, _order: i }]))
+        this.widgets = this.widgets
+          .sort((a, b) => {
+            const oa = stateMap[a.id]?._order ?? 99
+            const ob = stateMap[b.id]?._order ?? 99
+            return oa - ob
+          })
+          .map(w => {
+            const s = stateMap[w.id]
+            if (!s) return w
+            return { ...w, collapsed: s.collapsed ?? w.collapsed, span: s.span ?? w.span }
+          })
+      } catch (_) {}
+    },
+
+    resetLayout() {
+      try { localStorage.removeItem('mon-widget-layout') } catch (_) {}
+      this.widgets = DEFAULT_WIDGETS.map(w => ({ ...w }))
     }
   }
 }
 </script>
 
 <style scoped>
-/* ── Resource gauge strip ──────────────────────────────────────────── */
+/* ── Widget grid ─────────────────────────────────────────────────────── */
+.mon-widget-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+/* ── Widget card ─────────────────────────────────────────────────────── */
+.wgt-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.wgt-card:has(.wgt-drag:active) {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.wgt-span-1 { grid-column: span 1; }
+.wgt-span-2 { grid-column: span 2; }
+
+.wgt-ghost {
+  opacity: 0.2;
+  border: 2px dashed var(--accent, #4a9eff) !important;
+  background: transparent !important;
+}
+
+/* ── Widget header ───────────────────────────────────────────────────── */
+.wgt-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+  transition: border-color 0.25s;
+}
+
+.wgt-collapsed .wgt-header {
+  border-bottom-color: transparent;
+}
+
+.wgt-drag {
+  cursor: grab;
+  color: var(--text-tertiary);
+  font-size: 1.1rem;
+  padding: 1px 2px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.wgt-drag:hover  { color: var(--text-primary); background: var(--surface-3); }
+.wgt-drag:active { cursor: grabbing; }
+
+.wgt-icon {
+  font-size: 0.95rem;
+  flex-shrink: 0;
+}
+
+.wgt-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wgt-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.wgt-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wgt-btn:hover { background: var(--surface-3); color: var(--text-primary); }
+
+/* ── Widget body + collapse animation ────────────────────────────────── */
+.wgt-body {
+  overflow: hidden;
+  max-height: 2400px;
+  opacity: 1;
+  transition:
+    max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity    0.2s ease;
+}
+
+.wgt-collapsed .wgt-body {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Gauge row (resources widget) ────────────────────────────────────── */
+.wgt-gauge-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.wgt-gauge-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  flex: 1;
+  min-width: 160px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.wgt-gauge-cell:last-child { border-right: none; }
+
+.wgt-gauge-cell--net {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
+/* ── Chart body ──────────────────────────────────────────────────────── */
+.wgt-chart-body {
+  padding: 0.5rem 0.25rem 0.75rem;
+}
+
+/* ── Sub-header bars (filter, scan) ─────────────────────────────────── */
+.wgt-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+}
+
+/* ── Reset layout button (page header slot) ─────────────────────────── */
+.wgt-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.wgt-reset-btn:hover { background: var(--surface-3); color: var(--text-primary); }
+
+/* ── Scroll-limited widget content ──────────────────────────────────── */
+.mon-scroll-body {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* ── OLD gauge card (resource strip kept for gauge cell reuse) ───────── */
 .mon-gauge-strip {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -993,9 +1244,14 @@ export default {
   }
 }
 
-@media (max-width: 560px) {
-  .mon-gauge-strip {
-    grid-template-columns: 1fr 1fr;
-  }
+@media (max-width: 900px) {
+  .mon-widget-grid { grid-template-columns: 1fr; }
+  .wgt-span-1, .wgt-span-2 { grid-column: span 1; }
+}
+
+@media (max-width: 600px) {
+  .wgt-gauge-row { flex-direction: column; }
+  .wgt-gauge-cell { border-right: none; border-bottom: 1px solid var(--border-subtle); min-width: 0; }
+  .wgt-gauge-cell:last-child { border-bottom: none; }
 }
 </style>
