@@ -137,6 +137,9 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			opts.networkLimit = networkProcessSnapshotLimit
 		}
 	}
+	if opts.topLimit > 0 && !opts.includeNetwork && !opts.includeSuspicious {
+		return collectTopProcessSnapshotBundle(prev, now, opts.topLimit)
+	}
 
 	procs, err := goproc.Processes()
 	if err != nil {
@@ -171,7 +174,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			name = strconv.FormatInt(int64(p.Pid), 10)
 		}
 
-		sample, cpuPct, ok := sampleProcessCPU(statSample, p, prev, now, statErr == nil)
+		sample, cpuPct, ok := sampleProcessCPU(p.Pid, statSample, p, prev, now, statErr == nil)
 		if ok {
 			nextPrev[p.Pid] = sample
 		}
@@ -345,6 +348,97 @@ func appendProcessCPUSamples(dst, src map[int32]processCPUSample) map[int32]proc
 	return dst
 }
 
+func collectTopProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time, topLimit int) processSnapshotBundle {
+	if topLimit <= 0 || topLimit > processSnapshotLimit {
+		topLimit = processSnapshotLimit
+	}
+	pids, err := listProcPIDs()
+	if err != nil {
+		return processSnapshotBundle{top: []ProcessInfo{}, cpuPrev: map[int32]processCPUSample{}}
+	}
+
+	totalMem := uint64(0)
+	if vm, err := mem.VirtualMemory(); err == nil {
+		totalMem = vm.Total
+	}
+
+	nextPrev := make(map[int32]processCPUSample, len(pids))
+	topCandidates := make([]processCandidate, 0, len(pids))
+	for _, pid := range pids {
+		statSample, err := readProcStatSample(pid, now, false)
+		if err != nil {
+			continue
+		}
+		sample, cpuPct, ok := sampleProcessCPU(pid, statSample, nil, prev, now, true)
+		if ok {
+			nextPrev[pid] = sample
+		}
+		name := statSample.name
+		if name == "" {
+			name = strconv.FormatInt(int64(pid), 10)
+		}
+		topCandidates = append(topCandidates, processCandidate{
+			pid:    pid,
+			name:   name,
+			cpuPct: cpuPct,
+		})
+	}
+
+	if len(topCandidates) > 0 {
+		sort.Slice(topCandidates, func(i, j int) bool {
+			if topCandidates[i].cpuPct == topCandidates[j].cpuPct {
+				return topCandidates[i].pid < topCandidates[j].pid
+			}
+			return topCandidates[i].cpuPct > topCandidates[j].cpuPct
+		})
+	}
+	if len(topCandidates) > topLimit {
+		topCandidates = topCandidates[:topLimit]
+	}
+
+	userCache := map[uint32]string{}
+	detailCache := map[int32]processDetail{}
+	top := make([]ProcessInfo, 0, len(topCandidates))
+	for _, candidate := range topCandidates {
+		proc, _ := goproc.NewProcess(candidate.pid)
+		detail := loadProcessDetail(proc, totalMem, userCache, detailCache, false)
+		top = append(top, ProcessInfo{
+			PID:     candidate.pid,
+			Name:    candidate.name,
+			User:    detail.user,
+			CPUPct:  candidate.cpuPct,
+			MemPct:  detail.memPct,
+			MemRSS:  detail.memRSS,
+			Status:  detail.status,
+			Cmdline: "",
+		})
+	}
+
+	return processSnapshotBundle{
+		top:     top,
+		cpuPrev: nextPrev,
+	}
+}
+
+func listProcPIDs() ([]int32, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, err
+	}
+	pids := make([]int32, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid, err := strconv.ParseInt(entry.Name(), 10, 32)
+		if err != nil || pid <= 0 {
+			continue
+		}
+		pids = append(pids, int32(pid))
+	}
+	return pids, nil
+}
+
 func processUptimeSeconds(createTimeMs int64) int64 {
 	if createTimeMs <= 0 {
 		return 0
@@ -386,7 +480,7 @@ var suspiciousPatterns = []struct{ kw, reason, risk string }{
 	{"ruby -e", "Inline Ruby execution", "medium"},
 }
 
-func sampleProcessCPU(stat procStatSample, p *goproc.Process, prev map[int32]processCPUSample, now time.Time, hasStat bool) (processCPUSample, float64, bool) {
+func sampleProcessCPU(pid int32, stat procStatSample, p *goproc.Process, prev map[int32]processCPUSample, now time.Time, hasStat bool) (processCPUSample, float64, bool) {
 	total := stat.totalCPUSeconds
 	if !hasStat {
 		times, err := p.Times()
@@ -396,7 +490,7 @@ func sampleProcessCPU(stat procStatSample, p *goproc.Process, prev map[int32]pro
 		total = times.User + times.System
 	}
 	sample := processCPUSample{total: total, seenAt: now}
-	last, ok := prev[p.Pid]
+	last, ok := prev[pid]
 	if !ok || last.seenAt.IsZero() || total < last.total {
 		return sample, 0, true
 	}
