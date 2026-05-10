@@ -35,9 +35,15 @@
 
 <script>
 import api from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 
 export default {
   name: 'AlertFeed',
+  setup() {
+    return {
+      authStore: useAuthStore()
+    }
+  },
   props: {
     compact: { type: Boolean, default: false }
   },
@@ -54,7 +60,7 @@ export default {
 
   methods: {
     async loadAlerts() {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       this.loading = true
       try {
         const { data } = await api.getAlerts()

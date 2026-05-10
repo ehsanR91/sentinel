@@ -1,6 +1,7 @@
 import axios from 'axios'
-import store from '@/state/store'
 import router from '@/router/index'
+import { pinia } from '@/stores'
+import { useAuthStore } from '@/stores/auth'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -52,16 +53,9 @@ api.interceptors.response.use(
     if (status === 401) {
       // Only redirect if not already on the login page to prevent infinite reload loops
       if (!window.location.pathname.startsWith('/login')) {
-        store.dispatch('auth/logout')
+        useAuthStore(pinia).logout()
         router.push('/login')
       }
-    } else if (status === 403) {
-      // Set Vuex notification for permission denied
-      store.commit('notifications/ADD', {
-        type: 'error',
-        message: 'Permission denied',
-        timeout: 5000
-      })
     }
     
     return Promise.reject(err)

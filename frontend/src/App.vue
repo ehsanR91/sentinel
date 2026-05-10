@@ -72,6 +72,8 @@
 <script>
 import CommandPalette from '@/components/command-palette.vue'
 import api from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
+import { useLockStore } from '@/stores/lock'
 import { useMetricsStore } from '@/stores/metrics'
 import TooltipProvider from '@/components/ui/tooltip-provider.vue'
 
@@ -80,6 +82,8 @@ export default {
   components: { CommandPalette, TooltipProvider },
   setup() {
     return {
+      authStore: useAuthStore(),
+      lockStore: useLockStore(),
       metricsStore: useMetricsStore()
     }
   },
@@ -104,7 +108,7 @@ export default {
       return this.username.slice(0, 2).toUpperCase()
     },
     authToken() {
-      return this.$store.state.auth?.token || null
+      return this.authStore.user?.username || null
     }
   },
   watch: {
@@ -134,7 +138,7 @@ export default {
   },
   mounted() {
     // Start WebSocket service globally when authenticated
-    if (this.$store.getters['auth/loggedIn']) {
+    if (this.authStore.loggedIn) {
       this.metricsStore.startLive()
       this.loadLockSettings()
     }
@@ -176,12 +180,12 @@ export default {
       sessionStorage.removeItem('sc_preload_dashboard')
     },
     async loadLockSettings() {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       try {
         const { data } = await api.getLockSettings()
         this.lockEnabled = data.enabled || false
         this.lockPinSet = data.pinSet || false
-        this.$store.dispatch('lock/setLockState', {
+        this.lockStore.setLockState({
           enabled: this.lockEnabled,
           pinSet: this.lockPinSet
         })

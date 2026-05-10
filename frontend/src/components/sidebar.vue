@@ -498,6 +498,8 @@
 
 <script>
 import { useDocumentVisibility } from '@vueuse/core'
+import { useAuthStore } from '@/stores/auth'
+import { useLayoutStore } from '@/stores/layout'
 import { useMetricsStore } from '@/stores/metrics'
 import api from '@/services/api'
 import appConfig from '@/app.config.json'
@@ -557,7 +559,9 @@ export default {
   name: 'Sidebar',
   setup() {
     return {
+      authStore: useAuthStore(),
       documentVisibility: useDocumentVisibility(),
+      layoutStore: useLayoutStore(),
       metricsStore: useMetricsStore()
     }
   },
@@ -627,19 +631,19 @@ export default {
       return this.metricsStore.snap || {}
     },
     sidebarDensity() {
-      return this.$store.state.layout.sidebarDensity
+      return this.layoutStore.sidebarDensity
     },
     sidebarPosition() {
-      return this.$store.state.layout.sidebarPosition
+      return this.layoutStore.sidebarPosition
     },
     sidebarHidden() {
-      return this.$store.state.layout.sidebarHidden
+      return this.layoutStore.sidebarHidden
     },
     sidebarOpen() {
-      return this.$store.state.layout.sidebarOpen
+      return this.layoutStore.sidebarOpen
     },
     storedCollapsed() {
-      return this.$store.state.layout.sidebarCollapsed
+      return this.layoutStore.sidebarCollapsed
     },
     isMobileViewport() {
       return this.viewportWidth < 768
@@ -804,7 +808,7 @@ export default {
     handleResize() {
       this.viewportWidth = window.innerWidth
       if (!this.isMobileViewport) {
-        this.$store.commit('layout/CLOSE_SIDEBAR')
+        this.layoutStore.closeSidebar()
       }
       this.hideTooltip()
     },
@@ -853,7 +857,7 @@ export default {
       const closedVelocity = velocity > 0.4 && (isRight ? dx > 0 : dx < 0)
 
       if (closedDx || closedVelocity) {
-        this.$store.commit('layout/CLOSE_SIDEBAR')
+        this.layoutStore.closeSidebar()
       }
 
       this.touchStartX = 0
@@ -927,18 +931,18 @@ export default {
       this.markSidebarNavigationIntent(path)
       this.closeContextMenus()
       if (this.isMobileViewport) {
-        this.$store.commit('layout/CLOSE_SIDEBAR')
+        this.layoutStore.closeSidebar()
       }
     },
     toggleCollapse() {
-      this.$store.commit('layout/TOGGLE_COLLAPSED')
+      this.layoutStore.toggleCollapsed()
       this.hideTooltip()
     },
     setSidebarDensity(value) {
-      this.$store.commit('layout/SET_SIDEBAR_DENSITY', value)
+      this.layoutStore.setSidebarDensity(value)
     },
     setSidebarPosition(value) {
-      this.$store.commit('layout/SET_SIDEBAR_POSITION', value)
+      this.layoutStore.setSidebarPosition(value)
     },
     toggleSection(sectionId) {
       this.sectionState = {
@@ -1139,7 +1143,7 @@ export default {
       this.tooltip = { item: null, x: 0, y: 0 }
     },
     async fetchBadgeCounts() {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       try {
         const [alertsCountRes, securityRes] = await Promise.all([
           api.getAlertCount(),
@@ -1278,7 +1282,7 @@ export default {
       } catch {
         // Ignore logout transport errors.
       }
-      this.$store.dispatch('auth/logout')
+      this.authStore.logout()
       this.$router.push('/login')
     },
     onGlobalKeyDown(event) {
@@ -1291,17 +1295,17 @@ export default {
       const isTypingTarget = ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target?.tagName) || event.target?.isContentEditable
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
         event.preventDefault()
-        this.$store.commit('layout/TOGGLE_VISIBILITY')
+        this.layoutStore.toggleVisibility()
         return
       }
       if (event.key === '[' && !isTypingTarget) {
         event.preventDefault()
-        this.$store.commit('layout/SET_COLLAPSED', true)
+        this.layoutStore.setCollapsed(true)
         return
       }
       if (event.key === ']' && !isTypingTarget) {
         event.preventDefault()
-        this.$store.commit('layout/SET_COLLAPSED', false)
+        this.layoutStore.setCollapsed(false)
         return
       }
       if (event.key === '/' && !isTypingTarget) {

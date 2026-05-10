@@ -615,6 +615,9 @@
 <script>
 import api from '@/services/api'
 import { pwaState, promptInstall, reloadApp } from '@/plugins/pwa'
+import { useAuthStore } from '@/stores/auth'
+import { useLayoutStore } from '@/stores/layout'
+import { useLockStore } from '@/stores/lock'
 import { useMetricsStore } from '@/stores/metrics'
 import Popover from '@/components/ui/popover.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
@@ -668,6 +671,9 @@ export default {
   name: 'Topbar',
   setup() {
     return {
+      authStore: useAuthStore(),
+      layoutStore: useLayoutStore(),
+      lockStore: useLockStore(),
       metricsStore: useMetricsStore()
     }
   },
@@ -740,10 +746,10 @@ export default {
       return map[this.presence?.status] || this.presence?.status || ''
     },
     sidebarCollapsed() {
-      return this.$store.state.layout.sidebarCollapsed
+      return this.layoutStore.sidebarCollapsed
     },
     sidebarDensity() {
-      return this.$store.state.layout.sidebarDensity
+      return this.layoutStore.sidebarDensity
     },
     wsConnected() {
       return this.metricsStore.wsConnected
@@ -755,10 +761,10 @@ export default {
       return this.metricsStore.snap || {}
     },
     currentThemePref() {
-      return this.$store.state.layout.theme
+      return this.layoutStore.theme
     },
     currentUser() {
-      return this.$store.getters['auth/user'] || safeParse(sessionStorage.getItem('sc_user'), {})
+      return this.authStore.user || safeParse(sessionStorage.getItem('sc_user'), {})
     },
     loginAt() {
       return Number(this.currentUser?.loginAt || 0)
@@ -779,7 +785,7 @@ export default {
       return this.$route.meta?.title || 'SentinelCore'
     },
     lockPinSet() {
-      return this.$store.getters['lock/lockPinSet']
+      return this.lockStore.lockPinSet
     },
     installAvailable() {
       return pwaState.isSupported && pwaState.installRequested && !pwaState.installed && !pwaState.isStandalone && !pwaState.isIos
@@ -1052,7 +1058,7 @@ export default {
     summarizeAlert,
     noop() {},
     toggleCollapse() {
-      this.$store.commit('layout/TOGGLE_COLLAPSED')
+      this.layoutStore.toggleCollapsed()
     },
     setPopoverState(name, value) {
       this.openPopover = value ? name : (this.openPopover === name ? '' : this.openPopover)
@@ -1131,10 +1137,10 @@ export default {
       }
     },
     applyTheme(value) {
-      this.$store.commit('layout/SET_THEME', value)
+      this.layoutStore.setTheme(value)
     },
     applyDensity(value) {
-      this.$store.commit('layout/SET_SIDEBAR_DENSITY', value)
+      this.layoutStore.setSidebarDensity(value)
     },
     applyPresence(value) {
       this.presence.status = value
@@ -1287,7 +1293,7 @@ export default {
       return muted.includes(rule) || Number(snoozed[rule] || 0) > Date.now()
     },
     async syncAlerts(forceOpenLoad = false) {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       this.loadingAlerts = forceOpenLoad
       this.alertError = ''
       try {
@@ -1441,14 +1447,14 @@ export default {
         // Ignore transport failures during logout.
       }
       this.authChannel?.postMessage({ type: 'signout' })
-      this.$store.dispatch('auth/logout')
+      this.authStore.logout()
       this.openPopover = ''
       this.$router.push('/login')
     },
     onAuthChannelMessage(event) {
       if (event.data?.type === 'signout') {
         this.openPopover = ''
-        this.$store.dispatch('auth/logout')
+        this.authStore.logout()
         this.$router.push('/login')
       }
     },

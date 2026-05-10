@@ -86,6 +86,7 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
 import PageHeader from '@/components/page-header.vue'
 import api from '@/services/api'
 
@@ -98,6 +99,11 @@ const TOOL_ICONS = {
 
 export default {
   name: 'SecurityToolsPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility()
+    }
+  },
   components: { PageHeader },
   data() {
     return {
@@ -113,6 +119,16 @@ export default {
   },
   beforeUnmount() {
     this.stopPolling()
+  },
+  watch: {
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.loadTools()
+        if (this.showLogsModal && this.activeTool) {
+          this.pollLogsOnce()
+        }
+      }
+    }
   },
   methods: {
     toolIcon(name) {
@@ -165,7 +181,10 @@ export default {
       await this.pollLogsOnce()
       await this.loadTools()
       this.stopPolling()
-      this.pollTimer = setInterval(() => this.pollLogsOnce(), 2000)
+      this.pollTimer = setInterval(() => {
+        if (this.documentVisibility !== 'visible') return
+        this.pollLogsOnce()
+      }, 2000)
     },
     async openLogs(tool) {
       this.activeTool = tool
@@ -174,7 +193,10 @@ export default {
       await this.pollLogsOnce()
       this.stopPolling()
       if (this.activeLogs.running) {
-        this.pollTimer = setInterval(() => this.pollLogsOnce(), 2000)
+        this.pollTimer = setInterval(() => {
+          if (this.documentVisibility !== 'visible') return
+          this.pollLogsOnce()
+        }, 2000)
       }
     },
     closeLogsModal() {

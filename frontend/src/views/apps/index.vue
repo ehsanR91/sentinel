@@ -374,6 +374,7 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
 import PageHeader from '@/components/page-header.vue'
 import StatCard from '@/components/widgets/stat-card.vue'
 import AppButton from '@/components/ui/app-button.vue'
@@ -423,6 +424,11 @@ const METHOD_LABELS = {
 
 export default {
   name: 'AppsPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility()
+    }
+  },
   components: {
     PageHeader,
     StatCard,
@@ -535,6 +541,14 @@ export default {
     }
   },
   watch: {
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.loadApps()
+        if (this.opRunning) {
+          this.pollLogs()
+        }
+      }
+    },
     searchQuery () {
       clearTimeout(this.searchTimer)
       this.searchTimer = setTimeout(() => {
@@ -781,7 +795,10 @@ export default {
     },
     startPolling () {
       this.stopPolling()
-      this.pollTimer = window.setInterval(() => this.pollLogs(), 1500)
+      this.pollTimer = window.setInterval(() => {
+        if (this.documentVisibility !== 'visible') return
+        this.pollLogs()
+      }, 1500)
     },
     stopPolling () {
       if (this.pollTimer) {

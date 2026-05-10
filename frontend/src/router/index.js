@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import routes from './routes'
 import NProgress from 'nprogress'
-import store from '@/state/store'
+import { pinia } from '@/stores'
+import { getStoredUser, useAuthStore } from '@/stores/auth'
 
 NProgress.configure({ showSpinner: false, trickleSpeed: 200 })
 
@@ -15,9 +16,8 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   NProgress.start()
-  const user = store.getters['auth/user'] || (() => {
-    try { return JSON.parse(sessionStorage.getItem('sc_user') || 'null') } catch { return null }
-  })()
+  const authStore = useAuthStore(pinia)
+  const user = authStore.user || getStoredUser()
   const requiresAuth = to.matched.some(r => r.meta.requiresAuth !== false)
   const requiredRoles = to.matched
     .map(r => r.meta?.roles)

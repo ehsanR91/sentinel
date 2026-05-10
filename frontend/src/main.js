@@ -1,8 +1,6 @@
 import { createApp } from 'vue'
-import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
-import store from './state/store'
 import VueSweetalert2 from 'vue-sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 import vClickOutside from 'v-click-outside'
@@ -10,6 +8,7 @@ import 'nprogress/nprogress.css'
 import idleTimer from '@/plugins/idle-timer'
 import api from '@/services/api'
 import { pwaState, promptInstall } from '@/plugins/pwa'
+import { pinia } from '@/stores'
 import '@/utils/console-guard'
 
 import '@/design/index.scss'
@@ -34,7 +33,6 @@ const resolved = savedTheme === 'system'
 document.documentElement.setAttribute('data-theme', resolved)
 
 const app = createApp(App)
-const pinia = createPinia()
 
 app.config.globalProperties.$isOnline = () => window.__sc_is_online__
 app.config.globalProperties.$pwaState = pwaState
@@ -43,7 +41,6 @@ app.config.globalProperties.$promptInstall = promptInstall
 app.component('ScSelect', ScSelect)
 app.use(pinia)
 app.use(router)
-app.use(store)
 app.use(VueSweetalert2, {
   target: 'body',
   backdrop: true,

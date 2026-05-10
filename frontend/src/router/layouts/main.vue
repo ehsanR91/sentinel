@@ -21,9 +21,15 @@
 import Sidebar from '@/components/sidebar.vue'
 import Topbar  from '@/components/topbar.vue'
 import Footer  from '@/components/footer.vue'
+import { useLayoutStore } from '@/stores/layout'
 
 export default {
   name: 'MainLayout',
+  setup() {
+    return {
+      layoutStore: useLayoutStore()
+    }
+  },
   components: { Sidebar, Topbar, Footer },
   data() {
     return {
@@ -32,16 +38,16 @@ export default {
   },
   computed: {
     sidebarCollapsed() {
-      return this.$store.state.layout.sidebarCollapsed
+      return this.layoutStore.sidebarCollapsed
     },
     sidebarHidden() {
-      return this.$store.state.layout.sidebarHidden
+      return this.layoutStore.sidebarHidden
     },
     sidebarOpen() {
-      return this.$store.state.layout.sidebarOpen
+      return this.layoutStore.sidebarOpen
     },
     sidebarPosition() {
-      return this.$store.state.layout.sidebarPosition
+      return this.layoutStore.sidebarPosition
     },
     isMobileViewport() {
       return this.viewportWidth < 768
@@ -83,10 +89,10 @@ export default {
       }
     },
     toggleSidebar() {
-      this.$store.commit('layout/TOGGLE_SIDEBAR')
+      this.layoutStore.toggleSidebar()
     },
     closeSidebar() {
-      this.$store.commit('layout/CLOSE_SIDEBAR')
+      this.layoutStore.closeSidebar()
     }
   }
 }

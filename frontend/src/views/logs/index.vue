@@ -133,6 +133,7 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
 import PageHeader from '@/components/page-header.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
 import api from '@/services/api'
@@ -141,6 +142,11 @@ const PAGE_SIZE = 100
 
 export default {
   name: 'LogsPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility()
+    }
+  },
   components: { PageHeader, Tooltip },
   data() {
     return {
@@ -183,7 +189,6 @@ export default {
     totalPages() {
       return Math.max(1, Math.ceil(this.filteredLogs.length / PAGE_SIZE))
     },
-
     paginatedLogs() {
       const start = (this.currentPage - 1) * PAGE_SIZE
       return this.filteredLogs.slice(start, start + PAGE_SIZE)
@@ -191,6 +196,11 @@ export default {
   },
 
   watch: {
+    documentVisibility(value) {
+      if (value === 'visible' && this.streaming) {
+        this.loadLogs({ quiet: true })
+      }
+    },
     source() { this.currentPage = 1; this.loadLogs() },
     lines()  { this.currentPage = 1; this.loadLogs() },
     filteredLogs() {
@@ -260,7 +270,10 @@ export default {
 
     startPolling() {
       this.stopPolling()
-      this.streamTimer = setInterval(() => this.loadLogs({ quiet: true }), this.autoRefreshSec * 1000)
+      this.streamTimer = setInterval(() => {
+        if (this.documentVisibility !== 'visible') return
+        this.loadLogs({ quiet: true })
+      }, this.autoRefreshSec * 1000)
     },
     restartPolling() {
       if (this.streaming) this.startPolling()

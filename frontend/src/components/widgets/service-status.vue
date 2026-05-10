@@ -46,6 +46,7 @@
 import Tooltip from '@/components/ui/tooltip.vue'
 import config from '@/app.config.json'
 import api from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 
 const ICONS = {
   'ufw':           'mdi mdi-wall',
@@ -93,6 +94,11 @@ function mapService(svc) {
 
 export default {
   name: 'ServiceStatus',
+  setup() {
+    return {
+      authStore: useAuthStore()
+    }
+  },
   components: { Tooltip },
   props: {
     compact: { type: Boolean, default: false }
@@ -127,7 +133,7 @@ export default {
 
   methods: {
     async loadServices() {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       // Show shimmer only on the very first load (no data yet)
       if (this.services.length === 0) this.loading = true
       try {

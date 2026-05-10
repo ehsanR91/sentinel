@@ -113,6 +113,15 @@ export default defineConfig({
           if (id.includes('sweetalert2')) {
             return 'sweetalert'
           }
+          if (id.includes('/vue/') || id.includes('vue-router') || id.includes('pinia') || id.includes('@vueuse')) {
+            return 'vue-core'
+          }
+          if (id.includes('bootstrap') || id.includes('reka-ui') || id.includes('vuedraggable')) {
+            return 'ui-kit'
+          }
+          if (id.includes('qrcode')) {
+            return 'qrcode'
+          }
         }
       }
     }

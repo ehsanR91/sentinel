@@ -255,12 +255,18 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
 import PageHeader from '@/components/page-header.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
 import api from '@/services/api'
 
 export default {
   name: 'FirewallPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility()
+    }
+  },
   components: { PageHeader, Tooltip },
   data() {
   return {
@@ -300,7 +306,17 @@ export default {
 
   mounted() {
     this.loadRules(true)
-    this.connTimer = setInterval(() => this.loadRules(false), 15000)
+    this.connTimer = setInterval(() => {
+      if (this.documentVisibility !== 'visible') return
+      this.loadRules(false)
+    }, 15000)
+  },
+  watch: {
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.loadRules(false)
+      }
+    }
   },
   
   beforeUnmount() {

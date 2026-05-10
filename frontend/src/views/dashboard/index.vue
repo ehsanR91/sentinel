@@ -615,6 +615,7 @@
 
 <script>
 import { useDocumentVisibility } from '@vueuse/core'
+import { useAuthStore } from '@/stores/auth'
 import { useMetricsStore } from '@/stores/metrics'
 import PageHeader from '@/components/page-header.vue'
 import AppButton from '@/components/ui/app-button.vue'
@@ -870,6 +871,7 @@ export default {
   name: 'DashboardPage',
   setup() {
     return {
+      authStore: useAuthStore(),
       documentVisibility: useDocumentVisibility(),
       metricsStore: useMetricsStore()
     }
@@ -1604,7 +1606,7 @@ export default {
     },
     async loadDashboardState() {
       const fallback = normalizeDashboardState(safeLocalState())
-      if (!this.$store.getters['auth/loggedIn']) {
+      if (!this.authStore.loggedIn) {
         Object.assign(this, fallback)
         return
       }
@@ -1626,7 +1628,7 @@ export default {
       }, 250)
     },
     async saveDashboardState(payload) {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       try {
         await api.saveDashboardLayout(payload)
       } catch {
@@ -1651,7 +1653,7 @@ export default {
       }, this.auxRefreshSec * 1000)
     },
     async loadAll() {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       this.healthLoading = !this.lastLoadedAt
       try {
         const [health, docker, secStatus, logins, cleanup, alerts, audit, updates, tasks, me] = await Promise.allSettled([

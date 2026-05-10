@@ -124,9 +124,15 @@
 
 <script>
 import api from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 
 export default {
   name: 'HealthCheck',
+  setup() {
+    return {
+      authStore: useAuthStore()
+    }
+  },
   data() {
     return {
       healthData: { overall_status: 'unknown', score: 0, checks: [], summary: '', timestamp: null, uptime: '' },
@@ -181,7 +187,7 @@ export default {
   },
   methods: {
     async loadHealth() {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       this.loading = true
       this.error = false
       try {

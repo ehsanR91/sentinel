@@ -288,6 +288,7 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
 import PageHeader from '@/components/page-header.vue'
 import StatCard from '@/components/widgets/stat-card.vue'
 import AppButton from '@/components/ui/app-button.vue'
@@ -326,6 +327,11 @@ function loadJsonPreference (key, fallback) {
 
 export default {
   name: 'AlertsPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility()
+    }
+  },
   components: {
     PageHeader,
     StatCard,
@@ -439,6 +445,11 @@ export default {
     }
   },
   watch: {
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.loadAlerts(false)
+      }
+    },
     searchQuery () {
       clearTimeout(this.searchTimer)
       this.searchTimer = setTimeout(() => {

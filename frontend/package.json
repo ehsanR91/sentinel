@@ -25,8 +25,7 @@
     "vue": "^3.5.13",
     "vue-router": "^4.5.1",
     "vue-sweetalert2": "^5.0.11",
-    "vuedraggable": "^4.1.0",
-    "vuex": "^4.1.0"
+    "vuedraggable": "^4.1.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.4",

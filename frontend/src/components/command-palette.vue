@@ -53,6 +53,7 @@
 <script>
 import api from '@/services/api'
 import { navigationSearchEntries, settingsCommandEntries } from '@/components/menu'
+import { useAuthStore } from '@/stores/auth'
 import { useMetricsStore } from '@/stores/metrics'
 
 const RECENT_KEY = 'command-palette:recent'
@@ -114,6 +115,7 @@ export default {
   name: 'CommandPalette',
   setup() {
     return {
+      authStore: useAuthStore(),
       metricsStore: useMetricsStore()
     }
   },
@@ -324,7 +326,7 @@ export default {
       }
     },
     async searchServerRecords() {
-      if (!this.$store.getters['auth/loggedIn']) return
+      if (!this.authStore.loggedIn) return
       const query = this.query.trim().toLowerCase()
       this.loadingServerResults = true
       try {

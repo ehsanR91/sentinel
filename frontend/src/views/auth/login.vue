@@ -93,8 +93,14 @@
 </template>
 
 <script>
+import { useAuthStore } from '@/stores/auth'
 export default {
   name: 'LoginPage',
+  setup() {
+    return {
+      authStore: useAuthStore()
+    }
+  },
   data() {
     return {
       form: { username: '', password: '', totp: '' },
@@ -134,7 +140,7 @@ export default {
           return
         }
 
-        const result = await this.$store.dispatch('auth/login', {
+        const result = await this.authStore.login({
           username: this.form.username,
           password: this.form.password
         })
@@ -163,7 +169,7 @@ export default {
 
     async handleVerify2FA() {
       try {
-        const result = await this.$store.dispatch('auth/verify2fa', {
+        const result = await this.authStore.verify2fa({
           pending_token: this.pendingToken,
           code: this.form.totp
         })

@@ -427,6 +427,7 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
 import PageHeader from '@/components/page-header.vue'
 import StatCard from '@/components/widgets/stat-card.vue'
 import api from '@/services/api'
@@ -471,6 +472,11 @@ const serviceDescriptions = {
 
 export default {
   name: 'ServicesPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility()
+    }
+  },
   components: { PageHeader, StatCard },
   data() {
     return {
@@ -553,6 +559,14 @@ export default {
     }
   },
   watch: {
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.loadAll()
+        if (this.installing) {
+          this.fetchServiceInstallLogs()
+        }
+      }
+    },
     '$route.query': {
       immediate: false,
       handler() {
@@ -796,6 +810,7 @@ export default {
 
     startInstallLogPolling() {
       this.installLogPollTimer = setInterval(() => {
+        if (this.documentVisibility !== 'visible') return
         this.fetchServiceInstallLogs()
       }, 2000)
     },

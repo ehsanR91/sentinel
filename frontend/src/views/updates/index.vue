@@ -219,12 +219,18 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
 import PageHeader from '@/components/page-header.vue'
 import StatCard   from '@/components/widgets/stat-card.vue'
 import api from '@/services/api'
 
 export default {
   name: 'UpdatesPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility()
+    }
+  },
   components: { PageHeader, StatCard },
 
   data() {
@@ -263,6 +269,14 @@ export default {
 
   async mounted() {
     await this.fetchUpdates()
+  },
+
+  watch: {
+    documentVisibility(value) {
+      if (value === 'visible' && this.installing) {
+        this.fetchUpdateLogs()
+      }
+    }
   },
 
   methods: {
@@ -308,6 +322,7 @@ export default {
 
     startLogPolling() {
       this.logPollTimer = setInterval(() => {
+        if (this.documentVisibility !== 'visible') return
         this.fetchUpdateLogs()
       }, 2000)
     },
