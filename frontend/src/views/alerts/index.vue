@@ -40,49 +40,106 @@
       </div>
     </div>
 
-    <FilterToolbar
-      :search-query="searchQuery"
-      search-placeholder="Search alert text, source, IP… Use source:sshd severity:warning ip:1.2.3.4"
-      :active-chips="activeChips"
-      :result-label="resultLabel"
-      @update:search-query="updateSearch"
-      @remove-chip="removeChip"
-      @clear-all="clearFilters"
-    >
-      <template #controls>
-        <ScSelect v-model="readFilter" :options="[{value:'all',label:'All states'},{value:'unread',label:'Unread'},{value:'read',label:'Read'}]" size="sm" />
-        <ScSelect v-model="sourceFilter" :options="[{value:'',label:'All sources'},...sourceOptions.map(s=>({value:s,label:s}))]" size="sm" />
-        <ScSelect v-model="datePreset" :options="[{value:'15m',label:'Last 15m'},{value:'1h',label:'Last 1h'},{value:'6h',label:'Last 6h'},{value:'24h',label:'Last 24h'},{value:'7d',label:'Last 7d'},{value:'custom',label:'Custom'},{value:'all',label:'All time'}]" size="sm" @change="applyDatePreset(datePreset)" />
-        <template v-if="datePreset === 'custom'">
-          <input v-model="customStart" type="datetime-local" class="form-control sc-focus-ring toolbar-input" />
-          <input v-model="customEnd" type="datetime-local" class="form-control sc-focus-ring toolbar-input" />
-        </template>
-        <details class="toolbar-menu">
-          <summary class="sc-button sc-button--secondary sc-button--md">
-            <i class="mdi mdi-content-save-outline"></i>
-            Saved filters
-          </summary>
-          <div class="toolbar-menu__body">
-            <button type="button" class="dropdown-item" @click="saveCurrentFilter">Save current view</button>
-            <div v-if="!savedFilters.length" class="toolbar-menu__empty">No saved views yet</div>
-            <template v-else>
-              <div v-for="filter in savedFilters" :key="filter.id" class="saved-filter-row">
-                <button type="button" class="dropdown-item" @click="applySavedFilter(filter)">{{ filter.name }}</button>
-                <button type="button" class="sc-button sc-button--ghost sc-button--sm sc-button--icon-only" aria-label="Delete saved filter" @click="deleteSavedFilter(filter.id)">
-                  <i class="mdi mdi-close"></i>
-                </button>
+    <!-- Slim control bar -->
+    <div class="alerts-bar">
+      <div class="alerts-bar__left">
+        <div class="alerts-search">
+          <i class="mdi mdi-magnify" aria-hidden="true"></i>
+          <input
+            :value="searchQuery"
+            type="search"
+            class="alerts-search__input sc-focus-ring"
+            placeholder="Search alerts, source, IP… Use source:sshd severity:warning"
+            @input="updateSearch($event.target.value)"
+          />
+        </div>
+        <div ref="filterAnchor" class="alerts-filter-anchor">
+          <button
+            type="button"
+            class="sc-button sc-button--secondary sc-button--md alerts-filter-btn"
+            :class="{ 'is-active': filterPanelOpen || activeChips.length }"
+            @click="filterPanelOpen = !filterPanelOpen"
+          >
+            <i class="mdi mdi-filter-outline"></i>
+            <span>Filters</span>
+            <span v-if="activeChips.length" class="alerts-filter-badge">{{ activeChips.length }}</span>
+            <i class="mdi" :class="filterPanelOpen ? 'mdi-chevron-up' : 'mdi-chevron-down'" style="margin-left:2px;font-size:14px"></i>
+          </button>
+
+          <Transition name="filter-drop">
+            <div v-if="filterPanelOpen" class="alerts-filter-panel" role="dialog" aria-label="Filter options">
+              <div class="afp-row">
+                <span class="afp-label">Status</span>
+                <ScSelect v-model="readFilter" :options="[{value:'all',label:'All states'},{value:'unread',label:'Unread'},{value:'read',label:'Read'}]" size="sm" />
               </div>
-            </template>
-          </div>
-        </details>
-      </template>
-      <template #meta>
-        <span class="sc-inline-note">{{ resultLabel }}</span>
-        <span class="sc-inline-note">Last updated {{ lastUpdatedLabel }}</span>
+              <div class="afp-row">
+                <span class="afp-label">Source</span>
+                <ScSelect v-model="sourceFilter" :options="[{value:'',label:'All sources'},...sourceOptions.map(s=>({value:s,label:s}))]" size="sm" />
+              </div>
+              <div class="afp-row">
+                <span class="afp-label">Range</span>
+                <ScSelect v-model="datePreset" :options="[{value:'15m',label:'Last 15m'},{value:'1h',label:'Last 1h'},{value:'6h',label:'Last 6h'},{value:'24h',label:'Last 24h'},{value:'7d',label:'Last 7d'},{value:'custom',label:'Custom range'},{value:'all',label:'All time'}]" size="sm" @change="applyDatePreset(datePreset)" />
+              </div>
+              <template v-if="datePreset === 'custom'">
+                <div class="afp-row">
+                  <span class="afp-label">From</span>
+                  <input v-model="customStart" type="datetime-local" class="form-control sc-focus-ring afp-datetime" />
+                </div>
+                <div class="afp-row">
+                  <span class="afp-label">To</span>
+                  <input v-model="customEnd" type="datetime-local" class="form-control sc-focus-ring afp-datetime" />
+                </div>
+              </template>
+              <div class="afp-divider"></div>
+              <div class="afp-saved">
+                <button type="button" class="afp-action-btn" @click="saveCurrentFilter">
+                  <i class="mdi mdi-content-save-outline"></i>
+                  Save current view
+                </button>
+                <div v-if="!savedFilters.length" class="afp-empty">No saved views yet</div>
+                <template v-else>
+                  <div v-for="filter in savedFilters" :key="filter.id" class="afp-saved-row">
+                    <button type="button" class="afp-saved-item" @click="applySavedFilter(filter)">{{ filter.name }}</button>
+                    <button type="button" class="sc-button sc-button--ghost sc-button--sm sc-button--icon-only" aria-label="Delete saved filter" @click="deleteSavedFilter(filter.id)">
+                      <i class="mdi mdi-close"></i>
+                    </button>
+                  </div>
+                </template>
+              </div>
+              <template v-if="activeChips.length">
+                <div class="afp-divider"></div>
+                <button type="button" class="afp-action-btn afp-action-btn--danger" @click="clearFilters">
+                  <i class="mdi mdi-filter-remove-outline"></i>
+                  Clear all filters
+                </button>
+              </template>
+            </div>
+          </Transition>
+        </div>
+      </div>
+
+      <div class="alerts-bar__right">
+        <span class="alerts-bar__meta">{{ resultLabel }}</span>
+        <span class="alerts-bar__meta alerts-bar__meta--updated">Updated {{ lastUpdatedLabel }}</span>
         <ScSelect v-model="density" :options="[{value:'comfortable',label:'Comfortable'},{value:'compact',label:'Compact'}]" size="sm" style="width:130px" @change="persistDensity" />
         <AppButton :variant="multiSelect ? 'primary' : 'secondary'" size="md" icon="mdi mdi-checkbox-multiple-marked-outline" :label="multiSelect ? 'Selecting' : 'Select'" @click="toggleMultiSelect" />
-      </template>
-    </FilterToolbar>
+      </div>
+    </div>
+
+    <!-- Active filter chips -->
+    <div v-if="activeChips.length" class="alerts-chips">
+      <button
+        v-for="chip in activeChips"
+        :key="chip.key"
+        type="button"
+        class="sc-chip sc-chip--interactive sc-focus-ring"
+        @click="removeChip(chip.key)"
+      >
+        <span>{{ chip.label }}</span>
+        <i class="mdi mdi-close"></i>
+      </button>
+      <button type="button" class="sc-chip sc-chip--interactive sc-focus-ring" @click="clearFilters">Clear all</button>
+    </div>
 
     <ErrorState v-if="errorMessage" title="Alert refresh failed" :description="errorMessage">
       <template #actions>
@@ -293,7 +350,7 @@ import PageHeader from '@/components/page-header.vue'
 import StatCard from '@/components/widgets/stat-card.vue'
 import AppButton from '@/components/ui/app-button.vue'
 import StatusBadge from '@/components/ui/status-badge.vue'
-import FilterToolbar from '@/components/ui/filter-toolbar.vue'
+
 import DetailDrawer from '@/components/ui/detail-drawer.vue'
 import EmptyState from '@/components/ui/empty-state.vue'
 import ErrorState from '@/components/ui/error-state.vue'
@@ -337,7 +394,6 @@ export default {
     StatCard,
     AppButton,
     StatusBadge,
-    FilterToolbar,
     DetailDrawer,
     EmptyState,
     ErrorState,
@@ -376,7 +432,8 @@ export default {
       seenTimers: {},
       pollingTimer: null,
       observer: null,
-      lastLoadedAt: null
+      lastLoadedAt: null,
+      filterPanelOpen: false
     }
   },
   computed: {
@@ -468,12 +525,14 @@ export default {
     this.loadAlerts(true)
     this.startPolling()
     this.observeSentinel()
+    document.addEventListener('click', this.onFilterClickOutside, true)
   },
   beforeUnmount () {
     clearTimeout(this.searchTimer)
     clearInterval(this.pollingTimer)
     Object.values(this.seenTimers).forEach(timer => clearTimeout(timer))
     this.disconnectObserver()
+    document.removeEventListener('click', this.onFilterClickOutside, true)
   },
   methods: {
     async loadAlerts (manual = false) {
@@ -777,6 +836,11 @@ export default {
       this.sourceFilter = source || ''
       this.showDrawer = false
     },
+    onFilterClickOutside (event) {
+      if (this.filterPanelOpen && this.$refs.filterAnchor && !this.$refs.filterAnchor.contains(event.target)) {
+        this.filterPanelOpen = false
+      }
+    },
     handleKeyboardNavigation (event) {
       if (event.key === '?') {
         event.preventDefault()
@@ -829,56 +893,221 @@ export default {
   --bs-gutter-y: var(--space-16);
 }
 
-.toolbar-select,
-.toolbar-input {
-  width: 150px;
+/* ── Control bar ───────────────────────────────────── */
+.alerts-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.toolbar-select--narrow {
-  width: 120px;
+.alerts-bar__left,
+.alerts-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
-.toolbar-menu {
+.alerts-bar__meta {
+  font-size: var(--font-size-13);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* ── Search ────────────────────────────────────────── */
+.alerts-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.alerts-search > .mdi {
+  position: absolute;
+  left: 10px;
+  color: var(--text-tertiary);
+  font-size: 15px;
+  pointer-events: none;
+}
+
+.alerts-search__input {
+  width: 300px;
+  height: 36px;
+  padding: 0 12px 0 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: var(--font-size-14);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.alerts-search__input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.alerts-search__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.12);
+}
+
+/* ── Filter button & popover ───────────────────────── */
+.alerts-filter-anchor {
   position: relative;
 }
 
-.toolbar-menu summary {
-  list-style: none;
+.alerts-filter-btn {
+  gap: 6px;
 }
 
-.toolbar-menu summary::-webkit-details-marker {
-  display: none;
+.alerts-filter-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-.toolbar-menu[open] .toolbar-menu__body {
-  display: grid;
+.alerts-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
-.toolbar-menu__body {
-  display: none;
+.alerts-filter-panel {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
-  min-width: 220px;
-  padding: var(--space-8);
+  left: 0;
+  z-index: 50;
+  width: 270px;
+  padding: 0.75rem;
   background: var(--surface-1);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
-  z-index: 6;
 }
 
-.toolbar-menu__empty {
-  padding: var(--space-8);
-  color: var(--text-tertiary);
+.afp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.afp-label {
+  width: 52px;
   font-size: var(--font-size-12);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
 }
 
-.saved-filter-row {
+.afp-row .sc-select {
+  flex: 1;
+}
+
+.afp-datetime {
+  flex: 1;
+  height: 32px;
+  font-size: var(--font-size-13);
+}
+
+.afp-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 0.5rem 0;
+}
+
+.afp-saved {
+  display: grid;
+  gap: 2px;
+}
+
+.afp-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-13);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+}
+
+.afp-action-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.afp-action-btn--danger {
+  color: var(--state-error-fg, #f87171);
+}
+
+.afp-action-btn--danger:hover {
+  background: var(--state-error-bg, rgba(248, 113, 113, 0.1));
+  color: var(--state-error-fg, #f87171);
+}
+
+.afp-saved-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-8);
+}
+
+.afp-saved-item {
+  flex: 1;
+  text-align: left;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-13);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+
+.afp-saved-item:hover {
+  background: var(--surface-2);
+}
+
+.afp-empty {
+  padding: 4px 8px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-12);
+}
+
+/* ── Filter panel animation ─────────────────────────── */
+.filter-drop-enter-active,
+.filter-drop-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.filter-drop-enter-from,
+.filter-drop-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+/* ── Active chip strip ──────────────────────────────── */
+.alerts-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .alerts-shell {
@@ -1081,10 +1310,23 @@ pre {
 }
 
 @media (max-width: 767px) {
-  .toolbar-select,
-  .toolbar-input,
-  .toolbar-select--narrow {
+  .alerts-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .alerts-bar__left,
+  .alerts-bar__right {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .alerts-search__input {
     width: 100%;
+  }
+
+  .alerts-bar__meta--updated {
+    display: none;
   }
 
   .alert-row {

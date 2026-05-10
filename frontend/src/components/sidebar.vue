@@ -146,38 +146,34 @@
                   <span class="sidebar-pill sidebar-pill--ghost">Unpin</span>
                 </span>
               </button>
-              <router-link
-                v-else
-                :to="item.link"
-                class="sidebar-link"
-                :class="linkClasses(item)"
-                :data-route="item.link"
-                :aria-current="isRouteActive(item.link) ? 'page' : undefined"
-                :aria-describedby="effectiveCollapsed && tooltip.item?.id === item.id ? 'sidebar-tooltip' : undefined"
-                @click="handleSidebarRouteClick(item.link)"
-                @contextmenu.prevent="openContextMenu($event, item)"
-                @mouseenter="showTooltip($event, item)"
-                @mouseleave="hideTooltip"
-                @focus="showTooltip($event, item)"
-                @blur="hideTooltip"
-              >
-                <span class="sidebar-link__accent" aria-hidden="true"></span>
-                <i :class="resolvedItemIcon(item)" aria-hidden="true"></i>
-                <span class="sidebar-link__label">
-                  <span class="sidebar-link__text" v-html="highlightLabel(item.label)"></span>
-                  <span class="visually-hidden">{{ accessibilityLabel(item) }}</span>
-                </span>
-                <span class="sidebar-link__meta">
-                  <span v-if="itemStatusTone(item) && !badgeForItem(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
-                  <span
-                    v-if="badgeForItem(item)"
-                    class="sidebar-counter-badge"
-                    :class="`is-${badgeForItem(item).tone}`"
-                    :aria-label="badgeForItem(item).ariaLabel"
-                  >{{ badgeForItem(item).text }}</span>
-                  <span v-if="tagForItem(item)" class="sidebar-pill sidebar-pill--tag">{{ tagForItem(item) }}</span>
-                </span>
-              </router-link>
+              <Tooltip v-else :label="item.label" :shortcut="item.shortcut" placement="right" :delay="400" as-child>
+                <router-link
+                  :to="item.link"
+                  class="sidebar-link"
+                  :class="linkClasses(item)"
+                  :data-route="item.link"
+                  :aria-current="isRouteActive(item.link) ? 'page' : undefined"
+                  @click="handleSidebarRouteClick(item.link)"
+                  @contextmenu.prevent="openContextMenu($event, item)"
+                >
+                  <span class="sidebar-link__accent" aria-hidden="true"></span>
+                  <i :class="resolvedItemIcon(item)" aria-hidden="true"></i>
+                  <span class="sidebar-link__label">
+                    <span class="sidebar-link__text" v-html="highlightLabel(item.label)"></span>
+                    <span class="visually-hidden">{{ accessibilityLabel(item) }}</span>
+                  </span>
+                  <span class="sidebar-link__meta">
+                    <span v-if="itemStatusTone(item) && !badgeForItem(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
+                    <span
+                      v-if="badgeForItem(item)"
+                      class="sidebar-counter-badge"
+                      :class="`is-${badgeForItem(item).tone}`"
+                      :aria-label="badgeForItem(item).ariaLabel"
+                    >{{ badgeForItem(item).text }}</span>
+                    <span v-if="tagForItem(item)" class="sidebar-pill sidebar-pill--tag">{{ tagForItem(item) }}</span>
+                  </span>
+                </router-link>
+              </Tooltip>
             </li>
           </ul>
         </nav>
@@ -205,12 +201,64 @@
               :class="{ 'is-dimmed': shouldDimItem(item), 'is-active-branch': isItemActive(item) }"
             >
               <template v-if="item.children?.length">
-                <button
-                  type="button"
-                  class="sidebar-link sidebar-link--button"
+                <Tooltip :label="item.label" :shortcut="item.shortcut" placement="right" :delay="400" as-child>
+                  <button
+                    type="button"
+                    class="sidebar-link sidebar-link--button"
+                    :class="linkClasses(item)"
+                    :aria-expanded="isParentExpanded(item) ? 'true' : 'false'"
+                    @click="toggleParent(item.id)"
+                  >
+                    <span class="sidebar-link__accent" aria-hidden="true"></span>
+                    <i :class="resolvedItemIcon(item)" aria-hidden="true"></i>
+                    <span class="sidebar-link__label">
+                      <span class="sidebar-link__text" v-html="highlightLabel(item.label)"></span>
+                      <span class="visually-hidden">{{ accessibilityLabel(item) }}</span>
+                    </span>
+                    <span class="sidebar-link__meta">
+                      <span v-if="badgeForItem(item)" class="sidebar-counter-badge" :class="`is-${badgeForItem(item).tone}`">{{ badgeForItem(item).text }}</span>
+                      <i class="mdi mdi-chevron-down sidebar-chevron" :class="{ rotated: isParentExpanded(item) }" aria-hidden="true"></i>
+                    </span>
+                  </button>
+                </Tooltip>
+
+                <ul v-show="isParentExpanded(item)" class="sidebar-subnav">
+                  <li v-for="child in item.children" :key="child.id" class="sidebar-subnav__item" :class="{ 'is-dimmed': shouldDimItem(child) }">
+                    <Tooltip :label="child.label" :shortcut="child.shortcut" placement="right" :delay="400" as-child>
+                      <router-link
+                        :to="child.link"
+                        class="sidebar-link sidebar-link--child"
+                        :class="linkClasses(child)"
+                        :data-route="child.link"
+                        :aria-current="isRouteActive(child.link) ? 'page' : undefined"
+                        @click="handleSidebarRouteClick(child.link)"
+                        @contextmenu.prevent="openContextMenu($event, child)"
+                      >
+                        <span class="sidebar-link__accent" aria-hidden="true"></span>
+                        <span class="sidebar-subnav__connector" aria-hidden="true"></span>
+                        <i :class="resolvedItemIcon(child)" aria-hidden="true"></i>
+                        <span class="sidebar-link__label">
+                          <span class="sidebar-link__text" v-html="highlightLabel(child.label)"></span>
+                          <span class="visually-hidden">{{ accessibilityLabel(child) }}</span>
+                        </span>
+                        <span class="sidebar-link__meta">
+                          <span v-if="tagForItem(child)" class="sidebar-pill sidebar-pill--tag">{{ tagForItem(child) }}</span>
+                        </span>
+                      </router-link>
+                    </Tooltip>
+                  </li>
+                </ul>
+              </template>
+
+              <Tooltip v-else :label="item.label" :shortcut="item.shortcut" placement="right" :delay="400" as-child>
+                <router-link
+                  :to="item.link"
+                  class="sidebar-link"
                   :class="linkClasses(item)"
-                  :aria-expanded="isParentExpanded(item) ? 'true' : 'false'"
-                  @click="toggleParent(item.id)"
+                  :data-route="item.link"
+                  :aria-current="isRouteActive(item.link) ? 'page' : undefined"
+                  @click="handleSidebarRouteClick(item.link)"
+                  @contextmenu.prevent="openContextMenu($event, item)"
                 >
                   <span class="sidebar-link__accent" aria-hidden="true"></span>
                   <i :class="resolvedItemIcon(item)" aria-hidden="true"></i>
@@ -219,74 +267,17 @@
                     <span class="visually-hidden">{{ accessibilityLabel(item) }}</span>
                   </span>
                   <span class="sidebar-link__meta">
-                    <span v-if="badgeForItem(item)" class="sidebar-counter-badge" :class="`is-${badgeForItem(item).tone}`">{{ badgeForItem(item).text }}</span>
-                    <i class="mdi mdi-chevron-down sidebar-chevron" :class="{ rotated: isParentExpanded(item) }" aria-hidden="true"></i>
+                    <span v-if="itemStatusTone(item) && !badgeForItem(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
+                    <span
+                      v-if="badgeForItem(item)"
+                      class="sidebar-counter-badge"
+                      :class="`is-${badgeForItem(item).tone}`"
+                      :aria-label="badgeForItem(item).ariaLabel"
+                    >{{ badgeForItem(item).text }}</span>
+                    <span v-if="tagForItem(item)" class="sidebar-pill sidebar-pill--tag">{{ tagForItem(item) }}</span>
                   </span>
-                </button>
-
-                <ul v-show="isParentExpanded(item)" class="sidebar-subnav">
-                  <li v-for="child in item.children" :key="child.id" class="sidebar-subnav__item" :class="{ 'is-dimmed': shouldDimItem(child) }">
-                    <router-link
-                      :to="child.link"
-                      class="sidebar-link sidebar-link--child"
-                      :class="linkClasses(child)"
-                      :data-route="child.link"
-                      :aria-current="isRouteActive(child.link) ? 'page' : undefined"
-                      :aria-describedby="effectiveCollapsed && tooltip.item?.id === child.id ? 'sidebar-tooltip' : undefined"
-                      @click="handleSidebarRouteClick(child.link)"
-                      @contextmenu.prevent="openContextMenu($event, child)"
-                      @mouseenter="showTooltip($event, child)"
-                      @mouseleave="hideTooltip"
-                      @focus="showTooltip($event, child)"
-                      @blur="hideTooltip"
-                    >
-                      <span class="sidebar-link__accent" aria-hidden="true"></span>
-                      <span class="sidebar-subnav__connector" aria-hidden="true"></span>
-                      <i :class="resolvedItemIcon(child)" aria-hidden="true"></i>
-                      <span class="sidebar-link__label">
-                        <span class="sidebar-link__text" v-html="highlightLabel(child.label)"></span>
-                        <span class="visually-hidden">{{ accessibilityLabel(child) }}</span>
-                      </span>
-                      <span class="sidebar-link__meta">
-                        <span v-if="tagForItem(child)" class="sidebar-pill sidebar-pill--tag">{{ tagForItem(child) }}</span>
-                      </span>
-                    </router-link>
-                  </li>
-                </ul>
-              </template>
-
-              <router-link
-                v-else
-                :to="item.link"
-                class="sidebar-link"
-                :class="linkClasses(item)"
-                :data-route="item.link"
-                :aria-current="isRouteActive(item.link) ? 'page' : undefined"
-                :aria-describedby="effectiveCollapsed && tooltip.item?.id === item.id ? 'sidebar-tooltip' : undefined"
-                @click="handleSidebarRouteClick(item.link)"
-                @contextmenu.prevent="openContextMenu($event, item)"
-                @mouseenter="showTooltip($event, item)"
-                @mouseleave="hideTooltip"
-                @focus="showTooltip($event, item)"
-                @blur="hideTooltip"
-              >
-                <span class="sidebar-link__accent" aria-hidden="true"></span>
-                <i :class="resolvedItemIcon(item)" aria-hidden="true"></i>
-                <span class="sidebar-link__label">
-                  <span class="sidebar-link__text" v-html="highlightLabel(item.label)"></span>
-                  <span class="visually-hidden">{{ accessibilityLabel(item) }}</span>
-                </span>
-                <span class="sidebar-link__meta">
-                  <span v-if="itemStatusTone(item) && !badgeForItem(item)" class="sidebar-status-dot" :class="`is-${itemStatusTone(item)}`" aria-hidden="true"></span>
-                  <span
-                    v-if="badgeForItem(item)"
-                    class="sidebar-counter-badge"
-                    :class="`is-${badgeForItem(item).tone}`"
-                    :aria-label="badgeForItem(item).ariaLabel"
-                  >{{ badgeForItem(item).text }}</span>
-                  <span v-if="tagForItem(item)" class="sidebar-pill sidebar-pill--tag">{{ tagForItem(item) }}</span>
-                </span>
-              </router-link>
+                </router-link>
+              </Tooltip>
             </li>
           </ul>
         </nav>
