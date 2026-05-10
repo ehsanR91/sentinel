@@ -274,12 +274,13 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
+import { useMetricsStore } from '@/stores/metrics'
 import PageHeader from '@/components/page-header.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
 import MiniRadialGauge from '@/components/ui/mini-radial-gauge.vue'
 import MiniTimeseriesChart from '@/components/ui/mini-timeseries-chart.vue'
 import api from '@/services/api'
-import { mapGetters } from 'vuex'
 
 function fmtBytes (b) {
   if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB'
@@ -291,6 +292,12 @@ function fmtBytes (b) {
 export default {
   name: 'MonitoringPage',
   components: { PageHeader, Tooltip, MiniRadialGauge, MiniTimeseriesChart },
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility(),
+      metricsStore: useMetricsStore()
+    }
+  },
 
   data() {
     return {
@@ -313,7 +320,11 @@ export default {
   },
 
   computed: {
-    ...mapGetters('metrics', ['snap', 'cpuHistory', 'ramHistory', 'processes', 'services']),
+    snap() { return this.metricsStore.snap },
+    cpuHistory() { return this.metricsStore.cpuHistory },
+    ramHistory() { return this.metricsStore.ramHistory },
+    processes() { return this.metricsStore.processes },
+    services() { return this.metricsStore.services },
 
     cpu()       { return this.snap.cpu_pct },
     ram()       { return this.snap.ram_pct },
@@ -393,14 +404,25 @@ export default {
     }
   },
 
+  watch: {
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.metricsStore.fetchProcesses()
+        this.metricsStore.fetchServices()
+        this.loadSuspicious()
+      }
+    }
+  },
+
   async mounted() {
-    this.$store.dispatch('metrics/startLive')
-    await this.$store.dispatch('metrics/fetchProcesses')
-    await this.$store.dispatch('metrics/fetchServices')
+    this.metricsStore.startLive()
+    await this.metricsStore.fetchProcesses()
+    await this.metricsStore.fetchServices()
     this.loadSuspicious()
 
     this.procTimer = setInterval(() => {
-      this.$store.dispatch('metrics/fetchProcesses')
+      if (this.documentVisibility !== 'visible') return
+      this.metricsStore.fetchProcesses()
     }, 10000)
   },
 

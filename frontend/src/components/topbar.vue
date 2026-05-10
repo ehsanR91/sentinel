@@ -615,6 +615,7 @@
 <script>
 import api from '@/services/api'
 import { pwaState, promptInstall, reloadApp } from '@/plugins/pwa'
+import { useMetricsStore } from '@/stores/metrics'
 import Popover from '@/components/ui/popover.vue'
 import Tooltip from '@/components/ui/tooltip.vue'
 import AppButton from '@/components/ui/app-button.vue'
@@ -665,6 +666,11 @@ function alertRuleKey(alert) {
 
 export default {
   name: 'Topbar',
+  setup() {
+    return {
+      metricsStore: useMetricsStore()
+    }
+  },
   components: {
     Popover,
     Tooltip,
@@ -740,13 +746,13 @@ export default {
       return this.$store.state.layout.sidebarDensity
     },
     wsConnected() {
-      return this.$store.getters['metrics/wsConnected']
+      return this.metricsStore.wsConnected
     },
     liveSummary() {
-      return this.$store.getters['metrics/liveSummary'] || { unreadAlerts: 0, activeBans: 0 }
+      return this.metricsStore.liveSummary || { unreadAlerts: 0, activeBans: 0 }
     },
     metricsSnap() {
-      return this.$store.getters['metrics/snap'] || {}
+      return this.metricsStore.snap || {}
     },
     currentThemePref() {
       return this.$store.state.layout.theme
@@ -1119,9 +1125,9 @@ export default {
     toggleLiveState() {
       this.livePaused = !this.livePaused
       if (this.livePaused) {
-        this.$store.dispatch('metrics/stopLive')
+        this.metricsStore.stopLive()
       } else {
-        this.$store.dispatch('metrics/startLive')
+        this.metricsStore.startLive()
       }
     },
     applyTheme(value) {

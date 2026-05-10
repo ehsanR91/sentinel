@@ -72,11 +72,17 @@
 <script>
 import CommandPalette from '@/components/command-palette.vue'
 import api from '@/services/api'
+import { useMetricsStore } from '@/stores/metrics'
 import TooltipProvider from '@/components/ui/tooltip-provider.vue'
 
 export default {
   name: 'App',
   components: { CommandPalette, TooltipProvider },
+  setup() {
+    return {
+      metricsStore: useMetricsStore()
+    }
+  },
   data() {
     return {
       locked: false,
@@ -105,7 +111,11 @@ export default {
     // When a user logs in, the token goes from null → value. Load lock settings then.
     authToken(newVal, oldVal) {
       if (newVal && !oldVal) {
+        this.metricsStore.startLive()
         this.loadLockSettings()
+      }
+      if (!newVal && oldVal) {
+        this.metricsStore.stopLive()
       }
     },
     '$route.path'(path) {
@@ -125,7 +135,7 @@ export default {
   mounted() {
     // Start WebSocket service globally when authenticated
     if (this.$store.getters['auth/loggedIn']) {
-      this.$store.dispatch('metrics/startLive')
+      this.metricsStore.startLive()
       this.loadLockSettings()
     }
     document.addEventListener('keydown', this.handleKeyDown)

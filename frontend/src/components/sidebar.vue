@@ -497,6 +497,8 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
+import { useMetricsStore } from '@/stores/metrics'
 import api from '@/services/api'
 import appConfig from '@/app.config.json'
 import DetailDrawer from '@/components/ui/detail-drawer.vue'
@@ -553,6 +555,12 @@ function formatRate(value) {
 
 export default {
   name: 'Sidebar',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility(),
+      metricsStore: useMetricsStore()
+    }
+  },
   components: { DetailDrawer, StatusBadge, Tooltip },
   data() {
     return {
@@ -610,13 +618,13 @@ export default {
       return window.location.origin
     },
     wsConnected() {
-      return this.$store.getters['metrics/wsConnected']
+      return this.metricsStore.wsConnected
     },
     liveSummary() {
-      return this.$store.getters['metrics/liveSummary'] || { unreadAlerts: 0, activeBans: 0 }
+      return this.metricsStore.liveSummary || { unreadAlerts: 0, activeBans: 0 }
     },
     snap() {
-      return this.$store.getters['metrics/snap'] || {}
+      return this.metricsStore.snap || {}
     },
     sidebarDensity() {
       return this.$store.state.layout.sidebarDensity
@@ -749,6 +757,11 @@ export default {
         }
       }
     },
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.refreshHealth()
+      }
+    },
     searchQuery() {
       this.closeContextMenus()
     }
@@ -765,7 +778,10 @@ export default {
         })
       }
     })
-    this.healthTimer = window.setInterval(this.refreshHealth, Math.max(15000, appConfig.pollIntervalMs))
+    this.healthTimer = window.setInterval(() => {
+      if (this.documentVisibility !== 'visible') return
+      this.refreshHealth()
+    }, Math.max(15000, appConfig.pollIntervalMs))
     window.addEventListener('resize', this.handleResize, { passive: true })
     document.addEventListener('keydown', this.onGlobalKeyDown)
     document.addEventListener('click', this.onGlobalClick, true)
@@ -1042,7 +1058,7 @@ export default {
         return this.serverTone
       }
       if (item.statusKey === 'services') {
-        const services = this.$store.getters['metrics/services'] || []
+        const services = this.metricsStore.services || []
         const failing = services.filter(service => service.status && service.status !== 'active').length
         if (!services.length) return 'muted'
         return failing ? 'warn' : 'ok'

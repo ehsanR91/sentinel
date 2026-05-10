@@ -1,4 +1,5 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import store from './state/store'
@@ -33,12 +34,14 @@ const resolved = savedTheme === 'system'
 document.documentElement.setAttribute('data-theme', resolved)
 
 const app = createApp(App)
+const pinia = createPinia()
 
 app.config.globalProperties.$isOnline = () => window.__sc_is_online__
 app.config.globalProperties.$pwaState = pwaState
 app.config.globalProperties.$promptInstall = promptInstall
 
 app.component('ScSelect', ScSelect)
+app.use(pinia)
 app.use(router)
 app.use(store)
 app.use(VueSweetalert2, {

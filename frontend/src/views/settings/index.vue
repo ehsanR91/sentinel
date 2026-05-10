@@ -655,6 +655,7 @@ import PinField from '@/components/settings/fields/pin-field.vue'
 import SecretField from '@/components/settings/fields/secret-field.vue'
 import DurationPicker from '@/components/settings/fields/duration-picker.vue'
 import api from '@/services/api'
+import { useMetricsStore } from '@/stores/metrics'
 import { SETTINGS_SECTIONS, SETTINGS_SEARCH_ENTRIES, getSection } from './schema'
 
 const LOCAL_PREFS_KEY = 'sc_settings_local_prefs'
@@ -800,6 +801,11 @@ function validateHostname(value) {
 
 export default {
   name: 'SettingsPage',
+  setup() {
+    return {
+      metricsStore: useMetricsStore()
+    }
+  },
   components: {
     PageHeader,
     AppButton,
@@ -926,7 +932,7 @@ export default {
       ]
     },
     runtimeHostname() {
-      return this.$store.getters['metrics/snap']?.hostname || window.location.hostname || 'Unknown'
+      return this.metricsStore.snap?.hostname || window.location.hostname || 'Unknown'
     },
     runtimeListenAddress() {
       return 'Managed by agent configuration'

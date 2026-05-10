@@ -614,6 +614,8 @@
 </template>
 
 <script>
+import { useDocumentVisibility } from '@vueuse/core'
+import { useMetricsStore } from '@/stores/metrics'
 import PageHeader from '@/components/page-header.vue'
 import AppButton from '@/components/ui/app-button.vue'
 import DetailDrawer from '@/components/ui/detail-drawer.vue'
@@ -624,7 +626,6 @@ import TelemetryChart from '@/components/dashboard/telemetry-chart.vue'
 import ActivityFeed from '@/components/dashboard/activity-feed.vue'
 import ServiceHealthPanel from '@/components/dashboard/service-health-panel.vue'
 import draggable from 'vuedraggable'
-import { mapGetters } from 'vuex'
 import { getHealthStatusWord, getHealthTone } from '@/utils/health'
 import api from '@/services/api'
 
@@ -867,6 +868,12 @@ function sortActivityItems(items = []) {
 
 export default {
   name: 'DashboardPage',
+  setup() {
+    return {
+      documentVisibility: useDocumentVisibility(),
+      metricsStore: useMetricsStore()
+    }
+  },
   components: {
     PageHeader,
     AppButton,
@@ -940,20 +947,18 @@ export default {
     }
   },
   computed: {
-    ...mapGetters('metrics', {
-      snap: 'snap',
-      cpuHistory: 'cpuHistory',
-      ramHistory: 'ramHistory',
-      swapHistory: 'swapHistory',
-      diskHistory: 'diskHistory',
-      netRxHistory: 'netRxHistory',
-      netTxHistory: 'netTxHistory',
-      metricTimestamps: 'metricTimestamps',
-      wsConnected: 'wsConnected',
-      lastMetricTs: 'lastMetricTs',
-      processes: 'processes',
-      socketProcesses: 'networkProcesses'
-    }),
+    snap() { return this.metricsStore.snap },
+    cpuHistory() { return this.metricsStore.cpuHistory },
+    ramHistory() { return this.metricsStore.ramHistory },
+    swapHistory() { return this.metricsStore.swapHistory },
+    diskHistory() { return this.metricsStore.diskHistory },
+    netRxHistory() { return this.metricsStore.netRxHistory },
+    netTxHistory() { return this.metricsStore.netTxHistory },
+    metricTimestamps() { return this.metricsStore.metricTimestamps },
+    wsConnected() { return this.metricsStore.wsConnected },
+    lastMetricTs() { return this.metricsStore.lastMetricTs },
+    processes() { return this.metricsStore.processes },
+    socketProcesses() { return this.metricsStore.networkProcesses },
     cpuProcesses() {
       if (!this.processes) return []
       const ranked = [...this.processes]
@@ -1016,7 +1021,7 @@ export default {
       ]
     },
     historySlice() {
-      return this.$store.getters['metrics/historySlice']
+      return this.metricsStore.historySlice
     },
     lockCpuToPercent() {
       return false
@@ -1386,11 +1391,16 @@ export default {
     auxRefreshSec() {
       this.scheduleRefreshTimer()
       this.persistDashboardState()
+    },
+    documentVisibility(value) {
+      if (value === 'visible') {
+        this.loadAll()
+      }
     }
   },
   async mounted() {
     document.addEventListener('fullscreenchange', this.onFullscreenChange)
-    this.$store.dispatch('metrics/startLive')
+    this.metricsStore.startLive()
     await this.loadDashboardState()
     this.syncDeferredSections({ reset: true })
     this.scheduleRefreshTimer()
@@ -1548,15 +1558,16 @@ export default {
       pending.forEach(node => this.sectionObserver.observe(node))
     },
     async refreshNetworkProcesses() {
-      await this.$store.dispatch('metrics/fetchNetworkProcesses')
+      await this.metricsStore.fetchNetworkProcesses()
     },
     async ensureKpiDetailData(id) {
       if (id === 'network') {
         await this.refreshNetworkProcesses()
         if (!this.networkProcessTimer) {
           this.networkProcessTimer = setInterval(() => {
+            if (this.documentVisibility !== 'visible') return
             if (this.showKpiDrawer && this.selectedKpiId === 'network') {
-              this.$store.dispatch('metrics/fetchNetworkProcesses')
+              this.metricsStore.fetchNetworkProcesses()
             }
           }, 10000)
         }
@@ -1569,7 +1580,7 @@ export default {
       }
 
       if (['cpu', 'memory', 'ram', 'swap', 'disk'].includes(id)) {
-        await this.$store.dispatch('metrics/fetchProcesses')
+        await this.metricsStore.fetchProcesses()
       }
     },
     withMetricTimestamps(history = []) {
@@ -1635,6 +1646,7 @@ export default {
     scheduleRefreshTimer() {
       clearInterval(this.refreshTimer)
       this.refreshTimer = setInterval(() => {
+        if (this.documentVisibility !== 'visible') return
         this.loadAll()
       }, this.auxRefreshSec * 1000)
     },
@@ -1706,7 +1718,7 @@ export default {
       this.isRefreshing = true
       try {
         const metrics = await api.getMetrics()
-        this.$store.commit('metrics/SET_SNAP', metrics.data)
+        this.metricsStore.applySnapshot(metrics.data)
         await this.loadAll()
       } finally {
         this.isRefreshing = false

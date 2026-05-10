@@ -1,3 +1,5 @@
+import { defineStore } from 'pinia'
+
 import ws from '@/services/ws'
 import api from '@/services/api'
 
@@ -79,7 +81,7 @@ function sliceHistory (values, timestamps, range) {
   const from = start === -1 ? 0 : start
   const ts = timestamps.slice(from)
   const vals = values.slice(from)
-  const points = ts.map((t, i) => ({ x: t, y: vals[i] }))
+  const points = ts.map((t, index) => ({ x: t, y: vals[index] }))
   if (points.length <= MAX_CHART_POINTS) {
     return points
   }
@@ -103,9 +105,7 @@ function pushHistoryPoint (history, value) {
   }
 }
 
-export default {
-  namespaced: true,
-
+export const useMetricsStore = defineStore('metrics', {
   state: () => ({
     snap: emptySnap(),
     cpuHistory: initHistory(),
@@ -126,64 +126,89 @@ export default {
     }
   }),
 
-  mutations: {
-    SET_SNAP (state, snap) {
+  getters: {
+    historySlice: (state) => (key, range) => {
+      const histMap = {
+        cpu: state.cpuHistory,
+        ram: state.ramHistory,
+        swap: state.swapHistory,
+        disk: state.diskHistory,
+        netRx: state.netRxHistory,
+        netTx: state.netTxHistory
+      }
+      return sliceHistory(histMap[key] || [], state.metricTimestamps, range)
+    }
+  },
+
+  actions: {
+    applySnapshot (snap) {
       const sanitizedSnap = sanitizeSnap(snap)
-      state.snap = sanitizedSnap
+      this.snap = sanitizedSnap
 
       const metricTs = (sanitizeNumber(sanitizedSnap.ts) || Math.floor(Date.now() / 1000)) * 1000
-      const cpuPoint = clampPercent(snap.cpu_pct)
-      const ramPoint = clampPercent(snap.ram_pct)
-      const swapPoint = clampPercent(snap.swap_pct)
-      const diskPoint = clampPercent(snap.disk_pct)
-      const rxPoint = sanitizeNumber(snap.net_rx_rate)
-      const txPoint = sanitizeNumber(snap.net_tx_rate)
+      const cpuPoint = clampPercent(sanitizedSnap.cpu_pct)
+      const ramPoint = clampPercent(sanitizedSnap.ram_pct)
+      const swapPoint = clampPercent(sanitizedSnap.swap_pct)
+      const diskPoint = clampPercent(sanitizedSnap.disk_pct)
+      const rxPoint = sanitizeNumber(sanitizedSnap.net_rx_rate)
+      const txPoint = sanitizeNumber(sanitizedSnap.net_tx_rate)
 
-      pushHistoryPoint(state.cpuHistory, cpuPoint)
-      pushHistoryPoint(state.ramHistory, ramPoint)
-      pushHistoryPoint(state.swapHistory, swapPoint)
-      pushHistoryPoint(state.diskHistory, diskPoint)
-      pushHistoryPoint(state.netRxHistory, rxPoint)
-      pushHistoryPoint(state.netTxHistory, txPoint)
-      pushHistoryPoint(state.metricTimestamps, metricTs)
-      state.lastMetricTs = Math.floor(metricTs / 1000)
-      state.liveSummary = {
+      pushHistoryPoint(this.cpuHistory, cpuPoint)
+      pushHistoryPoint(this.ramHistory, ramPoint)
+      pushHistoryPoint(this.swapHistory, swapPoint)
+      pushHistoryPoint(this.diskHistory, diskPoint)
+      pushHistoryPoint(this.netRxHistory, rxPoint)
+      pushHistoryPoint(this.netTxHistory, txPoint)
+      pushHistoryPoint(this.metricTimestamps, metricTs)
+      this.lastMetricTs = Math.floor(metricTs / 1000)
+      this.liveSummary = {
         unreadAlerts: sanitizedSnap.unread_alerts || 0,
         activeBans: sanitizedSnap.active_bans || 0
       }
 
       if (import.meta.env.DEV) {
-        assertFiniteHistory(state.cpuHistory, 'cpuHistory')
-        assertFiniteHistory(state.ramHistory, 'ramHistory')
-        assertFiniteHistory(state.swapHistory, 'swapHistory')
-        assertFiniteHistory(state.diskHistory, 'diskHistory')
-        assertFiniteHistory(state.netRxHistory, 'netRxHistory')
-        assertFiniteHistory(state.netTxHistory, 'netTxHistory')
+        assertFiniteHistory(this.cpuHistory, 'cpuHistory')
+        assertFiniteHistory(this.ramHistory, 'ramHistory')
+        assertFiniteHistory(this.swapHistory, 'swapHistory')
+        assertFiniteHistory(this.diskHistory, 'diskHistory')
+        assertFiniteHistory(this.netRxHistory, 'netRxHistory')
+        assertFiniteHistory(this.netTxHistory, 'netTxHistory')
       }
     },
-    SET_WS_CONNECTED (state, val) { state.wsConnected = val },
-    SET_PROCESSES (state, list) { state.processes = list },
-    SET_NETWORK_PROCESSES (state, list) { state.networkProcesses = list },
-    SET_SERVICES (state, list) { state.services = list },
-    RESET_LIVE_SUMMARY (state) {
-      state.liveSummary = {
+
+    setWsConnected (value) {
+      this.wsConnected = value
+    },
+
+    setProcesses (list) {
+      this.processes = Array.isArray(list) ? list : []
+    },
+
+    setNetworkProcesses (list) {
+      this.networkProcesses = Array.isArray(list) ? list : []
+    },
+
+    setServices (list) {
+      this.services = Array.isArray(list) ? list : []
+    },
+
+    resetLiveSummary () {
+      this.liveSummary = {
         unreadAlerts: 0,
         activeBans: 0
       }
-    }
-  },
+    },
 
-  actions: {
-    startLive ({ commit }) {
+    startLive () {
       if (!subscriptionsRegistered) {
         ws.on('system.metrics', payload => {
-          commit('SET_SNAP', payload)
+          this.applySnapshot(payload)
         })
 
         ws.onStatus(connected => {
-          commit('SET_WS_CONNECTED', connected)
+          this.setWsConnected(connected)
           if (!connected) {
-            commit('RESET_LIVE_SUMMARY')
+            this.resetLiveSummary()
           }
         })
         subscriptionsRegistered = true
@@ -196,51 +221,27 @@ export default {
       ws.disconnect()
     },
 
-    async fetchProcesses ({ commit }) {
+    async fetchProcesses () {
       try {
         const { data } = await api.getProcesses(50)
-        commit('SET_PROCESSES', data)
+        this.setProcesses(data)
       } catch (_) {}
     },
 
-    async fetchNetworkProcesses ({ commit }) {
+    async fetchNetworkProcesses () {
       try {
         const { data } = await api.getNetworkProcesses(50)
-        commit('SET_NETWORK_PROCESSES', data)
+        this.setNetworkProcesses(data)
       } catch (_) {
-        commit('SET_NETWORK_PROCESSES', [])
+        this.setNetworkProcesses([])
       }
     },
 
-    async fetchServices ({ commit }) {
+    async fetchServices () {
       try {
         const { data } = await api.getServices()
-        commit('SET_SERVICES', data)
+        this.setServices(data)
       } catch (_) {}
     }
-  },
-
-  getters: {
-    snap: s => s.snap,
-    cpuHistory: s => s.cpuHistory,
-    ramHistory: s => s.ramHistory,
-    swapHistory: s => s.swapHistory,
-    diskHistory: s => s.diskHistory,
-    netRxHistory: s => s.netRxHistory,
-    netTxHistory: s => s.netTxHistory,
-    metricTimestamps: s => s.metricTimestamps,
-    lastMetricTs: s => s.lastMetricTs,
-    wsConnected: s => s.wsConnected,
-    processes: s => s.processes,
-    networkProcesses: s => s.networkProcesses,
-    services: s => s.services,
-    liveSummary: s => s.liveSummary,
-    historySlice: (s) => (key, range) => {
-      const histMap = {
-        cpu: s.cpuHistory, ram: s.ramHistory, swap: s.swapHistory,
-        disk: s.diskHistory, netRx: s.netRxHistory, netTx: s.netTxHistory
-      }
-      return sliceHistory(histMap[key] || [], s.metricTimestamps, range)
-    }
   }
-}
+})

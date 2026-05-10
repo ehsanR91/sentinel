@@ -23,8 +23,8 @@
             No results for "{{ query }}"
           </div>
 
-          <template v-for="group in groupedResults" :key="group.label">
-            <section v-if="group.items.length" class="command-palette__group">
+          <template v-for="group in groupedResults">
+            <section v-if="group.items.length" :key="group.label" class="command-palette__group">
               <div class="command-palette__group-title">{{ group.label }}</div>
               <button
                 v-for="item in group.items"
@@ -53,6 +53,7 @@
 <script>
 import api from '@/services/api'
 import { navigationSearchEntries, settingsCommandEntries } from '@/components/menu'
+import { useMetricsStore } from '@/stores/metrics'
 
 const RECENT_KEY = 'command-palette:recent'
 
@@ -111,6 +112,11 @@ function scoreItem(item, query, recentRoutes, liveSummary, failingServices) {
 
 export default {
   name: 'CommandPalette',
+  setup() {
+    return {
+      metricsStore: useMetricsStore()
+    }
+  },
   data() {
     return {
       open: false,
@@ -128,10 +134,10 @@ export default {
   },
   computed: {
     liveSummary() {
-      return this.$store.getters['metrics/liveSummary'] || { unreadAlerts: 0, activeBans: 0 }
+      return this.metricsStore.liveSummary || { unreadAlerts: 0, activeBans: 0 }
     },
     failingServices() {
-      const services = this.$store.getters['metrics/services'] || []
+      const services = this.metricsStore.services || []
       return services.filter(service => service.status && service.status !== 'active').length
     },
     navigationItems() {
