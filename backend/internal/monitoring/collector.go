@@ -86,6 +86,7 @@ type Collector struct {
 	topProcs    []ProcessInfo
 	netProcs    []NetworkProcessInfo
 	suspicious  []SuspiciousProcess
+	procCPUPrev map[int32]processCPUSample
 }
 
 func NewCollector() *Collector {
@@ -131,9 +132,9 @@ func (c *Collector) Start(interval, slowEvery time.Duration) {
 	}()
 
 	go func() {
-		refreshEvery := 15 * time.Second
-		if slowEvery > 0 && slowEvery < refreshEvery {
-			refreshEvery = slowEvery
+		refreshEvery := slowEvery
+		if refreshEvery <= 0 {
+			refreshEvery = 30 * time.Second
 		}
 		if refreshEvery < 10*time.Second {
 			refreshEvery = 10 * time.Second
@@ -160,9 +161,8 @@ func (c *Collector) Latest() *SystemSnapshot {
 func (c *Collector) TopProcesses(limit int) []ProcessInfo {
 	items := c.snapshotTopProcesses()
 	if len(items) == 0 {
-		fresh := collectProcesses()
-		c.setTopProcesses(fresh)
-		items = fresh
+		c.refreshProcessSnapshots()
+		items = c.snapshotTopProcesses()
 	}
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
@@ -173,9 +173,8 @@ func (c *Collector) TopProcesses(limit int) []ProcessInfo {
 func (c *Collector) TopNetworkProcesses(limit int) []NetworkProcessInfo {
 	items := c.snapshotNetworkProcesses()
 	if len(items) == 0 {
-		fresh := collectNetworkProcesses()
-		c.setNetworkProcesses(fresh)
-		items = fresh
+		c.refreshProcessSnapshots()
+		items = c.snapshotNetworkProcesses()
 	}
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
@@ -186,9 +185,8 @@ func (c *Collector) TopNetworkProcesses(limit int) []NetworkProcessInfo {
 func (c *Collector) SuspiciousProcesses() []SuspiciousProcess {
 	items := c.snapshotSuspiciousProcesses()
 	if len(items) == 0 {
-		fresh := collectSuspiciousProcesses()
-		c.setSuspiciousProcesses(fresh)
-		items = fresh
+		c.refreshProcessSnapshots()
+		items = c.snapshotSuspiciousProcesses()
 	}
 	return items
 }
@@ -318,9 +316,13 @@ func (c *Collector) refreshPartitions(now time.Time) {
 }
 
 func (c *Collector) refreshProcessSnapshots() {
-	c.setTopProcesses(collectProcesses())
-	c.setNetworkProcesses(collectNetworkProcesses())
-	c.setSuspiciousProcesses(collectSuspiciousProcesses())
+	bundle := collectProcessSnapshotBundle(c.procCPUPrev, time.Now(), processSnapshotLimit, networkProcessSnapshotLimit)
+	c.procMu.Lock()
+	c.topProcs = append([]ProcessInfo(nil), bundle.top...)
+	c.netProcs = append([]NetworkProcessInfo(nil), bundle.network...)
+	c.suspicious = append([]SuspiciousProcess(nil), bundle.suspicious...)
+	c.procCPUPrev = bundle.cpuPrev
+	c.procMu.Unlock()
 }
 
 func (c *Collector) setTopProcesses(items []ProcessInfo) {

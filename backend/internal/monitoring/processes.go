@@ -2,12 +2,14 @@ package monitoring
 
 import (
 	"fmt"
+	"os/user"
 	"sort"
+	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
+	"github.com/shirou/gopsutil/v3/mem"
 	goproc "github.com/shirou/gopsutil/v3/process"
 )
 
@@ -46,178 +48,228 @@ type NetworkProcessInfo struct {
 }
 
 const (
-	processCacheTTL        = 5 * time.Second
-	networkProcessCacheTTL = 8 * time.Second
-	suspiciousCacheTTL     = 15 * time.Second
+	processSnapshotLimit        = 100
+	networkProcessSnapshotLimit = 100
+	suspiciousConnectionCount   = 50
 )
 
-type processSnapshotCache[T any] struct {
-	mu        sync.Mutex
-	expiresAt time.Time
-	data      []T
+type processCPUSample struct {
+	total  float64
+	seenAt time.Time
 }
 
-var (
-	topProcessCache     processSnapshotCache[ProcessInfo]
-	networkProcCache    processSnapshotCache[NetworkProcessInfo]
-	suspiciousProcCache processSnapshotCache[SuspiciousProcess]
-)
+type processSnapshotBundle struct {
+	top        []ProcessInfo
+	network    []NetworkProcessInfo
+	suspicious []SuspiciousProcess
+	cpuPrev    map[int32]processCPUSample
+}
 
-func (c *processSnapshotCache[T]) get(ttl time.Duration, loader func() []T) []T {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if time.Now().Before(c.expiresAt) {
-		return append([]T(nil), c.data...)
+type processCandidate struct {
+	pid         int32
+	name        string
+	cpuPct      float64
+	connections int
+	tcp         int
+	udp         int
+	listen      int
+	established int
+	risk        string
+	reason      string
+	cmdline     string
+}
+
+type processDetail struct {
+	user       string
+	status     string
+	cmdline    string
+	memRSS     uint64
+	memPct     float32
+	createTime int64
+}
+
+func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time, topLimit, networkLimit int) processSnapshotBundle {
+	if now.IsZero() {
+		now = time.Now()
 	}
-	fresh := loader()
-	c.data = append([]T(nil), fresh...)
-	c.expiresAt = time.Now().Add(ttl)
-	return append([]T(nil), c.data...)
-}
-
-// TopProcesses returns the top N processes sorted by CPU% descending.
-func TopProcesses(n int) []ProcessInfo {
-	result := topProcessCache.get(processCacheTTL, collectProcesses)
-	if len(result) > n {
-		return result[:n]
+	if topLimit <= 0 {
+		topLimit = processSnapshotLimit
 	}
-	return result
-}
+	if networkLimit <= 0 {
+		networkLimit = networkProcessSnapshotLimit
+	}
 
-func collectProcesses() []ProcessInfo {
 	procs, err := goproc.Processes()
 	if err != nil {
-		return nil
+		return processSnapshotBundle{
+			top:        []ProcessInfo{},
+			network:    []NetworkProcessInfo{},
+			suspicious: []SuspiciousProcess{},
+			cpuPrev:    map[int32]processCPUSample{},
+		}
 	}
 
-	result := make([]ProcessInfo, 0, len(procs))
+	totalMem := uint64(0)
+	if vm, err := mem.VirtualMemory(); err == nil {
+		totalMem = vm.Total
+	}
+
+	procByPID := make(map[int32]*goproc.Process, len(procs))
+	nextPrev := make(map[int32]processCPUSample, len(procs))
+	topCandidates := make([]processCandidate, 0, len(procs))
+	networkCandidates := make([]processCandidate, 0, len(procs)/2)
+	suspiciousCandidates := make([]processCandidate, 0, 8)
+
 	for _, p := range procs {
+		procByPID[p.Pid] = p
+
 		name, _ := p.Name()
-		cpuPct, _ := p.CPUPercent()
-		memPct, _ := p.MemoryPercent()
-		memInfo, _ := p.MemoryInfo()
-		statuses, _ := p.Status()
-		user, _ := p.Username()
-		cmd, _ := p.Cmdline()
-
-		status := "sleeping"
-		if len(statuses) > 0 {
-			status = statuses[0]
+		if name == "" {
+			name = strconv.FormatInt(int64(p.Pid), 10)
 		}
 
-		rss := uint64(0)
-		if memInfo != nil {
-			rss = memInfo.RSS
+		sample, cpuPct, ok := sampleProcessCPU(p, prev, now)
+		if ok {
+			nextPrev[p.Pid] = sample
 		}
 
-		if cmd != "" && len(cmd) > 80 {
-			cmd = cmd[:80] + "…"
+		candidate := processCandidate{
+			pid:    p.Pid,
+			name:   name,
+			cpuPct: cpuPct,
 		}
 
-		result = append(result, ProcessInfo{
-			PID:     p.Pid,
-			Name:    name,
-			User:    user,
-			CPUPct:  round2(cpuPct),
-			MemPct:  float32(int(float64(memPct)*10+0.5)) / 10,
-			MemRSS:  rss,
-			Status:  status,
-			Cmdline: cmd,
+		cmdline := ""
+		if needsCmdlineInspection(name) {
+			cmdline, _ = p.Cmdline()
+		}
+		if reason, risk := suspiciousMatch(name, cmdline); reason != "" {
+			candidate.reason = reason
+			candidate.risk = risk
+			candidate.cmdline = cmdline
+		}
+
+		conns, err := p.Connections()
+		if err == nil && len(conns) > 0 {
+			candidate.connections = len(conns)
+			for _, conn := range conns {
+				switch conn.Type {
+				case syscall.SOCK_STREAM:
+					candidate.tcp++
+				case syscall.SOCK_DGRAM:
+					candidate.udp++
+				}
+				switch strings.ToLower(conn.Status) {
+				case "listen":
+					candidate.listen++
+				case "established":
+					candidate.established++
+				}
+			}
+			networkCandidates = append(networkCandidates, candidate)
+			if candidate.reason == "" && candidate.connections > suspiciousConnectionCount {
+				candidate.reason = fmt.Sprintf("Excessive network connections: %d", candidate.connections)
+				candidate.risk = "medium"
+			}
+		}
+
+		topCandidates = append(topCandidates, candidate)
+		if candidate.reason != "" {
+			suspiciousCandidates = append(suspiciousCandidates, candidate)
+		}
+	}
+
+	sort.Slice(topCandidates, func(i, j int) bool {
+		if topCandidates[i].cpuPct == topCandidates[j].cpuPct {
+			return topCandidates[i].pid < topCandidates[j].pid
+		}
+		return topCandidates[i].cpuPct > topCandidates[j].cpuPct
+	})
+	sort.Slice(networkCandidates, func(i, j int) bool {
+		if networkCandidates[i].established != networkCandidates[j].established {
+			return networkCandidates[i].established > networkCandidates[j].established
+		}
+		if networkCandidates[i].connections != networkCandidates[j].connections {
+			return networkCandidates[i].connections > networkCandidates[j].connections
+		}
+		return networkCandidates[i].cpuPct > networkCandidates[j].cpuPct
+	})
+
+	if len(topCandidates) > topLimit {
+		topCandidates = topCandidates[:topLimit]
+	}
+	if len(networkCandidates) > networkLimit {
+		networkCandidates = networkCandidates[:networkLimit]
+	}
+
+	userCache := map[uint32]string{}
+	detailCache := map[int32]processDetail{}
+	top := make([]ProcessInfo, 0, len(topCandidates))
+	for _, candidate := range topCandidates {
+		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true, false)
+		top = append(top, ProcessInfo{
+			PID:     candidate.pid,
+			Name:    candidate.name,
+			User:    detail.user,
+			CPUPct:  candidate.cpuPct,
+			MemPct:  detail.memPct,
+			MemRSS:  detail.memRSS,
+			Status:  detail.status,
+			Cmdline: detail.cmdline,
 		})
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].CPUPct > result[j].CPUPct
-	})
-
-	return result
-}
-
-// TopNetworkProcesses returns processes with active network sockets.
-func TopNetworkProcesses(n int) []NetworkProcessInfo {
-	result := networkProcCache.get(networkProcessCacheTTL, collectNetworkProcesses)
-	if len(result) > n {
-		return result[:n]
+	network := make([]NetworkProcessInfo, 0, len(networkCandidates))
+	for _, candidate := range networkCandidates {
+		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true, true)
+		network = append(network, NetworkProcessInfo{
+			PID:         candidate.pid,
+			Name:        candidate.name,
+			User:        detail.user,
+			CPUPct:      candidate.cpuPct,
+			MemPct:      detail.memPct,
+			MemRSS:      detail.memRSS,
+			Status:      detail.status,
+			Cmdline:     detail.cmdline,
+			CreateTime:  detail.createTime,
+			UptimeSec:   processUptimeSeconds(detail.createTime),
+			Connections: candidate.connections,
+			TCP:         candidate.tcp,
+			UDP:         candidate.udp,
+			Listen:      candidate.listen,
+			Established: candidate.established,
+			RateSource:  "socket-count",
+		})
 	}
-	return result
-}
 
-func collectNetworkProcesses() []NetworkProcessInfo {
-	procs, err := goproc.Processes()
-	if err != nil {
-		return []NetworkProcessInfo{}
-	}
-
-	result := make([]NetworkProcessInfo, 0, len(procs))
-	for _, p := range procs {
-		conns, err := p.Connections()
-		if err != nil || len(conns) == 0 {
+	suspicious := make([]SuspiciousProcess, 0, len(suspiciousCandidates))
+	seen := make(map[int32]bool, len(suspiciousCandidates))
+	for _, candidate := range suspiciousCandidates {
+		if seen[candidate.pid] {
 			continue
 		}
-
-		name, _ := p.Name()
-		cpuPct, _ := p.CPUPercent()
-		memPct, _ := p.MemoryPercent()
-		memInfo, _ := p.MemoryInfo()
-		statuses, _ := p.Status()
-		user, _ := p.Username()
-		cmd, _ := p.Cmdline()
-		createTime, _ := p.CreateTime()
-
-		status := "sleeping"
-		if len(statuses) > 0 {
-			status = statuses[0]
+		seen[candidate.pid] = true
+		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true, false)
+		cmdline := candidate.cmdline
+		if cmdline == "" {
+			cmdline = detail.cmdline
 		}
-		if cmd != "" && len(cmd) > 80 {
-			cmd = cmd[:80] + "…"
-		}
-
-		rss := uint64(0)
-		if memInfo != nil {
-			rss = memInfo.RSS
-		}
-
-		info := NetworkProcessInfo{
-			PID:         p.Pid,
-			Name:        name,
-			User:        user,
-			CPUPct:      round2(cpuPct),
-			MemPct:      float32(int(float64(memPct)*10+0.5)) / 10,
-			MemRSS:      rss,
-			Status:      status,
-			Cmdline:     cmd,
-			CreateTime:  createTime,
-			UptimeSec:   processUptimeSeconds(createTime),
-			Connections: len(conns),
-			RateSource:  "socket-count",
-		}
-
-		for _, conn := range conns {
-			switch conn.Type {
-			case syscall.SOCK_STREAM:
-				info.TCP++
-			case syscall.SOCK_DGRAM:
-				info.UDP++
-			}
-			switch strings.ToLower(conn.Status) {
-			case "listen":
-				info.Listen++
-			case "established":
-				info.Established++
-			}
-		}
-
-		result = append(result, info)
+		suspicious = append(suspicious, SuspiciousProcess{
+			PID:    candidate.pid,
+			Name:   candidate.name,
+			User:   detail.user,
+			Reason: candidate.reason,
+			Risk:   candidate.risk,
+			Cmd:    truncateProcessText(cmdline, 120),
+		})
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Established != result[j].Established {
-			return result[i].Established > result[j].Established
-		}
-		return result[i].Connections > result[j].Connections
-	})
-
-	return result
+	return processSnapshotBundle{
+		top:        top,
+		network:    network,
+		suspicious: suspicious,
+		cpuPrev:    nextPrev,
+	}
 }
 
 func processUptimeSeconds(createTimeMs int64) int64 {
@@ -261,72 +313,121 @@ var suspiciousPatterns = []struct{ kw, reason, risk string }{
 	{"ruby -e", "Inline Ruby execution", "medium"},
 }
 
-// DetectSuspiciousProcesses scans running processes for known-bad patterns
-// and excessive network connections, returning flagged entries.
-func DetectSuspiciousProcesses() []SuspiciousProcess {
-	return suspiciousProcCache.get(suspiciousCacheTTL, collectSuspiciousProcesses)
+func sampleProcessCPU(p *goproc.Process, prev map[int32]processCPUSample, now time.Time) (processCPUSample, float64, bool) {
+	times, err := p.Times()
+	if err != nil || times == nil {
+		return processCPUSample{}, 0, false
+	}
+	total := times.User + times.System
+	sample := processCPUSample{total: total, seenAt: now}
+	last, ok := prev[p.Pid]
+	if !ok || last.seenAt.IsZero() || total < last.total {
+		return sample, 0, true
+	}
+	elapsed := now.Sub(last.seenAt).Seconds()
+	if elapsed <= 0 {
+		return sample, 0, true
+	}
+	return sample, round2(((total - last.total) / elapsed) * 100), true
 }
 
-func collectSuspiciousProcesses() []SuspiciousProcess {
-	procs, err := goproc.Processes()
-	if err != nil {
-		return []SuspiciousProcess{}
-	}
-
-	seen := map[int32]bool{}
-	var results []SuspiciousProcess
-
-	for _, p := range procs {
-		name, _ := p.Name()
-		cmd, _ := p.Cmdline()
-		user, _ := p.Username()
-
-		lower := strings.ToLower(name + " " + cmd)
-
-		for _, pat := range suspiciousPatterns {
-			if strings.Contains(lower, pat.kw) {
-				if !seen[p.Pid] {
-					seen[p.Pid] = true
-					short := cmd
-					if len(short) > 120 {
-						short = short[:120] + "…"
-					}
-					results = append(results, SuspiciousProcess{
-						PID:    p.Pid,
-						Name:   name,
-						User:   user,
-						Reason: pat.reason,
-						Risk:   pat.risk,
-						Cmd:    short,
-					})
-				}
-				break
-			}
+func suspiciousMatch(name, cmdline string) (string, string) {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	for _, pat := range suspiciousPatterns {
+		if strings.Contains(lower, pat.kw) {
+			return pat.reason, pat.risk
 		}
+	}
+	if cmdline == "" {
+		return "", ""
+	}
+	lower = strings.ToLower(name + " " + cmdline)
+	for _, pat := range suspiciousPatterns {
+		if strings.Contains(lower, pat.kw) {
+			return pat.reason, pat.risk
+		}
+	}
+	return "", ""
+}
 
-		// Flag processes with an unusually high number of network connections.
-		if !seen[p.Pid] {
-			conns, err := p.Connections()
-			if err == nil && len(conns) > 50 {
-				seen[p.Pid] = true
-				short := cmd
-				if len(short) > 120 {
-					short = short[:120] + "…"
-				}
-				results = append(results, SuspiciousProcess{
-					PID:    p.Pid,
-					Name:   name,
-					User:   user,
-					Reason: fmt.Sprintf("Excessive network connections: %d", len(conns)),
-					Risk:   "medium",
-					Cmd:    short,
-				})
-			}
+func needsCmdlineInspection(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	switch lower {
+	case "bash", "sh", "python", "python3", "perl", "ruby", "socat":
+		return true
+	default:
+		return false
+	}
+}
+
+func loadProcessDetail(
+	p *goproc.Process,
+	totalMem uint64,
+	userCache map[uint32]string,
+	detailCache map[int32]processDetail,
+	needCmdline bool,
+	needCreateTime bool,
+) processDetail {
+	if p == nil {
+		return processDetail{}
+	}
+	if cached, ok := detailCache[p.Pid]; ok {
+		if (!needCmdline || cached.cmdline != "") && (!needCreateTime || cached.createTime != 0) {
+			return cached
 		}
 	}
 
-	if results == nil {
-		return []SuspiciousProcess{}
+	detail := detailCache[p.Pid]
+	if detail.user == "" {
+		detail.user = resolveProcessUser(p, userCache)
 	}
-	return results
+	if detail.status == "" {
+		statuses, _ := p.Status()
+		detail.status = "sleeping"
+		if len(statuses) > 0 {
+			detail.status = statuses[0]
+		}
+	}
+	if detail.memRSS == 0 {
+		if memInfo, err := p.MemoryInfo(); err == nil && memInfo != nil {
+			detail.memRSS = memInfo.RSS
+			if totalMem > 0 {
+				memPct := (float64(memInfo.RSS) / float64(totalMem)) * 100
+				detail.memPct = float32(int(memPct*10+0.5)) / 10
+			}
+		}
+	}
+	if needCmdline && detail.cmdline == "" {
+		cmdline, _ := p.Cmdline()
+		detail.cmdline = truncateProcessText(cmdline, 80)
+	}
+	if needCreateTime && detail.createTime == 0 {
+		detail.createTime, _ = p.CreateTime()
+	}
+	detailCache[p.Pid] = detail
+	return detail
+}
+
+func resolveProcessUser(p *goproc.Process, userCache map[uint32]string) string {
+	uids, err := p.Uids()
+	if err != nil || len(uids) == 0 {
+		return ""
+	}
+	uid := uint32(uids[0])
+	if cached, ok := userCache[uid]; ok {
+		return cached
+	}
+	username := strconv.FormatUint(uint64(uid), 10)
+	if resolved, err := user.LookupId(username); err == nil && resolved != nil && resolved.Username != "" {
+		username = resolved.Username
+	}
+	userCache[uid] = username
+	return username
+}
+
+func truncateProcessText(value string, limit int) string {
+	if value == "" || limit <= 0 || len(value) <= limit {
+		return value
+	}
+	return value[:limit] + "…"
 }
