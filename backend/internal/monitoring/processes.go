@@ -10,11 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/mem"
-	goproc "github.com/shirou/gopsutil/v3/process"
 )
 
 // ProcessInfo holds per-process data.
@@ -156,7 +154,11 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 		totalMem = vm.Total
 	}
 
-	procByPID := make(map[int32]*goproc.Process, len(pids)/2)
+	var inodeMap map[uint64]procNetSocket
+	if opts.includeNetwork || opts.includeSuspicious {
+		inodeMap = buildNetInodeMap()
+	}
+
 	nextPrev := make(map[int32]processCPUSample, len(pids))
 	topCandidates := make([]processCandidate, 0, len(pids))
 	networkCandidates := make([]processCandidate, 0, len(pids)/2)
@@ -169,7 +171,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			name = strconv.FormatInt(int64(pid), 10)
 		}
 
-		sample, cpuPct, ok := sampleProcessCPU(pid, statSample, nil, prev, now, statErr == nil)
+		sample, cpuPct, ok := sampleProcessCPU(pid, statSample, prev, now, statErr == nil)
 		if ok {
 			nextPrev[pid] = sample
 		}
@@ -181,57 +183,30 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			createTime: statSample.createTimeMs,
 		}
 
-		var proc *goproc.Process
-		getProc := func() *goproc.Process {
-			if proc != nil {
-				return proc
-			}
-			proc, _ = goproc.NewProcess(pid)
-			return proc
-		}
-
 		cmdline := ""
 		if needsCmdlineInspection(name) {
-			if p := getProc(); p != nil {
-				cmdline, _ = p.Cmdline()
-			}
+			cmdline = readProcCmdline(pid)
 		}
 		if reason, risk := suspiciousMatch(name, cmdline); reason != "" {
 			candidate.reason = reason
 			candidate.risk = risk
 			candidate.cmdline = cmdline
-			if p := getProc(); p != nil {
-				procByPID[pid] = p
-			}
 		}
 
-		if opts.includeNetwork || opts.includeSuspicious {
-			if p := getProc(); p != nil {
-				conns, err := p.Connections()
-				if err == nil && len(conns) > 0 {
-					procByPID[pid] = p
-					candidate.connections = len(conns)
-					for _, conn := range conns {
-						switch conn.Type {
-						case syscall.SOCK_STREAM:
-							candidate.tcp++
-						case syscall.SOCK_DGRAM:
-							candidate.udp++
-						}
-						switch strings.ToLower(conn.Status) {
-						case "listen":
-							candidate.listen++
-						case "established":
-							candidate.established++
-						}
-					}
-					if opts.includeNetwork {
-						networkCandidates = append(networkCandidates, candidate)
-					}
-					if candidate.reason == "" && candidate.connections > suspiciousConnectionCount {
-						candidate.reason = fmt.Sprintf("Excessive network connections: %d", candidate.connections)
-						candidate.risk = "medium"
-					}
+		if inodeMap != nil {
+			total, tcpCount, udpCount, listenCount, estCount := countProcSockets(pid, inodeMap)
+			if total > 0 {
+				candidate.connections = total
+				candidate.tcp = tcpCount
+				candidate.udp = udpCount
+				candidate.listen = listenCount
+				candidate.established = estCount
+				if opts.includeNetwork {
+					networkCandidates = append(networkCandidates, candidate)
+				}
+				if candidate.reason == "" && total > suspiciousConnectionCount {
+					candidate.reason = fmt.Sprintf("Excessive network connections: %d", total)
+					candidate.risk = "medium"
 				}
 			}
 		}
@@ -275,7 +250,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 	detailCache := map[int32]processDetail{}
 	top := make([]ProcessInfo, 0, len(topCandidates))
 	for _, candidate := range topCandidates {
-		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, false)
+		detail := loadProcessDetail(candidate.pid, totalMem, userCache, detailCache, false)
 		top = append(top, ProcessInfo{
 			PID:     candidate.pid,
 			Name:    candidate.name,
@@ -290,7 +265,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 
 	network := make([]NetworkProcessInfo, 0, len(networkCandidates))
 	for _, candidate := range networkCandidates {
-		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, false)
+		detail := loadProcessDetail(candidate.pid, totalMem, userCache, detailCache, false)
 		createTime := int64(0)
 		uptimeSec := int64(0)
 		if opts.includeNetworkTimes {
@@ -324,7 +299,7 @@ func collectProcessSnapshotBundle(prev map[int32]processCPUSample, now time.Time
 			continue
 		}
 		seen[candidate.pid] = true
-		detail := loadProcessDetail(procByPID[candidate.pid], totalMem, userCache, detailCache, true)
+		detail := loadProcessDetail(candidate.pid, totalMem, userCache, detailCache, true)
 		cmdline := candidate.cmdline
 		if cmdline == "" {
 			cmdline = detail.cmdline
@@ -381,7 +356,7 @@ func collectTopProcessSnapshotBundle(prev map[int32]processCPUSample, now time.T
 		if err != nil {
 			continue
 		}
-		sample, cpuPct, ok := sampleProcessCPU(pid, statSample, nil, prev, now, true)
+		sample, cpuPct, ok := sampleProcessCPU(pid, statSample, prev, now, true)
 		if ok {
 			nextPrev[pid] = sample
 		}
@@ -412,8 +387,7 @@ func collectTopProcessSnapshotBundle(prev map[int32]processCPUSample, now time.T
 	detailCache := map[int32]processDetail{}
 	top := make([]ProcessInfo, 0, len(topCandidates))
 	for _, candidate := range topCandidates {
-		proc, _ := goproc.NewProcess(candidate.pid)
-		detail := loadProcessDetail(proc, totalMem, userCache, detailCache, false)
+		detail := loadProcessDetail(candidate.pid, totalMem, userCache, detailCache, false)
 		top = append(top, ProcessInfo{
 			PID:     candidate.pid,
 			Name:    candidate.name,
@@ -492,15 +466,11 @@ var suspiciousPatterns = []struct{ kw, reason, risk string }{
 	{"ruby -e", "Inline Ruby execution", "medium"},
 }
 
-func sampleProcessCPU(pid int32, stat procStatSample, p *goproc.Process, prev map[int32]processCPUSample, now time.Time, hasStat bool) (processCPUSample, float64, bool) {
-	total := stat.totalCPUSeconds
+func sampleProcessCPU(pid int32, stat procStatSample, prev map[int32]processCPUSample, now time.Time, hasStat bool) (processCPUSample, float64, bool) {
 	if !hasStat {
-		times, err := p.Times()
-		if err != nil || times == nil {
-			return processCPUSample{}, 0, false
-		}
-		total = times.User + times.System
+		return processCPUSample{}, 0, false
 	}
+	total := stat.totalCPUSeconds
 	sample := processCPUSample{total: total, seenAt: now}
 	last, ok := prev[pid]
 	if !ok || last.seenAt.IsZero() || total < last.total {
@@ -543,46 +513,45 @@ func needsCmdlineInspection(name string) bool {
 }
 
 func loadProcessDetail(
-	p *goproc.Process,
+	pid int32,
 	totalMem uint64,
 	userCache map[uint32]string,
 	detailCache map[int32]processDetail,
 	needCmdline bool,
 ) processDetail {
-	if p == nil {
+	if pid <= 0 {
 		return processDetail{}
 	}
-	if cached, ok := detailCache[p.Pid]; ok {
+	if cached, ok := detailCache[pid]; ok {
 		if !needCmdline || cached.cmdline != "" {
 			return cached
 		}
 	}
 
-	detail := detailCache[p.Pid]
-	if detail.user == "" {
-		detail.user = resolveProcessUser(p, userCache)
-	}
-	if detail.status == "" {
-		statuses, _ := p.Status()
-		detail.status = "sleeping"
-		if len(statuses) > 0 {
-			detail.status = statuses[0]
+	detail := detailCache[pid]
+	if detail.user == "" || detail.status == "" || detail.memRSS == 0 {
+		uid, state, rssKB := readProcStatusInfo(pid)
+		if detail.status == "" {
+			detail.status = state
+			if detail.status == "" {
+				detail.status = "sleeping"
+			}
 		}
-	}
-	if detail.memRSS == 0 {
-		if memInfo, err := p.MemoryInfo(); err == nil && memInfo != nil {
-			detail.memRSS = memInfo.RSS
+		if detail.memRSS == 0 && rssKB > 0 {
+			detail.memRSS = rssKB * 1024
 			if totalMem > 0 {
-				memPct := (float64(memInfo.RSS) / float64(totalMem)) * 100
+				memPct := (float64(detail.memRSS) / float64(totalMem)) * 100
 				detail.memPct = float32(int(memPct*10+0.5)) / 10
 			}
 		}
+		if detail.user == "" {
+			detail.user = resolveUID(uid, userCache)
+		}
 	}
 	if needCmdline && detail.cmdline == "" {
-		cmdline, _ := p.Cmdline()
-		detail.cmdline = truncateProcessText(cmdline, 80)
+		detail.cmdline = truncateProcessText(readProcCmdline(pid), 80)
 	}
-	detailCache[p.Pid] = detail
+	detailCache[pid] = detail
 	return detail
 }
 
@@ -665,12 +634,7 @@ func cachedBootTimeSeconds(now time.Time) int64 {
 	return bootTime
 }
 
-func resolveProcessUser(p *goproc.Process, userCache map[uint32]string) string {
-	uids, err := p.Uids()
-	if err != nil || len(uids) == 0 {
-		return ""
-	}
-	uid := uint32(uids[0])
+func resolveUID(uid uint32, userCache map[uint32]string) string {
 	if cached, ok := userCache[uid]; ok {
 		return cached
 	}
@@ -687,4 +651,149 @@ func truncateProcessText(value string, limit int) string {
 		return value
 	}
 	return value[:limit] + "…"
+}
+
+// readProcStatusInfo reads /proc/<pid>/status once and extracts UID, state, and VmRSS.
+// Avoids the overhead of gopsutil's locking/reflection machinery.
+func readProcStatusInfo(pid int32) (uid uint32, state string, rssKB uint64) {
+	path := fmt.Sprintf("/proc/%d/status", pid)
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	got := 0
+	for scanner.Scan() && got < 3 {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "State:"):
+			// "State:\tR (running)" → take second field (the single letter code)
+			if parts := strings.Fields(line); len(parts) >= 2 {
+				state = parts[1]
+			}
+			got++
+		case strings.HasPrefix(line, "Uid:"):
+			// "Uid:\t1000\t1000\t1000\t1000" → real uid is second field
+			if parts := strings.Fields(line); len(parts) >= 2 {
+				if v, err := strconv.ParseUint(parts[1], 10, 32); err == nil {
+					uid = uint32(v)
+				}
+			}
+			got++
+		case strings.HasPrefix(line, "VmRSS:"):
+			// "VmRSS:\t12345 kB"
+			if parts := strings.Fields(line); len(parts) >= 2 {
+				rssKB, _ = strconv.ParseUint(parts[1], 10, 64)
+			}
+			got++
+		}
+	}
+	return
+}
+
+// readProcCmdline reads /proc/<pid>/cmdline and returns a printable string.
+func readProcCmdline(pid int32) string {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	// cmdline uses null bytes as argument separators; replace with spaces.
+	for i, b := range data {
+		if b == 0 {
+			data[i] = ' '
+		}
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// procNetSocket describes a socket entry from /proc/net/tcp[6] or udp[6].
+type procNetSocket struct {
+	isTCP         bool
+	isListen      bool
+	isEstablished bool
+}
+
+// buildNetInodeMap reads /proc/net/tcp, /proc/net/tcp6, /proc/net/udp, /proc/net/udp6
+// once and returns a map from socket inode to socket metadata.
+func buildNetInodeMap() map[uint64]procNetSocket {
+	m := make(map[uint64]procNetSocket, 512)
+	addNetProtoFile(m, "/proc/net/tcp", true)
+	addNetProtoFile(m, "/proc/net/tcp6", true)
+	addNetProtoFile(m, "/proc/net/udp", false)
+	addNetProtoFile(m, "/proc/net/udp6", false)
+	return m
+}
+
+func addNetProtoFile(m map[uint64]procNetSocket, path string, isTCP bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Scan() // skip header line
+	for scanner.Scan() {
+		// Fields: sl local_addr rem_addr state tx:rx ... inode ...
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 10 {
+			continue
+		}
+		inode, err := strconv.ParseUint(fields[9], 10, 64)
+		if err != nil || inode == 0 {
+			continue
+		}
+		info := procNetSocket{isTCP: isTCP}
+		if isTCP {
+			stateHex, _ := strconv.ParseUint(fields[3], 16, 8)
+			switch stateHex {
+			case 0x01: // TCP_ESTABLISHED
+				info.isEstablished = true
+			case 0x0A: // TCP_LISTEN
+				info.isListen = true
+			}
+		}
+		m[inode] = info
+	}
+}
+
+// countProcSockets counts socket file descriptors for a process using
+// a pre-built inode map. Reads /proc/<pid>/fd/ once via readlink.
+func countProcSockets(pid int32, inodeMap map[uint64]procNetSocket) (total, tcp, udp, listen, established int) {
+	fdPath := fmt.Sprintf("/proc/%d/fd", pid)
+	entries, err := os.ReadDir(fdPath)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		link, err := os.Readlink(fdPath + "/" + e.Name())
+		if err != nil || len(link) < 10 || link[0] != 's' {
+			continue
+		}
+		if !strings.HasPrefix(link, "socket:[") {
+			continue
+		}
+		// parse "socket:[inode]"
+		inodeStr := link[8 : len(link)-1]
+		inode, err := strconv.ParseUint(inodeStr, 10, 64)
+		if err != nil {
+			continue
+		}
+		info, ok := inodeMap[inode]
+		if !ok {
+			continue
+		}
+		total++
+		if info.isTCP {
+			tcp++
+			if info.isListen {
+				listen++
+			} else if info.isEstablished {
+				established++
+			}
+		} else {
+			udp++
+		}
+	}
+	return
 }
